@@ -19,7 +19,7 @@
 ### 業師端
 
 - [ ] 示範機：Git＋Node＋Antigravity＋OpenCode 全流程跑通
-- [ ] 主 repo `main` 分支保護：禁直接 push，一律走 PR（admin＝業師除外，可直接推）
+- [x] 主 repo `main` 分支保護已開：禁直接 push，一律走 PR（admin＝業師除外，可直接推）
 - [ ] 課程聯絡管道（待定：LINE 群／Teams／信箱）
 - [ ] 備用機一台：學生環境救不回時頂上
 - [ ] 教室網路確認能抓 npm／Go module（或預先準備離線包）
