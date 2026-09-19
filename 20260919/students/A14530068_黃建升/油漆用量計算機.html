@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>油漆用量計算機</title>
+<style>
+  :root { --line:#ddd; --ink:#222; --sub:#666; --ok:#1a7f4b; --bad:#b3261e; --bg:#faf9f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--ink);
+         font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.7; }
+  main { max-width:560px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.lead { margin:0 0 20px; color:var(--sub); font-size:14px; }
+  section { background:#fff; border:1px solid var(--line); border-radius:8px;
+            padding:14px 16px; margin-bottom:14px; }
+  h2 { font-size:15px; margin:0 0 10px; }
+  label { display:block; margin-bottom:10px; font-size:14px; }
+  label span { display:block; color:var(--sub); font-size:12px; }
+  input { width:100%; padding:10px; font-size:16px; border:1px solid var(--line);
+          border-radius:6px; margin-top:4px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td { padding:5px 0; border-bottom:1px solid var(--line); }
+  td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+  .result { font-size:28px; font-weight:500; margin:4px 0; }
+  .sub-result { font-size:14px; color:var(--sub); }
+  .note { font-size:12px; color:var(--sub); }
+  .test { font-size:13px; margin:4px 0; }
+  .pass { color:var(--ok); } .fail { color:var(--bad); font-weight:500; }
+</style>
+</head>
+<body>
+<main>
+  <h1>油漆用量計算機</h1>
+  <p class="lead">輸入空間坪數與淨高，估算乳膠漆需要幾加侖。南應室設 115-1 第一堂產出。</p>
+
+  <section>
+    <h2>現場量到的數字</h2>
+    <label>地坪（坪）<span>要粉刷的那個空間的地板面積</span>
+      <input id="ping" type="number" value="10" step="0.5" min="0"></label>
+    <label>牆面淨高（公尺）<span>地板到天花板，不是樓層高</span>
+      <input id="wallH" type="number" value="2.8" step="0.1" min="0"></label>
+    <label>牆面周長（公尺）<span>四面牆長度相加。填 0 則由坪數推估，見下方假設</span>
+      <input id="perim" type="number" value="0" step="0.1" min="0"></label>
+    <label>門窗開口面積（m²）<span>門、窗、櫃體等不粉刷的面積合計</span>
+      <input id="openArea" type="number" value="6" step="0.5" min="0"></label>
+  </section>
+
+  <section>
+    <h2>假設參數（可改）</h2>
+    <label>每公升塗佈面積（m²／道）<span>⚠ 預設 9。實際看漆罐標示，常見 8–12</span>
+      <input id="rate" type="number" value="9" step="0.5" min="0.1"></label>
+    <label>塗刷道數<span>面漆兩道為常規；深色蓋淺色可能要 3 道</span>
+      <input id="coats" type="number" value="2" step="1" min="1"></label>
+    <label>損耗率（%）<span>⚠ 預設 10。含刷具吸收、修補、調色備量</span>
+      <input id="loss" type="number" value="10" step="1" min="0"></label>
+  </section>
+
+  <section>
+    <h2>計算過程</h2>
+    <table id="steps"></table>
+    <p class="note" id="assume"></p>
+  </section>
+
+  <section>
+    <h2>結果</h2>
+    <div class="result" id="out">—</div>
+    <div class="sub-result" id="out2">—</div>
+    <p class="note">此為估算值，不是下單量。深色跳色、批土重刷、特殊底材都會改變用量，
+      下單前請以現場複丈與漆廠標示確認。</p>
+  </section>
+
+  <section>
+    <h2>驗算</h2>
+    <p class="test" id="t1">—</p>
+    <p class="test" id="t2">—</p>
+    <p class="test" id="t3">—</p>
+    <p class="note">三項固定檢查，開頁自動執行。顯示失敗代表公式或程式被改壞了，
+      先重新手算公式，不要直接改測試數字。</p>
+  </section>
+</main>
+
+<script>
+var 坪換算 = 3.305785;
+var 加侖 = 3.785;
+
+function $(id) { return document.getElementById(id); }
+
+function calc(i) {
+  var 地坪m2 = i.ping * 坪換算;
+  var 由坪數推估 = !(i.perim > 0);
+  var 周長 = 由坪數推估 ? Math.sqrt(地坪m2) * 4 : i.perim;
+  var 牆面積 = 周長 * i.wallH - i.openArea;
+  if (牆面積 < 0) { 牆面積 = 0; }
+  var 塗佈需求 = 牆面積 * i.coats;
+  var 公升 = 塗佈需求 / i.rate * (1 + i.loss / 100);
+  var 加侖數 = Math.ceil(公升 / 加侖);
+  return { 地坪m2:地坪m2, 由坪數推估:由坪數推估, 周長:周長,
+           牆面積:牆面積, 塗佈需求:塗佈需求, 公升:公升, 加侖數:加侖數 };
+}
+
+function read() {
+  return { ping:+$('ping').value, wallH:+$('wallH').value, perim:+$('perim').value,
+           openArea:+$('openArea').value, rate:+$('rate').value,
+           coats:+$('coats').value, loss:+$('loss').value };
+}
+
+function row(k, v) { return '<tr><td>' + k + '</td><td>' + v + '</td></tr>'; }
+
+function render() {
+  var i = read(), r = calc(i);
+  var html = '';
+  if (r.由坪數推估) {
+    html += row('地坪換算', i.ping + ' 坪 × 3.3058 = ' + r.地坪m2.toFixed(2) + ' m²');
+    html += row('推估周長', '√' + r.地坪m2.toFixed(2) + ' × 4 = ' + r.周長.toFixed(2) + ' m');
+  } else {
+    html += row('牆面周長（實測）', r.周長.toFixed(2) + ' m');
+  }
+  html += row('牆面積', r.周長.toFixed(2) + ' × ' + i.wallH + ' − ' + i.openArea +
+              ' = ' + r.牆面積.toFixed(2) + ' m²');
+  html += row('塗佈需求（' + i.coats + ' 道）', r.塗佈需求.toFixed(2) + ' m²');
+  html += row('需求量（含損耗 ' + i.loss + '%）', r.公升.toFixed(2) + ' L');
+  $('steps').innerHTML = html;
+  $('assume').textContent = r.由坪數推估
+    ? '假設：房間為正方形。長寬相差大的空間會低估，建議實測周長填入。'
+    : '使用實測周長，未套用正方形假設。';
+  $('out').textContent = r.加侖數 + ' 加侖';
+  $('out2').textContent = '（需求 ' + r.公升.toFixed(2) + ' L，1 加侖 = 3.785 L）';
+}
+
+function mark(el, 通過, 說明) {
+  el.className = 'test ' + (通過 ? 'pass' : 'fail');
+  el.textContent = (通過 ? '通過' : '失敗') + '｜' + 說明;
+}
+
+function check(el, 標題, 輸入, 預期公升, 預期加侖) {
+  var r = calc(輸入);
+  var 實得公升 = +r.公升.toFixed(2);
+  mark(el, 實得公升 === 預期公升 && r.加侖數 === 預期加侖,
+       標題 + ' → 預期 ' + 預期公升 + ' L／' + 預期加侖 + ' 加侖，實得 ' +
+       實得公升 + ' L／' + r.加侖數 + ' 加侖');
+}
+
+function checkRender(el) {
+  var 文字 = $('steps').textContent + $('out').textContent + $('out2').textContent;
+  mark(el, 文字.indexOf('NaN') === -1 && $('out').textContent !== '—',
+       '畫面渲染檢查：輸入欄有接到計算函式，畫面結果非 NaN');
+}
+
+function selfTest() {
+  check($('t1'), '10 坪、淨高 2.8、扣 6 m²、坪數推估',
+        { ping:10, wallH:2.8, perim:0, openArea:6, rate:9, coats:2, loss:10 }, 14.27, 4);
+  check($('t2'), '實測周長 20 m、淨高 2.8、扣 6 m²',
+        { ping:10, wallH:2.8, perim:20, openArea:6, rate:9, coats:2, loss:10 }, 12.22, 4);
+  checkRender($('t3'));
+}
+
+document.querySelectorAll('input').forEach(function (el) { el.addEventListener('input', render); });
+render();
+selfTest();
+</script>
+</body>
+</html>
