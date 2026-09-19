@@ -82,7 +82,8 @@
 <script>
 /* 計算引擎：所有計算機共用這一份。Node 與瀏覽器都能跑。
    新增計算類型時只改這裡，不要在個別 HTML 裡另外寫公式。
-   契約：計算(名稱, 輸入物件) → { 過程:[{標籤,算式}], 值:{數字...}, 註記:字串 } */
+   契約：計算(名稱, 輸入物件) → { 過程:[{標籤,算式}], 值:{數字...}, 註記:字串, 錯誤:[字串] }
+   錯誤陣列不是空的時候，值與過程一律是空的——不要拿沒通過驗證的數字去顯示。 */
 'use strict';
 
 var 換算 = {
@@ -101,6 +102,62 @@ var 插座建議表 = {
 };
 
 function n2(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+
+/* ── 輸入驗證規則 ──
+   2026-09-19 第三方稽核抓到：沒有驗證時塗佈率填 0 會算出 Infinity 加侖，
+   損耗率填負數會算出負的用量，坪數填負數會算出 NaN。除數與比例一律要驗。 */
+var 規則 = {
+  油漆: {
+    ping: { 最小: 0, 名: '地坪' },
+    wallH: { 大於: 0, 名: '牆面淨高' },
+    perim: { 最小: 0, 名: '牆面周長' },
+    openArea: { 最小: 0, 名: '門窗開口面積' },
+    rate: { 大於: 0, 名: '每公升塗佈面積' },
+    coats: { 最小: 1, 整數: true, 名: '塗刷道數' },
+    loss: { 最小: 0, 名: '損耗率' }
+  },
+  窗簾: {
+    窗寬: { 大於: 0, 名: '窗寬' },
+    窗高: { 大於: 0, 名: '窗高' },
+    倍數: { 大於: 0, 名: '打摺倍數' },
+    幅寬: { 大於: 0, 名: '幅寬' },
+    兩側收邊: { 最小: 0, 名: '兩側收邊' },
+    上下摺邊: { 最小: 0, 名: '上下摺邊' }
+  },
+  磁磚: {
+    長: { 大於: 0, 名: '長' },
+    寬: { 大於: 0, 名: '寬' },
+    扣除: { 最小: 0, 名: '扣除面積' },
+    磚長: { 大於: 0, 名: '磚長' },
+    磚寬: { 大於: 0, 名: '磚寬' },
+    填縫: { 最小: 0, 名: '填縫寬度' },
+    損耗: { 最小: 0, 名: '損耗率' },
+    每箱片數: { 最小: 1, 整數: true, 名: '每箱片數' }
+  }
+};
+
+function 驗證(名稱, i) {
+  var 錯 = [];
+  var r = 規則[名稱] || {};
+  Object.keys(r).forEach(function (k) {
+    var v = i[k];
+    var d = r[k];
+    if (typeof v !== 'number' || !isFinite(v)) {
+      錯.push(d.名 + '要填數字');
+      return;
+    }
+    if (typeof d.大於 === 'number' && !(v > d.大於)) {
+      錯.push(d.名 + '必須大於 ' + d.大於);
+    }
+    if (typeof d.最小 === 'number' && v < d.最小) {
+      錯.push(d.名 + '不能小於 ' + d.最小);
+    }
+    if (d.整數 && Math.floor(v) !== v) {
+      錯.push(d.名 + '必須是整數');
+    }
+  });
+  return 錯;
+}
 
 var 公式 = {
   油漆: {
@@ -182,11 +239,17 @@ var 公式 = {
 
 function 計算(名稱, 輸入) {
   if (!公式[名稱]) { throw new Error('沒有這個公式：' + 名稱); }
-  return 公式[名稱].計算(輸入);
+  var 錯誤 = 驗證(名稱, 輸入);
+  if (錯誤.length) {
+    return { 過程: [], 值: {}, 註記: '', 錯誤: 錯誤 };
+  }
+  var r = 公式[名稱].計算(輸入);
+  r.錯誤 = [];
+  return r;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { 換算: 換算, 公式: 公式, 計算: 計算, 插座建議表: 插座建議表 };
+  module.exports = { 換算: 換算, 公式: 公式, 計算: 計算, 驗證: 驗證, 規則: 規則, 插座建議表: 插座建議表 };
 }
 </script>
 <script>
@@ -203,6 +266,13 @@ function read() {
 
 function render() {
   var r = 計算(設定.公式, read());
+  if (r.錯誤 && r.錯誤.length) {
+    $("steps").innerHTML = "";
+    $("assume").textContent = "";
+    $("out").textContent = "輸入有誤";
+    $("out2").textContent = r.錯誤.join("；");
+    return;
+  }
   var html = "";
   r.過程.forEach(function (s) {
     html += "<tr><td>" + s.標籤 + "</td><td>" + s.算式 + "</td></tr>";
@@ -233,8 +303,10 @@ function 驗算() {
     mark($("t" + n), !壞掉.length, c.標題 + (壞掉.length ? "：" + 壞掉.join("；") : ""));
   });
   var 畫面 = $("steps").textContent + $("out").textContent + $("out2").textContent;
-  mark($("tRender"), 畫面.indexOf("NaN") === -1 && $("out").textContent !== "—",
-       "畫面渲染檢查：輸入欄有接到計算引擎，畫面結果非 NaN");
+  var 壞值 = ["NaN", "Infinity", "undefined", "輸入有誤"];
+  var 有壞值 = 壞值.some(function (k) { return 畫面.indexOf(k) !== -1; });
+  mark($("tRender"), !有壞值 && $("out").textContent !== "—",
+       "畫面渲染檢查：輸入欄有接到計算引擎，預設值算得出正常結果");
 }
 
 document.querySelectorAll("input").forEach(function (el) {
