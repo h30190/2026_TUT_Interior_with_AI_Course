@@ -112,8 +112,13 @@ if (!執行錯誤) {
   記('無未代換佔位符', 殘留.length === 0,
      殘留.length ? '殘留：' + 殘留.join('、') : '全部代換完成');
 
-  記('畫面無 NaN', 畫面.indexOf('NaN') === -1 && 畫面.indexOf('undefined') === -1,
-     元素表.out ? '結果欄：' + 元素表.out.textContent : '找不到結果欄');
+  /* Infinity 也要抓。2026-09-19 稽核指出：塗佈率填 0 時整頁顯示 Infinity 加侖，
+     而這裡只比對 NaN，所以照樣報通過。只認一種壞值等於沒認。 */
+  var 壞值 = ['NaN', 'Infinity', 'undefined', '輸入有誤'];
+  var 命中 = 壞值.filter(function (k) { return 畫面.indexOf(k) !== -1; });
+  記('畫面無壞值', 命中.length === 0,
+     命中.length ? '出現：' + 命中.join('、')
+                 : (元素表.out ? '結果欄：' + 元素表.out.textContent : '找不到結果欄'));
 }
 
 console.log('檢查：' + 檔案);
