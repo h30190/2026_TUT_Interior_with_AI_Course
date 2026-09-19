@@ -1,0 +1,4 @@
+interface:
+  display_name: "室內裝修材料估算"
+  short_description: "依空間尺寸估算油漆、磁磚與壁紙用量，列出耗損及購買數量"
+  default_prompt: "使用 $interior-finish-estimator 估算這個空間需要的裝修材料。"
