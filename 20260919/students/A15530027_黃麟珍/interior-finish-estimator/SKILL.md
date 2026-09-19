@@ -20,13 +20,17 @@ description: Estimate paint, tile, and wallpaper quantities for interior spaces 
 
 關鍵資料不足時先詢問。若使用者要快速概算，可以採用合理預設，但要把每個預設列在結果最前面，方便替換。
 
-## 計算方式
+## 使用計算腳本
 
-1. 先統一單位為公尺、平方公尺與公升，保留原始輸入供核對。
-2. 算出施工總面積，再扣除門窗等不施工區域；淨面積不得小於零。
-3. 依材料加入塗刷道數、塗布率、裁切或施工耗損。
-4. 中間值保留至少兩位小數，最後才依包裝規格向上取整。
-5. 需要材料公式時讀取 [references/formulas.md](references/formulas.md)。只套用符合本次材料與施工方向的公式。
+數值計算一律執行 `scripts/estimate_finishes.py`，不要在回覆中自行重算。這可固定單位、公式、耗損與包裝進位規則。
+
+1. 依材料選擇 `paint`、`tile` 或 `wallpaper` 子命令。
+2. 所有空間長度輸入公尺；磁磚尺寸輸入公分；耗損使用百分比。
+3. 不確定參數名稱時先執行 `python scripts/estimate_finishes.py <模式> --help`。
+4. 執行腳本後讀取 JSON，將 `inputs`、`calculations` 與 `purchase` 轉成使用者易懂的說明。
+5. 需要解釋公式或確認參數含義時，讀取 [references/formulas.md](references/formulas.md)。
+
+腳本回報錯誤時修正輸入，不可略過錯誤後自行猜測結果。若環境無法執行 Python，說明限制並提供已整理的輸入資料，等使用者決定下一步。
 
 ## 輸出格式
 
@@ -37,7 +41,7 @@ description: Estimate paint, tile, and wallpaper quantities for interior spaces 
 
 表格後簡短列出計算式。若有單價，分開顯示材料小計與總額，不把人工、底材、運費或稅金偷偷算入。
 
-最後做一次合理性檢查：確認單位、門窗扣除、塗刷道數、耗損與包裝進位均只計算一次。提醒使用者現場尺寸、材料批次與施工方式可能改變實際用量。
+最後用腳本輸出的中間值做合理性檢查：確認門窗扣除、塗刷道數、耗損與包裝進位均只計算一次。提醒使用者現場尺寸、材料批次與施工方式可能改變實際用量。
 
 ## 邊界
 
