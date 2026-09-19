@@ -1,16 +1,19 @@
 ---
 name: course-submit
-description: 南應室設「設計運算與 AI 整合應用」課程的交件流程：先跑防呆檢查，通過才 commit，再 push 到自己的 fork，最後給出 PR 連結。觸發語：「交作業」「上傳作業」「交件」「這次上課的東西推上去」「幫我 commit 然後發 PR」「上課的 push 一下」。檢查沒過就不會 commit，PR 不自動發。
+description: 南應室設「設計運算與 AI 整合應用」課程的交件流程：先跑防呆檢查，通過才 commit，再 push 到自己的 fork，需要時用 gh 發 PR。觸發語：「交作業」「上傳作業」「交件」「這次上課的東西推上去」「幫我 commit 然後發 PR」。全程只用指令，不操作瀏覽器。檢查沒過就不會 commit。
 ---
 
 # 課程交件
 
 把「commit 確定沒問題再 PR」這件事固化成流程。順序是刻意的：**檢查沒過就不 commit，commit 沒成功就不 push。**
 
+這支 skill 只住在這個 repo，不安裝到 `~/.claude/skills`——它只有上課會用到。
+
 ## 跑法
 
 ```bash
-node scripts/交件.js "20260919 完成油漆用量計算機"        # 正式交件
+node scripts/交件.js "20260919 完成油漆用量計算機"        # 交件（不發 PR）
+node scripts/交件.js "訊息" --pr                         # 交件並發 PR
 node scripts/交件.js "訊息" --dry                        # 試跑，只看會做什麼
 node scripts/檢查.js                                     # 只檢查不交
 node scripts/測試.js                                     # 改過檢查邏輯後必跑
@@ -18,6 +21,20 @@ node scripts/測試.js                                     # 改過檢查邏輯�
 
 設定在 `設定.json`：repo 路徑、學號姓名、remote 名稱、日期資料夾清單。
 換學期或換電腦只要改這一份。
+
+## 全程只用指令
+
+**不用瀏覽器點按鈕。**發 PR 走 `gh pr create`，需要：
+
+```bash
+winget install --id GitHub.cli    # 裝一次
+gh auth login                     # 登入一次，要自己跑
+```
+
+`gh auth login` 涉及帳號認證，一律由本人執行。腳本只呼叫 `gh pr create`，不碰登入。
+
+PR 標題取 commit 訊息的第一行，內文用整段訊息。
+分支上已經有開著的 PR 時，新的 commit 會自動加進去，腳本會告訴你不用重開。
 
 ## 這個 repo 的特殊之處（最容易搞錯的一點）
 
@@ -47,14 +64,10 @@ node scripts/測試.js                                     # 改過檢查邏輯�
 九條防呆每一條都有對應的失敗情境測試，`測試.js` 會建一個假 repo 實際觸發它們。
 自報成功不算通過。
 
-## PR 為什麼不自動發
+## 交件範圍
 
-兩個理由：這台機器沒有 `gh` CLI；而且發 PR 是對外動作，要由人按下去。
-腳本只印出填好的 compare 連結，點開就是建立 PR 的畫面。
-
-**課程規則是 push 到 fork 就算交件，期末（2027-01-16）才發 PR 回主 repo。**
-但 2026-09-19 第一堂發的 PR #2 業師直接合併了，所以每堂發 PR 實務上可行。
-要不要發，自己看當天狀況決定。
+`git add` 的是 `設定.json` 裡列出的**所有**日期資料夾底下屬於你的那一層，
+所以六次上課的資料夾會一起帶上去——哪個資料夾有東西就交哪個，不用逐次指定。
 
 ## 交件前如果上游有更新
 
@@ -68,7 +81,6 @@ git pull origin main
 
 ## 邊界
 
-- **只動 `設定.json` 裡列出的日期資料夾底下、你自己的那一層。**別人的資料夾、主 repo 的
-  `README.md`／`LICENSE` 一律不碰，檢查器會擋。
-- **不自動 merge、不自動發 PR、不改 main。**
+- **只動你自己的那一層。**別人的資料夾、主 repo 的 `README.md`／`LICENSE` 一律不碰，檢查器會擋。
+- **不自動 merge、不改 main、不碰 `gh auth login`。**
 - 交件前如果工作區有你不認得的檔案，先問清楚來源再交，不要照單全收。
