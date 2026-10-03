@@ -35,6 +35,10 @@
   .result.none { color:var(--sub); font-weight:400; }
   .sub-result.bad { color:var(--bad); }
   .sub-result.warn { color:var(--warn); }
+  .欄 { display:flex; gap:8px; align-items:stretch; }
+  .欄 input { flex:1; min-width:0; }
+  .欄 select { margin-top:4px; padding:10px 8px; font-size:16px;
+               border:1px solid var(--line); border-radius:6px; background:#fff; }
 </style>
 </head>
 <body>
@@ -45,16 +49,24 @@
   <section>
     <h2>現場量到的數字</h2>
     <label>地坪（坪）<span>要粉刷的那個空間的地板面積</span>
-      <input id="ping" type="number" value="10" step="0.5" min="0">
+      <div class="欄"> <input id="ping" type="number" value="10" step="0.5" min="0">
+        <select id="u_ping"><option value="坪" selected>坪</option><option value="m2">m2</option><option value="才">才</option></select>
+      </div>
       <p class="err" id="err_ping"></p></label>
     <label>牆面淨高（公尺）<span>地板到天花板，不是樓層高</span>
-      <input id="wallH" type="number" value="2.8" step="0.1" min="0">
+      <div class="欄"> <input id="wallH" type="number" value="2.8" step="0.1" min="0">
+        <select id="u_wallH"><option value="m" selected>m</option><option value="cm">cm</option><option value="台尺">台尺</option></select>
+      </div>
       <p class="err" id="err_wallH"></p></label>
     <label>牆面周長（公尺）<span>四面牆長度相加。填 0 則由坪數推估，見下方假設</span>
-      <input id="perim" type="number" value="0" step="0.1" min="0">
+      <div class="欄"> <input id="perim" type="number" value="0" step="0.1" min="0">
+        <select id="u_perim"><option value="m" selected>m</option><option value="cm">cm</option><option value="台尺">台尺</option><option value="丈">丈</option></select>
+      </div>
       <p class="err" id="err_perim"></p></label>
     <label>門窗開口面積（m²）<span>門、窗、櫃體等不粉刷的面積合計</span>
-      <input id="openArea" type="number" value="6" step="0.5" min="0">
+      <div class="欄"> <input id="openArea" type="number" value="6" step="0.5" min="0">
+        <select id="u_openArea"><option value="m2" selected>m2</option><option value="cm2">cm2</option><option value="才">才</option><option value="坪">坪</option></select>
+      </div>
       <p class="err" id="err_openArea"></p></label>
   </section>
 
@@ -122,11 +134,27 @@ var 換算 = {
    跟坪的 400/121 = 3.305785 對不起來，差 0.02%——單位表自己跟自己矛盾。
    2026-10-03 單位測試抓到的。實務上講「一台尺 30.3 公分」沒問題，
    那是口語的四捨五入；程式裡要用精確值，否則換算鏈越長誤差越大。 */
-var 台尺m = 10 / 33;
+var 台尺m = 10 / 33;          /* 精確定義。慣用說法是 30.3 公分 */
+var 台寸m = 台尺m / 10;
+var 台分m = 台尺m / 100;
+
 var 單位表 = {
-  長度: { m: 1, cm: 0.01, mm: 0.001, 台尺: 台尺m, 台寸: 台尺m / 10, 英吋: 0.0254, 碼: 0.9144 },
-  面積: { m2: 1, cm2: 0.0001, 坪: 400 / 121, 才: 台尺m * 台尺m },
-  體積: { L: 1, 加侖: 3.785 }
+  長度: {
+    m: 1, cm: 0.01, mm: 0.001,
+    台分: 台分m, 台寸: 台寸m, 台尺: 台尺m, 丈: 台尺m * 10,
+    英吋: 0.0254, 英尺: 0.3048, 碼: 0.9144
+  },
+  面積: {
+    m2: 1, cm2: 0.0001,
+    /* 才由台尺推導、坪再由才推導（1 坪 = 36 才），關係才會精確。
+       兩者各自寫死成小數的話，坪 ÷ 才 會得到 35.9999997 這種值。 */
+    才: 台尺m * 台尺m,          /* 面積才：玻璃、鋁窗、窗簾、板材計價用 */
+    坪: 36 * 台尺m * 台尺m      /* = 6 台尺見方 = 36 才 = 400/121 m² */
+  },
+  體積: {
+    L: 1, m3: 1000, 加侖: 3.785,
+    材積才: 台寸m * 台寸m * (台尺m * 10) * 1000   /* 1 台寸 × 1 台寸 × 10 台尺，換成公升 */
+  }
 };
 
 function 找維度(單位) {
@@ -396,15 +424,61 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 </script>
 <script>
-var 設定 = {"公式":"油漆","欄位":["ping","wallH","perim","openArea","rate","coats","loss"],"結果":{"欄位":"加侖數","單位":"加侖"},"次要結果":"（需求 {公升} L，1 加侖 = 3.785 L）","驗算":[{"標題":"10 坪、淨高 2.8、扣 6 m²、由坪數推估","輸入":{"ping":10,"wallH":2.8,"perim":0,"openArea":6,"rate":9,"coats":2,"loss":10},"預期":{"公升":14.27,"加侖數":4}},{"標題":"實測周長 20 m、淨高 2.8、扣 6 m²","輸入":{"ping":10,"wallH":2.8,"perim":20,"openArea":6,"rate":9,"coats":2,"loss":10},"預期":{"公升":12.22,"加侖數":4}}]};
+var 設定 = {"公式":"油漆","欄位":["ping","wallH","perim","openArea","rate","coats","loss"],"基準單位":{"ping":"坪","wallH":"m","perim":"m","openArea":"m2"},"結果":{"欄位":"加侖數","單位":"加侖"},"次要結果":"（需求 {公升} L，1 加侖 = 3.785 L）","驗算":[{"標題":"10 坪、淨高 2.8、扣 6 m²、由坪數推估","輸入":{"ping":10,"wallH":2.8,"perim":0,"openArea":6,"rate":9,"coats":2,"loss":10},"預期":{"公升":14.27,"加侖數":4}},{"標題":"實測周長 20 m、淨高 2.8、扣 6 m²","輸入":{"ping":10,"wallH":2.8,"perim":20,"openArea":6,"rate":9,"coats":2,"loss":10},"預期":{"公升":12.22,"加侖數":4}}]};
 
 function $(id) { return document.getElementById(id); }
 function f2(v) { return (Math.round(v * 100) / 100).toFixed(2); }
 
+/* 使用者可以自己選單位；公式只認基準單位，所以讀值時換算回去。
+   這樣公式完全不用知道介面讓人選了什麼，換算只發生在這一個地方。 */
+function 讀單位(k) {
+  var s = $("u_" + k);
+  return (s && s.value) ? s.value : 設定.基準單位[k];
+}
+
 function read() {
   var o = {};
-  設定.欄位.forEach(function (k) { o[k] = +$(k).value; });
+  設定.欄位.forEach(function (k) {
+    var v = +$(k).value;
+    var 從 = 讀單位(k);
+    var 到 = 設定.基準單位[k];
+    if (從 && 到 && 從 !== 到 && isFinite(v)) {
+      try { v = 換算到(v, 從, 到); } catch (e) { /* 換算失敗就交給驗證去報 */ }
+    }
+    o[k] = v;
+  });
   return o;
+}
+
+/* 換單位時把數值一起換算，而不是重新詮釋同一個數字。
+   300 公分切成公尺要變成 3，不是維持 300——後者正是差 100 倍的來源。
+
+   每個欄位另外記一份「基準單位下的值」當作真正的資料，畫面上的數字只是它的呈現。
+   換單位時一律從基準值換算，不從上一個顯示值接著換——
+   否則修整誤差會一路累積，坪→才→m²→坪 繞一圈會變成 9.9999999。 */
+var 目前單位 = {};
+var 基準值 = {};
+
+function 同步基準(k) {
+  var v = +$(k).value;
+  var 從 = 讀單位(k);
+  var 到 = 設定.基準單位[k];
+  if (從 && 到 && 從 !== 到 && isFinite(v)) {
+    try { 基準值[k] = 換算到(v, 從, 到); return; } catch (e) {}
+  }
+  基準值[k] = v;
+}
+
+function 換單位(k) {
+  var 新 = 讀單位(k);
+  var 到 = 設定.基準單位[k];
+  if (新 && 到 && isFinite(基準值[k])) {
+    /* 用有效位數而不是小數位數修整：固定小數位會讓 360 顯示成 359.999997，
+       也會把很小的值（公釐、填縫）直接截成 0。 */
+    try { $(k).value = parseFloat(換算到(基準值[k], 到, 新).toPrecision(8)); } catch (e) {}
+  }
+  目前單位[k] = 新;
+  render();
 }
 
 function 清欄位() {
@@ -506,8 +580,19 @@ function 驗算() {
        "畫面渲染檢查：輸入欄有接到計算引擎，預設值算得出正常結果");
 }
 
-document.querySelectorAll("input").forEach(function (el) {
-  el.addEventListener("input", render);
+設定.欄位.forEach(function (k) { 目前單位[k] = 讀單位(k); 同步基準(k); });
+
+/* 逐個欄位綁，不要靠 el.id 反查——元素不一定有 id 屬性可讀，
+   綁定時就把欄位名閉包進去比較穩。 */
+設定.欄位.forEach(function (k) {
+  var 欄 = $(k);
+  if (欄) {
+    欄.addEventListener("input", function () { 同步基準(k); render(); });
+  }
+  var 選 = $("u_" + k);
+  if (選) {
+    選.addEventListener("change", function () { 換單位(k); });
+  }
 });
 render();
 驗算();

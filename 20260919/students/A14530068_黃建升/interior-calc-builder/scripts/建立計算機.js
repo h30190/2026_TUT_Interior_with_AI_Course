@@ -72,6 +72,27 @@ ids.forEach(function (id, n) {
 /* 設定宣告的欄位必須蓋住公式需要的全部輸入。
    少一個的話頁面讀不到那個值，計算永遠回傳「要填數字」，
    等於產出一個開起來就是壞的工具。2026-10-03 稽核指出，當時產生器照收。 */
+/* 每個欄位的基準單位來自引擎的規則，不是設定檔——公式認什麼單位由公式決定。
+   設定檔只能決定「讓使用者可以選哪些單位」，選了之後換算回基準單位再進公式。 */
+var 基準單位 = {};
+全部欄位.forEach(function (f) {
+  var d = (引擎.規則[設定.公式] || {})[f.id];
+  if (d && d.單位) { 基準單位[f.id] = d.單位; }
+  if (f.可選單位) {
+    if (!d || !d.單位) {
+      爆掉('欄位「' + f.id + '」宣告了可選單位，但引擎規則沒有為它定義基準單位');
+    }
+    if (f.可選單位.indexOf(d.單位) === -1) {
+      爆掉('欄位「' + f.id + '」的可選單位必須包含基準單位 ' + d.單位 +
+           '，目前是：' + f.可選單位.join('、'));
+    }
+    f.可選單位.forEach(function (u) {
+      try { 引擎.換算到(1, u, d.單位); }
+      catch (e) { 爆掉('欄位「' + f.id + '」的可選單位 ' + u + ' 不能換算成 ' + d.單位 + '：' + e.message); }
+    });
+  }
+});
+
 var 公式需要 = Object.keys(引擎.規則[設定.公式] || {});
 var 缺欄位 = 公式需要.filter(function (k) { return ids.indexOf(k) === -1; });
 if (缺欄位.length) {
@@ -102,11 +123,26 @@ if (typeof 樣本[設定.結果.欄位] === 'undefined') {
 
 function 欄(f) {
   /* 每個欄位自帶一行錯誤訊息的位置，才能把錯誤標在出錯的那一格旁邊，
-     而不是全部擠在頁尾——手機上使用者看不到頁尾。 */
+     而不是全部擠在頁尾——手機上使用者看不到頁尾。
+     宣告 可選單位 的欄位會多一個下拉選單，換單位時數值自動換算。 */
+  var 輸入 = '<input id="' + f.id + '" type="number" value="' + f.預設 +
+             '" step="' + (f.step || 1) + '" min="' + (typeof f.min === 'number' ? f.min : 0) + '">';
+
+  var 內容;
+  if (f.可選單位 && f.可選單位.length > 1) {
+    var 選項 = f.可選單位.map(function (u) {
+      return '<option value="' + 逸出(u) + '"' +
+             (u === f.可選單位[0] ? ' selected' : '') + '>' + 逸出(u) + '</option>';
+    }).join('');
+    內容 = '\n      <div class="欄"> ' + 輸入 +
+           '\n        <select id="u_' + f.id + '">' + 選項 + '</select>\n      </div>';
+  } else {
+    內容 = '\n      ' + 輸入;
+  }
+
   return '    <label>' + 逸出(f.標籤) +
          (f.說明 ? '<span>' + 逸出(f.說明) + '</span>' : '') +
-         '\n      <input id="' + f.id + '" type="number" value="' + f.預設 +
-         '" step="' + (f.step || 1) + '" min="' + (typeof f.min === 'number' ? f.min : 0) + '">' +
+         內容 +
          '\n      <p class="err" id="err_' + f.id + '"></p></label>\n';
 }
 
@@ -144,13 +180,18 @@ var 樣式 = [
   '  .err.warn { color:var(--warn); }',
   '  .result.none { color:var(--sub); font-weight:400; }',
   '  .sub-result.bad { color:var(--bad); }',
-  '  .sub-result.warn { color:var(--warn); }'
+  '  .sub-result.warn { color:var(--warn); }',
+  '  .欄 { display:flex; gap:8px; align-items:stretch; }',
+  '  .欄 input { flex:1; min-width:0; }',
+  '  .欄 select { margin-top:4px; padding:10px 8px; font-size:16px;',
+  '               border:1px solid var(--line); border-radius:6px; background:#fff; }'
 ].join('\n');
 
 var 執行期 = [
   'var 設定 = ' + 安全JSON({
     公式: 設定.公式,
     欄位: ids,
+    基準單位: 基準單位,
     結果: 設定.結果,
     次要結果: 設定.次要結果 || null,
     驗算: 設定.驗算
@@ -159,10 +200,56 @@ var 執行期 = [
   'function $(id) { return document.getElementById(id); }',
   'function f2(v) { return (Math.round(v * 100) / 100).toFixed(2); }',
   '',
+  '/* 使用者可以自己選單位；公式只認基準單位，所以讀值時換算回去。',
+  '   這樣公式完全不用知道介面讓人選了什麼，換算只發生在這一個地方。 */',
+  'function 讀單位(k) {',
+  '  var s = $("u_" + k);',
+  '  return (s && s.value) ? s.value : 設定.基準單位[k];',
+  '}',
+  '',
   'function read() {',
   '  var o = {};',
-  '  設定.欄位.forEach(function (k) { o[k] = +$(k).value; });',
+  '  設定.欄位.forEach(function (k) {',
+  '    var v = +$(k).value;',
+  '    var 從 = 讀單位(k);',
+  '    var 到 = 設定.基準單位[k];',
+  '    if (從 && 到 && 從 !== 到 && isFinite(v)) {',
+  '      try { v = 換算到(v, 從, 到); } catch (e) { /* 換算失敗就交給驗證去報 */ }',
+  '    }',
+  '    o[k] = v;',
+  '  });',
   '  return o;',
+  '}',
+  '',
+  '/* 換單位時把數值一起換算，而不是重新詮釋同一個數字。',
+  '   300 公分切成公尺要變成 3，不是維持 300——後者正是差 100 倍的來源。',
+  '',
+  '   每個欄位另外記一份「基準單位下的值」當作真正的資料，畫面上的數字只是它的呈現。',
+  '   換單位時一律從基準值換算，不從上一個顯示值接著換——',
+  '   否則修整誤差會一路累積，坪→才→m²→坪 繞一圈會變成 9.9999999。 */',
+  'var 目前單位 = {};',
+  'var 基準值 = {};',
+  '',
+  'function 同步基準(k) {',
+  '  var v = +$(k).value;',
+  '  var 從 = 讀單位(k);',
+  '  var 到 = 設定.基準單位[k];',
+  '  if (從 && 到 && 從 !== 到 && isFinite(v)) {',
+  '    try { 基準值[k] = 換算到(v, 從, 到); return; } catch (e) {}',
+  '  }',
+  '  基準值[k] = v;',
+  '}',
+  '',
+  'function 換單位(k) {',
+  '  var 新 = 讀單位(k);',
+  '  var 到 = 設定.基準單位[k];',
+  '  if (新 && 到 && isFinite(基準值[k])) {',
+  '    /* 用有效位數而不是小數位數修整：固定小數位會讓 360 顯示成 359.999997，',
+  '       也會把很小的值（公釐、填縫）直接截成 0。 */',
+  '    try { $(k).value = parseFloat(換算到(基準值[k], 到, 新).toPrecision(8)); } catch (e) {}',
+  '  }',
+  '  目前單位[k] = 新;',
+  '  render();',
   '}',
   '',
   'function 清欄位() {',
@@ -264,8 +351,19 @@ var 執行期 = [
   '       "畫面渲染檢查：輸入欄有接到計算引擎，預設值算得出正常結果");',
   '}',
   '',
-  'document.querySelectorAll("input").forEach(function (el) {',
-  '  el.addEventListener("input", render);',
+  '設定.欄位.forEach(function (k) { 目前單位[k] = 讀單位(k); 同步基準(k); });',
+  '',
+  '/* 逐個欄位綁，不要靠 el.id 反查——元素不一定有 id 屬性可讀，',
+  '   綁定時就把欄位名閉包進去比較穩。 */',
+  '設定.欄位.forEach(function (k) {',
+  '  var 欄 = $(k);',
+  '  if (欄) {',
+  '    欄.addEventListener("input", function () { 同步基準(k); render(); });',
+  '  }',
+  '  var 選 = $("u_" + k);',
+  '  if (選) {',
+  '    選.addEventListener("change", function () { 換單位(k); });',
+  '  }',
   '});',
   'render();',
   '驗算();'
