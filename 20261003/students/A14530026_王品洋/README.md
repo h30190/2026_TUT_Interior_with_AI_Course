@@ -46,3 +46,13 @@
 
 - `稽核總報告-黃建升工具-21項.md`：21 項問題的整理報告（摘要、方法、總覽表、四項高嚴重度詳述、修復優先順序、限制）
 - 逐項重現步驟在 `稽核報告-交叉-黃建升.md`，證據在 `screenshots/`，可重跑的程式在 `稽核腳本/`
+
+## 修正黃建升對我的稽核（12 項）
+
+- 我先把他報告的 12 項逐項用原始壞輸入重跑，全部屬實，再修。修法與取捨寫在 `稽核報告.md` 最後一節。
+- `furniture-layout-fengshui/tests/audit_regression_test.py`：56 項回歸測試（含不能修過頭的反例），全過。
+
+## 查驗圖庫與修正前後對照圖
+
+- `furniture-layout-fengshui/tests/全案例查驗圖庫.html`（與 `.png`）：109 個測試案例各一張平面圖，標出期望、實際、通過或失敗；重新產生：`python tests/make_gallery.py scripts/layout.py tests/全案例查驗圖庫.html`
+- `furniture-layout-fengshui/tests/修正前後對照.html`（與 `.png`）：黃建升稽核到的問題，同一份壞輸入在修正前後的平面圖對照
