@@ -1,6 +1,8 @@
 /* 產出檢查器。跑法：node scripts/檢查.js ../油漆用量計算機.html
    把 SKILL.md 的五條硬性規格變成機器判斷，零 AI。
    會用假的 DOM 無頭跑一次頁面程式，所以「公式對但沒接上輸入欄」這種錯抓得到。
+   它驗的是「產出頁面有沒有壞」，不是「公式對不對」——2026-10-03 變異測試量過，
+   它只跑預設值那一個畫面，對公式錯誤只抓得到 47%。公式對不對看 精確比對.test.js。
    有任何一條沒過就 exit 1。 */
 'use strict';
 
@@ -27,6 +29,25 @@ var 外連 = (html.match(/(src|href)\s*=\s*["']https?:\/\/[^"']*/gi) || [])
   .concat(html.match(/url\(\s*["']?https?:\/\/[^)]*/gi) || []);
 記('規格1 單檔離線', 外連.length === 0,
    外連.length ? '有 ' + 外連.length + ' 處外部資源：' + 外連.join('、') : '無外部資源');
+
+/* ── 不得有行內事件、輸入欄只准白名單屬性 ──
+   2026-10-03 王品洋交叉稽核 #9：設定檔的 step 帶引號，產出變成
+   <input … step="0.5" autofocus onfocus="…">，程式碼真的執行，這裡卻報全部通過——
+   因為假 DOM 只跑預設畫面，而 onfocus 要使用者點進欄位才觸發。
+   所以用靜態掃描：產生器從不輸出行內事件，出現一個就代表屬性被截斷了。 */
+var 標籤們 = html.replace(/<script>[\s\S]*?<\/script>/g, '').match(/<[a-zA-Z][^>]*>/g) || [];
+var 行內事件 = 標籤們.filter(function (t) { return /\son[a-z]+\s*=/i.test(t); });
+var 白名單 = ['id', 'type', 'value', 'step', 'min'];
+var 怪屬性 = [];
+標籤們.filter(function (t) { return /^<input\b/i.test(t); }).forEach(function (t) {
+  var 去值 = t.replace(/^<input/i, '').replace(/="[^"]*"/g, '').replace(/>$/, '');
+  去值.split(/\s+/).filter(Boolean).forEach(function (名) {
+    if (白名單.indexOf(名.toLowerCase()) === -1) { 怪屬性.push(名); }
+  });
+});
+記('無行內事件與多餘屬性', !行內事件.length && !怪屬性.length,
+   行內事件.length ? '行內事件：' + 行內事件.join('、')
+                   : (怪屬性.length ? '輸入欄有白名單外的屬性：' + 怪屬性.join('、') : '無'));
 
 /* ── 規格 5：手機可用 ── */
 記('規格5 手機可用', /<meta\s+name="viewport"/i.test(html), 'viewport meta');
