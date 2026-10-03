@@ -143,7 +143,8 @@ var 樣式 = [
   '  .err.on { display:block; }',
   '  .err.warn { color:var(--warn); }',
   '  .result.none { color:var(--sub); font-weight:400; }',
-  '  .sub-result.bad { color:var(--bad); }'
+  '  .sub-result.bad { color:var(--bad); }',
+  '  .sub-result.warn { color:var(--warn); }'
 ].join('\n');
 
 var 執行期 = [
@@ -228,6 +229,16 @@ var 執行期 = [
   '    $("out2").textContent = 設定.次要結果.replace(/\{([^}]+)\}/g, function (_, k) {',
   '      return f2(r.值[k]);',
   '    });',
+  '  }',
+  '',
+  '  /* 有提醒時結果區也要講一聲。只在欄位旁放小黃字的話，畫面中央仍是一個',
+  '     28px 的大數字，看起來像完全正常的結果——那正是「假自信」的形狀。',
+  '     數字照給（提醒不擋計算），但旁邊要說它可疑。 */',
+  '  var 提 = 清單.filter(function (e) { return e.等級 === "提醒"; });',
+  '  if (提.length) {',
+  '    $("out2").className = "sub-result warn";',
+  '    $("out2").textContent = $("out2").textContent + "　⚠ " + 提.length +',
+  '      " 項提醒，詳見上方黃字";',
   '  }',
   '}',
   '',
