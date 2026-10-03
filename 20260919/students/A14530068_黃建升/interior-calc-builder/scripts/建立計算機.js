@@ -12,6 +12,24 @@ var 危險id = ['open', 'name', 'top', 'self', 'parent', 'status', 'length',
 
 function 爆掉(訊息) { console.error('產生失敗：' + 訊息); process.exit(1); }
 
+/* 設定檔的文字一律逸出再插進 HTML。
+   2026-10-03 暴力測試實證：標題寫 '</script><script>…' 時，注入的程式碼會落在
+   產出的 <script> 區塊裡並實際執行。設定檔現在是自己寫的不代表以後也是。 */
+function 逸出(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* 內嵌進 <script> 的 JSON：即使在字串裡，</script> 也會被 HTML 解析器當成結束標籤，
+   所以 < 一律轉成 <。 */
+function 安全JSON(o) {
+  return JSON.stringify(o).replace(/</g, '\\u003c');
+}
+
 var 設定路徑 = process.argv[2];
 if (!設定路徑) { 爆掉('要給設定檔路徑，例：node scripts/建立計算機.js 設定/油漆用量.json'); }
 var 設定 = JSON.parse(fs.readFileSync(設定路徑, 'utf8'));
@@ -38,8 +56,34 @@ if (!全部欄位.length) { 爆掉('沒有任何輸入欄位'); }
   if (typeof f.預設 !== 'number') { 爆掉('欄位「' + f.id + '」缺少數字型別的預設值'); }
 });
 
+/* 檔名只能是單純檔名。2026-10-03 實證 '../逃脫.html' 真的寫到了指定資料夾之外。 */
+if (/[\\/]/.test(設定.檔名) || 設定.檔名.indexOf('..') !== -1) {
+  爆掉('檔名只能是單純檔名，不得含路徑分隔符或 ..：' + 設定.檔名);
+}
+if (!設定.結果.欄位) { 爆掉('結果缺少「欄位」'); }
+if (!設定.結果.單位) { 爆掉('結果缺少「單位」，產出會變成沒有單位的裸數字'); }
+if (設定.標題.length > 200) { 爆掉('標題過長（' + 設定.標題.length + ' 字），上限 200'); }
+
 var ids = 全部欄位.map(function (f) { return f.id; });
+ids.forEach(function (id, n) {
+  if (ids.indexOf(id) !== n) { 爆掉('欄位 id 重複：' + id + '；重複的 id 會讓其中一欄讀不到值'); }
+});
+
+/* 設定宣告的欄位必須蓋住公式需要的全部輸入。
+   少一個的話頁面讀不到那個值，計算永遠回傳「要填數字」，
+   等於產出一個開起來就是壞的工具。2026-10-03 稽核指出，當時產生器照收。 */
+var 公式需要 = Object.keys(引擎.規則[設定.公式] || {});
+var 缺欄位 = 公式需要.filter(function (k) { return ids.indexOf(k) === -1; });
+if (缺欄位.length) {
+  爆掉('設定少了公式「' + 設定.公式 + '」需要的輸入欄：' + 缺欄位.join('、') +
+       '；少一欄的話頁面讀不到值，開起來就是壞的');
+}
+
 設定.驗算.forEach(function (c, n) {
+  if (!c.預期 || !Object.keys(c.預期).length) {
+    爆掉('第 ' + (n + 1) + ' 組驗算案例沒有任何預期值——' +
+         '那會產出一個永遠顯示「通過」的假驗算，比沒有驗算更糟');
+  }
   ids.forEach(function (id) {
     if (typeof c.輸入[id] !== 'number') {
       爆掉('第 ' + (n + 1) + ' 組驗算案例缺少欄位「' + id + '」');
@@ -59,8 +103,8 @@ if (typeof 樣本[設定.結果.欄位] === 'undefined') {
 function 欄(f) {
   /* 每個欄位自帶一行錯誤訊息的位置，才能把錯誤標在出錯的那一格旁邊，
      而不是全部擠在頁尾——手機上使用者看不到頁尾。 */
-  return '    <label>' + f.標籤 +
-         (f.說明 ? '<span>' + f.說明 + '</span>' : '') +
+  return '    <label>' + 逸出(f.標籤) +
+         (f.說明 ? '<span>' + 逸出(f.說明) + '</span>' : '') +
          '\n      <input id="' + f.id + '" type="number" value="' + f.預設 +
          '" step="' + (f.step || 1) + '" min="' + (typeof f.min === 'number' ? f.min : 0) + '">' +
          '\n      <p class="err" id="err_' + f.id + '"></p></label>\n';
@@ -103,7 +147,7 @@ var 樣式 = [
 ].join('\n');
 
 var 執行期 = [
-  'var 設定 = ' + JSON.stringify({
+  'var 設定 = ' + 安全JSON({
     公式: 設定.公式,
     欄位: ids,
     結果: 設定.結果,
@@ -222,15 +266,15 @@ var html = [
   '<head>',
   '<meta charset="utf-8">',
   '<meta name="viewport" content="width=device-width, initial-scale=1">',
-  '<title>' + 設定.標題 + '</title>',
+  '<title>' + 逸出(設定.標題) + '</title>',
   '<style>',
   樣式,
   '</style>',
   '</head>',
   '<body>',
   '<main>',
-  '  <h1>' + 設定.標題 + '</h1>',
-  '  <p class="lead">' + 設定.說明 + '</p>',
+  '  <h1>' + 逸出(設定.標題) + '</h1>',
+  '  <p class="lead">' + 逸出(設定.說明) + '</p>',
   '',
   '  <section>',
   '    <h2>現場量到的數字</h2>',
@@ -252,7 +296,7 @@ var html = [
   '    <h2>結果</h2>',
   '    <div class="result" id="out">—</div>',
   '    <div class="sub-result" id="out2">—</div>',
-  '    <p class="note">' + 設定.免責 + '</p>',
+  '    <p class="note">' + 逸出(設定.免責) + '</p>',
   '  </section>',
   '',
   '  <section>',
