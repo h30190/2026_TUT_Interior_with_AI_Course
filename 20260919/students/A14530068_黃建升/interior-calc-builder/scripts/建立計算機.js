@@ -57,10 +57,13 @@ if (typeof 樣本[設定.結果.欄位] === 'undefined') {
 }
 
 function 欄(f) {
+  /* 每個欄位自帶一行錯誤訊息的位置，才能把錯誤標在出錯的那一格旁邊，
+     而不是全部擠在頁尾——手機上使用者看不到頁尾。 */
   return '    <label>' + f.標籤 +
          (f.說明 ? '<span>' + f.說明 + '</span>' : '') +
          '\n      <input id="' + f.id + '" type="number" value="' + f.預設 +
-         '" step="' + (f.step || 1) + '" min="' + (typeof f.min === 'number' ? f.min : 0) + '"></label>\n';
+         '" step="' + (f.step || 1) + '" min="' + (typeof f.min === 'number' ? f.min : 0) + '">' +
+         '\n      <p class="err" id="err_' + f.id + '"></p></label>\n';
 }
 
 var 驗算列 = 設定.驗算.map(function (c, n) {
@@ -68,7 +71,8 @@ var 驗算列 = 設定.驗算.map(function (c, n) {
 }).join('') + '    <p class="test" id="tRender">—</p>';
 
 var 樣式 = [
-  '  :root { --line:#ddd; --ink:#222; --sub:#666; --ok:#1a7f4b; --bad:#b3261e; --bg:#faf9f7; }',
+  '  :root { --line:#ddd; --ink:#222; --sub:#666; --ok:#1a7f4b; --bad:#b3261e;',
+  '          --warn:#8a5d00; --bg:#faf9f7; }',
   '  * { box-sizing:border-box; }',
   '  body { margin:0; padding:16px; background:var(--bg); color:var(--ink);',
   '         font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.7; }',
@@ -89,7 +93,13 @@ var 樣式 = [
   '  .sub-result { font-size:14px; color:var(--sub); }',
   '  .note { font-size:12px; color:var(--sub); }',
   '  .test { font-size:13px; margin:4px 0; }',
-  '  .pass { color:var(--ok); } .fail { color:var(--bad); font-weight:500; }'
+  '  .pass { color:var(--ok); } .fail { color:var(--bad); font-weight:500; }',
+  '  input.bad { border-color:var(--bad); background:#fdf5f5; }',
+  '  .err { display:none; color:var(--bad); font-size:12px; margin:4px 0 0; }',
+  '  .err.on { display:block; }',
+  '  .err.warn { color:var(--warn); }',
+  '  .result.none { color:var(--sub); font-weight:400; }',
+  '  .sub-result.bad { color:var(--bad); }'
 ].join('\n');
 
 var 執行期 = [
@@ -110,15 +120,59 @@ var 執行期 = [
   '  return o;',
   '}',
   '',
+  'function 清欄位() {',
+  '  設定.欄位.forEach(function (k) {',
+  '    $(k).className = "";',
+  '    var e = $("err_" + k);',
+  '    if (e) { e.className = "err"; e.textContent = ""; }',
+  '  });',
+  '}',
+  '',
+  'function 標欄位(清單) {',
+  '  清單.forEach(function (e) {',
+  '    if (!e.欄位 || !$(e.欄位)) { return; }',
+  '    if (e.等級 === "錯誤") { $(e.欄位).className = "bad"; }',
+  '    var p = $("err_" + e.欄位);',
+  '    if (!p) { return; }',
+  '    /* 提醒用黃字且不擋計算；錯誤用紅字並擋住結果。',
+  '       一律走 class 不用 inline style——class 無頭測試驗得到，style 驗不到。 */',
+  '    p.className = e.等級 === "提醒" ? "err on warn" : "err on";',
+  '    p.textContent = (e.等級 === "提醒" ? "提醒：" : "") + e.訊息;',
+  '  });',
+  '}',
+  '',
+  'function 空結果(主文, 副文, 壞) {',
+  '  $("steps").innerHTML = "";',
+  '  $("assume").textContent = "";',
+  '  $("out").className = "result none";',
+  '  $("out").textContent = 主文;',
+  '  $("out2").className = 壞 ? "sub-result bad" : "sub-result";',
+  '  $("out2").textContent = 副文;',
+  '}',
+  '',
   'function render() {',
   '  var r = 計算(設定.公式, read());',
-  '  if (r.錯誤 && r.錯誤.length) {',
-  '    $("steps").innerHTML = "";',
-  '    $("assume").textContent = "";',
-  '    $("out").textContent = "輸入有誤";',
-  '    $("out2").textContent = r.錯誤.join("；");',
+  '  var 清單 = r.錯誤 || [];',
+  '  清欄位();',
+  '  標欄位(清單);',
+  '',
+  '  var 致命 = 清單.filter(function (e) { return e.等級 === "致命"; });',
+  '  if (致命.length) {',
+  '    空結果("工具故障", 致命[0].訊息 + "（請回報，不要依賴這次的結果）", true);',
   '    return;',
   '  }',
+  '',
+  '  var 錯 = 清單.filter(function (e) { return e.等級 === "錯誤"; });',
+  '  if (錯.length) {',
+  '    /* 絕不留上一次的數字——陳舊數字看起來像新算的，是假自信的來源 */',
+  '    var 有欄位 = 錯.filter(function (e) { return e.欄位; });',
+  '    空結果("—", 有欄位.length ? 有欄位.length + " 個欄位要修正，詳見上方紅字"',
+  '                              : 錯[0].訊息, true);',
+  '    return;',
+  '  }',
+  '',
+  '  $("out").className = "result";',
+  '  $("out2").className = "sub-result";',
   '  var html = "";',
   '  r.過程.forEach(function (s) {',
   '    html += "<tr><td>" + s.標籤 + "</td><td>" + s.算式 + "</td></tr>";',
@@ -149,7 +203,7 @@ var 執行期 = [
   '    mark($("t" + n), !壞掉.length, c.標題 + (壞掉.length ? "：" + 壞掉.join("；") : ""));',
   '  });',
   '  var 畫面 = $("steps").textContent + $("out").textContent + $("out2").textContent;',
-  '  var 壞值 = ["NaN", "Infinity", "undefined", "輸入有誤"];',
+  '  var 壞值 = ["NaN", "Infinity", "undefined", "工具故障", "要修正"];',
   '  var 有壞值 = 壞值.some(function (k) { return 畫面.indexOf(k) !== -1; });',
   '  mark($("tRender"), !有壞值 && $("out").textContent !== "—",',
   '       "畫面渲染檢查：輸入欄有接到計算引擎，預設值算得出正常結果");',
@@ -202,9 +256,11 @@ var html = [
   '  </section>',
   '',
   '  <section>',
-  '    <h2>驗算</h2>',
+  '    <h2>引擎自我測試</h2>',
+  '    <p class="note">固定案例，開頁時跑一次，<strong>與你目前輸入的數字無關</strong>。',
+  '      上面出現紅字是你的輸入要改，這裡是綠的代表計算引擎本身沒壞，兩件事不衝突。</p>',
   驗算列,
-  '    <p class="note">固定檢查，開頁自動執行。顯示失敗代表公式或設定被改壞了，',
+  '    <p class="note">這裡顯示失敗代表公式或設定被改壞了，',
   '      先重新手算公式，不要直接改預期值。</p>',
   '  </section>',
   '</main>',

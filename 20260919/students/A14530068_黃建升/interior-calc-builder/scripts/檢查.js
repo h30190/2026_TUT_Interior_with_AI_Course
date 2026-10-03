@@ -47,7 +47,9 @@ while ((m = idRe.exec(html))) {
 
 /* ── 無頭執行：建一個最小的假 DOM，實際跑一次頁面程式 ── */
 function 元素(初值) {
-  var o = { value: 初值 || '', className: '', _html: '', _text: '—',
+  /* style 要給，否則頁面一用 el.style.x 就拋錯，看起來像頁面壞了，其實是假 DOM 不夠忠實。
+     2026-10-03 實際踩到一次。 */
+  var o = { value: 初值 || '', className: '', style: {}, _html: '', _text: '—',
             addEventListener: function () {} };
   Object.defineProperty(o, 'innerHTML', {
     get: function () { return o._html; },
@@ -114,7 +116,7 @@ if (!執行錯誤) {
 
   /* Infinity 也要抓。2026-09-19 稽核指出：塗佈率填 0 時整頁顯示 Infinity 加侖，
      而這裡只比對 NaN，所以照樣報通過。只認一種壞值等於沒認。 */
-  var 壞值 = ['NaN', 'Infinity', 'undefined', '輸入有誤'];
+  var 壞值 = ['NaN', 'Infinity', 'undefined', '工具故障', '要修正'];
   var 命中 = 壞值.filter(function (k) { return 畫面.indexOf(k) !== -1; });
   記('畫面無壞值', 命中.length === 0,
      命中.length ? '出現：' + 命中.join('、')

@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>油漆用量計算機</title>
 <style>
-  :root { --line:#ddd; --ink:#222; --sub:#666; --ok:#1a7f4b; --bad:#b3261e; --bg:#faf9f7; }
+  :root { --line:#ddd; --ink:#222; --sub:#666; --ok:#1a7f4b; --bad:#b3261e;
+          --warn:#8a5d00; --bg:#faf9f7; }
   * { box-sizing:border-box; }
   body { margin:0; padding:16px; background:var(--bg); color:var(--ink);
          font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.7; }
@@ -27,6 +28,12 @@
   .note { font-size:12px; color:var(--sub); }
   .test { font-size:13px; margin:4px 0; }
   .pass { color:var(--ok); } .fail { color:var(--bad); font-weight:500; }
+  input.bad { border-color:var(--bad); background:#fdf5f5; }
+  .err { display:none; color:var(--bad); font-size:12px; margin:4px 0 0; }
+  .err.on { display:block; }
+  .err.warn { color:var(--warn); }
+  .result.none { color:var(--sub); font-weight:400; }
+  .sub-result.bad { color:var(--bad); }
 </style>
 </head>
 <body>
@@ -37,23 +44,30 @@
   <section>
     <h2>現場量到的數字</h2>
     <label>地坪（坪）<span>要粉刷的那個空間的地板面積</span>
-      <input id="ping" type="number" value="10" step="0.5" min="0"></label>
+      <input id="ping" type="number" value="10" step="0.5" min="0">
+      <p class="err" id="err_ping"></p></label>
     <label>牆面淨高（公尺）<span>地板到天花板，不是樓層高</span>
-      <input id="wallH" type="number" value="2.8" step="0.1" min="0"></label>
+      <input id="wallH" type="number" value="2.8" step="0.1" min="0">
+      <p class="err" id="err_wallH"></p></label>
     <label>牆面周長（公尺）<span>四面牆長度相加。填 0 則由坪數推估，見下方假設</span>
-      <input id="perim" type="number" value="0" step="0.1" min="0"></label>
+      <input id="perim" type="number" value="0" step="0.1" min="0">
+      <p class="err" id="err_perim"></p></label>
     <label>門窗開口面積（m²）<span>門、窗、櫃體等不粉刷的面積合計</span>
-      <input id="openArea" type="number" value="6" step="0.5" min="0"></label>
+      <input id="openArea" type="number" value="6" step="0.5" min="0">
+      <p class="err" id="err_openArea"></p></label>
   </section>
 
   <section>
     <h2>假設參數（可改）</h2>
     <label>每公升塗佈面積（m²／道）<span>⚠ 預設 9。實際看漆罐標示，常見 8–12</span>
-      <input id="rate" type="number" value="9" step="0.5" min="0.1"></label>
+      <input id="rate" type="number" value="9" step="0.5" min="0.1">
+      <p class="err" id="err_rate"></p></label>
     <label>塗刷道數<span>面漆兩道為常規；深色蓋淺色可能要 3 道</span>
-      <input id="coats" type="number" value="2" step="1" min="1"></label>
+      <input id="coats" type="number" value="2" step="1" min="1">
+      <p class="err" id="err_coats"></p></label>
     <label>損耗率（%）<span>⚠ 預設 10。含刷具吸收、修補、調色備量</span>
-      <input id="loss" type="number" value="10" step="1" min="0"></label>
+      <input id="loss" type="number" value="10" step="1" min="0">
+      <p class="err" id="err_loss"></p></label>
   </section>
 
   <section>
@@ -70,11 +84,13 @@
   </section>
 
   <section>
-    <h2>驗算</h2>
+    <h2>引擎自我測試</h2>
+    <p class="note">固定案例，開頁時跑一次，<strong>與你目前輸入的數字無關</strong>。
+      上面出現紅字是你的輸入要改，這裡是綠的代表計算引擎本身沒壞，兩件事不衝突。</p>
     <p class="test" id="t0">—</p>
     <p class="test" id="t1">—</p>
     <p class="test" id="tRender">—</p>
-    <p class="note">固定檢查，開頁自動執行。顯示失敗代表公式或設定被改壞了，
+    <p class="note">這裡顯示失敗代表公式或設定被改壞了，
       先重新手算公式，不要直接改預期值。</p>
   </section>
 </main>
@@ -108,13 +124,13 @@ function n2(v) { return (Math.round(v * 100) / 100).toFixed(2); }
    損耗率填負數會算出負的用量，坪數填負數會算出 NaN。除數與比例一律要驗。 */
 var 規則 = {
   油漆: {
-    ping: { 最小: 0, 名: '地坪' },
+    ping: { 最小: 0, 名: '地坪', 零提醒: '地坪為 0，算得出來但沒有意義' },
     wallH: { 大於: 0, 名: '牆面淨高' },
     perim: { 最小: 0, 名: '牆面周長' },
     openArea: { 最小: 0, 名: '門窗開口面積' },
     rate: { 大於: 0, 名: '每公升塗佈面積' },
     coats: { 最小: 1, 整數: true, 名: '塗刷道數' },
-    loss: { 最小: 0, 名: '損耗率' }
+    loss: { 最小: 0, 名: '損耗率', 零提醒: '損耗率為 0，沒有留任何備量' }
   },
   窗簾: {
     窗寬: { 大於: 0, 名: '窗寬' },
@@ -131,32 +147,46 @@ var 規則 = {
     磚長: { 大於: 0, 名: '磚長' },
     磚寬: { 大於: 0, 名: '磚寬' },
     填縫: { 最小: 0, 名: '填縫寬度' },
-    損耗: { 最小: 0, 名: '損耗率' },
+    損耗: { 最小: 0, 名: '損耗率', 零提醒: '損耗率為 0，沒有留任何備量' },
     每箱片數: { 最小: 1, 整數: true, 名: '每箱片數' }
   }
 };
 
+/* 錯誤物件一律是 { 欄位, 等級, 訊息 }。
+   帶欄位名才能在畫面上標到出錯的那一格——只給訊息字串的話，
+   使用者要自己從七個輸入欄猜是哪一個，手機上尤其痛苦。
+   等級：錯誤＝算不出來或結果無意義，擋住；提醒＝算得出來但可疑，照常顯示；
+         致命＝工具本身壞了，不要假裝還能用。 */
+function 錯(欄位, 訊息) { return { 欄位: 欄位, 等級: '錯誤', 訊息: 訊息 }; }
+function 提(欄位, 訊息) { return { 欄位: 欄位, 等級: '提醒', 訊息: 訊息 }; }
+
 function 驗證(名稱, i) {
-  var 錯 = [];
+  var 出 = [];
   var r = 規則[名稱] || {};
   Object.keys(r).forEach(function (k) {
     var v = i[k];
     var d = r[k];
     if (typeof v !== 'number' || !isFinite(v)) {
-      錯.push(d.名 + '要填數字');
+      出.push(錯(k, d.名 + '要填數字'));
       return;
     }
     if (typeof d.大於 === 'number' && !(v > d.大於)) {
-      錯.push(d.名 + '必須大於 ' + d.大於);
+      出.push(錯(k, d.名 + '必須大於 ' + d.大於));
     }
     if (typeof d.最小 === 'number' && v < d.最小) {
-      錯.push(d.名 + '不能小於 ' + d.最小);
+      出.push(錯(k, d.名 + '不能小於 ' + d.最小));
+    }
+    if (typeof d.最大 === 'number' && v > d.最大) {
+      出.push(錯(k, d.名 + '不能大於 ' + d.最大));
     }
     if (d.整數 && Math.floor(v) !== v) {
-      錯.push(d.名 + '必須是整數');
+      出.push(錯(k, d.名 + '必須是整數'));
+    }
+    if (d.零提醒 && v === 0) {
+      出.push(提(k, d.零提醒));
     }
   });
-  return 錯;
+  return 出;
 }
 
 var 公式 = {
@@ -238,13 +268,42 @@ var 公式 = {
 };
 
 function 計算(名稱, 輸入) {
-  if (!公式[名稱]) { throw new Error('沒有這個公式：' + 名稱); }
-  var 錯誤 = 驗證(名稱, 輸入);
-  if (錯誤.length) {
-    return { 過程: [], 值: {}, 註記: '', 錯誤: 錯誤 };
+  if (!公式[名稱]) {
+    return { 過程: [], 值: {}, 註記: '',
+             錯誤: [{ 欄位: null, 等級: '致命', 訊息: '沒有這個公式：' + 名稱 }] };
   }
-  var r = 公式[名稱].計算(輸入);
-  r.錯誤 = [];
+
+  var 驗 = 驗證(名稱, 輸入);
+  var 擋下 = 驗.filter(function (e) { return e.等級 === '錯誤'; });
+  if (擋下.length) {
+    return { 過程: [], 值: {}, 註記: '', 錯誤: 驗 };
+  }
+
+  var r;
+  try {
+    r = 公式[名稱].計算(輸入);
+  } catch (e) {
+    return { 過程: [], 值: {}, 註記: '',
+             錯誤: [{ 欄位: null, 等級: '致命', 訊息: '計算時發生例外：' + e.message }] };
+  }
+
+  /* ── 出口關卡 ──
+     驗證只看輸入是否有限，但有限的數字相乘仍可能溢位：
+     1e308 × 3.305785 已經超過 Number.MAX_VALUE，結果是 Infinity。
+     2026-10-03 自測掃出 11 個這類欄位，入口擋不住，所以出口要再攔一次。
+     這道關卡不需要預先知道哪個欄位會爆，新增公式也自動適用。 */
+  var 非有限 = Object.keys(r.值).filter(function (k) {
+    return typeof r.值[k] === 'number' && !isFinite(r.值[k]);
+  });
+  if (非有限.length) {
+    return { 過程: [], 值: {}, 註記: '', 錯誤: [{
+      欄位: null, 等級: '錯誤',
+      訊息: '計算結果超出可計算範圍（' + 非有限.join('、') +
+            '），請確認輸入單位是否填錯（例如把公分填成了公尺）'
+    }] };
+  }
+
+  r.錯誤 = 驗;   /* 只剩提醒，不擋 */
   return r;
 }
 
@@ -264,15 +323,59 @@ function read() {
   return o;
 }
 
+function 清欄位() {
+  設定.欄位.forEach(function (k) {
+    $(k).className = "";
+    var e = $("err_" + k);
+    if (e) { e.className = "err"; e.textContent = ""; }
+  });
+}
+
+function 標欄位(清單) {
+  清單.forEach(function (e) {
+    if (!e.欄位 || !$(e.欄位)) { return; }
+    if (e.等級 === "錯誤") { $(e.欄位).className = "bad"; }
+    var p = $("err_" + e.欄位);
+    if (!p) { return; }
+    /* 提醒用黃字且不擋計算；錯誤用紅字並擋住結果。
+       一律走 class 不用 inline style——class 無頭測試驗得到，style 驗不到。 */
+    p.className = e.等級 === "提醒" ? "err on warn" : "err on";
+    p.textContent = (e.等級 === "提醒" ? "提醒：" : "") + e.訊息;
+  });
+}
+
+function 空結果(主文, 副文, 壞) {
+  $("steps").innerHTML = "";
+  $("assume").textContent = "";
+  $("out").className = "result none";
+  $("out").textContent = 主文;
+  $("out2").className = 壞 ? "sub-result bad" : "sub-result";
+  $("out2").textContent = 副文;
+}
+
 function render() {
   var r = 計算(設定.公式, read());
-  if (r.錯誤 && r.錯誤.length) {
-    $("steps").innerHTML = "";
-    $("assume").textContent = "";
-    $("out").textContent = "輸入有誤";
-    $("out2").textContent = r.錯誤.join("；");
+  var 清單 = r.錯誤 || [];
+  清欄位();
+  標欄位(清單);
+
+  var 致命 = 清單.filter(function (e) { return e.等級 === "致命"; });
+  if (致命.length) {
+    空結果("工具故障", 致命[0].訊息 + "（請回報，不要依賴這次的結果）", true);
     return;
   }
+
+  var 錯 = 清單.filter(function (e) { return e.等級 === "錯誤"; });
+  if (錯.length) {
+    /* 絕不留上一次的數字——陳舊數字看起來像新算的，是假自信的來源 */
+    var 有欄位 = 錯.filter(function (e) { return e.欄位; });
+    空結果("—", 有欄位.length ? 有欄位.length + " 個欄位要修正，詳見上方紅字"
+                              : 錯[0].訊息, true);
+    return;
+  }
+
+  $("out").className = "result";
+  $("out2").className = "sub-result";
   var html = "";
   r.過程.forEach(function (s) {
     html += "<tr><td>" + s.標籤 + "</td><td>" + s.算式 + "</td></tr>";
@@ -303,7 +406,7 @@ function 驗算() {
     mark($("t" + n), !壞掉.length, c.標題 + (壞掉.length ? "：" + 壞掉.join("；") : ""));
   });
   var 畫面 = $("steps").textContent + $("out").textContent + $("out2").textContent;
-  var 壞值 = ["NaN", "Infinity", "undefined", "輸入有誤"];
+  var 壞值 = ["NaN", "Infinity", "undefined", "工具故障", "要修正"];
   var 有壞值 = 壞值.some(function (k) { return 畫面.indexOf(k) !== -1; });
   mark($("tRender"), !有壞值 && $("out").textContent !== "—",
        "畫面渲染檢查：輸入欄有接到計算引擎，預設值算得出正常結果");
