@@ -283,7 +283,7 @@ function thresholdSVG(res) {
 /* ---------------------------------------------------------------- 3D 檢視器（canvas，滑鼠旋轉、滾輪縮放） */
 function Viewer3D(canvas) {
   this.cv = canvas; this.ctx = canvas.getContext('2d');
-  this.yaw = -0.6; this.pitch = 0.62; this.zoom = 1; this.res = null; this.showWalls = { N: true, E: true, S: true, W: true }; this.xray = true; this.k = 10; this.sec = { on: true, axis: 'x', pos: null }; this.onSec = null;
+  this.yaw = -0.6; this.pitch = 0.62; this.zoom = 1; this.res = null; this.showWalls = { N: true, E: true, S: true, W: true }; this.xray = false; this.k = 10; this.sec = { on: true, axis: 'x', pos: null }; this.onSec = null;
   var me = this, drag = null;
   canvas.addEventListener('mousedown', function (e) { drag = { x: e.clientX, y: e.clientY, yaw: me.yaw, pitch: me.pitch, shift: e.shiftKey, pos: me.secPos() }; });
   window.addEventListener('mouseup', function () { drag = null; });
@@ -420,14 +420,25 @@ Viewer3D.prototype.draw = function () {
           ctx.beginPath(); ctx.arc(p1[0], p1[1], Math.max(3, f.dia * scale / 2), 0, 6.283); ctx.fillStyle = f.kind === 'supply' ? '#1d6fa5' : '#444'; ctx.fill();
         });
       }
-      // 牆頂斷面（天花板高處的牆厚）
-      var pc = [back(0, R.H), back(sf.len, R.H), dw.map(sf.len, R.H), dw.map(0, R.H)];
-      poly(pc, '#9a968c', '#555', 1);
-      ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
-      var mc = P(back(sf.len / 2, R.H)); ctx.fillText('牆厚 ' + tk + ' cm', mc[0], mc[1] - 3);
     }
     ctx.fillStyle = '#333'; ctx.font = '12px sans-serif';
-    var lp = P(dw.map(sf.len / 2, R.H + 2)); ctx.textAlign = 'center'; ctx.fillText(E.WALL_ZH[dw.w], lp[0], lp[1] - (tk > 0 ? 30 : 4));
+    var lp = P(dw.map(sf.len / 2, R.H + 2)); ctx.textAlign = 'center'; ctx.fillText(E.WALL_ZH[dw.w], lp[0], lp[1] - 4);
+  });
+  // 牆頂斷面：四面牆與四個轉角連成一圈，從磁磚完成面一路填到粗胚外緣
+  var TT = R.wallT || { N: 0, E: 0, S: 0, W: 0 }, vs = {};
+  vis.forEach(function (dw) { vs[dw.w] = true; });
+  function cap(x0, y0, x1, y1) { poly([[x0, y0, R.H], [x1, y0, R.H], [x1, y1, R.H], [x0, y1, R.H]], '#9a968c', '#555', 1); }
+  if (vs.N && TT.N > 0) { cap(ew, -TT.N, R.L - ew, ew); }
+  if (vs.S && TT.S > 0) { cap(ew, R.D - ew, R.L - ew, R.D + TT.S); }
+  if (vs.W && TT.W > 0) { cap(-TT.W, ew, ew, R.D - ew); }
+  if (vs.E && TT.E > 0) { cap(R.L - ew, ew, R.L + TT.E, R.D - ew); }
+  if ((vs.N || vs.W) && (TT.N > 0 || TT.W > 0)) { cap(-TT.W, -TT.N, ew, ew); }
+  if ((vs.N || vs.E) && (TT.N > 0 || TT.E > 0)) { cap(R.L - ew, -TT.N, R.L + TT.E, ew); }
+  if ((vs.S || vs.W) && (TT.S > 0 || TT.W > 0)) { cap(-TT.W, R.D - ew, ew, R.D + TT.S); }
+  if ((vs.S || vs.E) && (TT.S > 0 || TT.E > 0)) { cap(R.L - ew, R.D - ew, R.L + TT.E, R.D + TT.S); }
+  ctx.fillStyle = '#444'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  [['N', R.L / 2, -TT.N / 2], ['S', R.L / 2, R.D + TT.S / 2], ['W', -TT.W / 2, R.D / 2], ['E', R.L + TT.E / 2, R.D / 2]].forEach(function (q) {
+    if (vs[q[0]] && TT[q[0]] > 0) { var pp = P([q[1], q[2], R.H]); ctx.fillText('牆厚 ' + TT[q[0]], pp[0], pp[1] + 4); }
   });
   // 完成面高度限制平面（以放大後的洩水高差換算位置）
   var slI = res.floor.slope;
