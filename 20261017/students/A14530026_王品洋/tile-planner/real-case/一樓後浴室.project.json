@@ -19,7 +19,7 @@
   "adhesiveKgPerM2PerMm": 1.6,
   "bagKg": 20,
   "trimLossPct": 5,
-  "drain": { "x": 62, "y": 78, "size": 10, "slope": 1, "mode": "point", "dir": "N" },
+  "drain": { "x": 6.4, "y": 6.4, "size": 10, "slope": 1, "mode": "point", "dir": "N" },
   "openings": [
     { "id": "D1", "type": "door", "wall": "E", "offset": 170, "width": 100, "height": 230, "sill": 0 },
     { "id": "WN1", "type": "window", "wall": "N", "offset": 22, "width": 60, "height": 57, "sill": 159 }
