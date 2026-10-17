@@ -211,7 +211,7 @@ function clone(o) {
 function defaultProject() {
   return {
     name: '範例浴室',
-    room: { L: 180, D: 240, H: 270 },
+    room: { L: 180, D: 240, H: 270, wallT: { N: 15, E: 15, S: 15, W: 15 } },
     wallTop: 240,
     sequence: 'wallFirst',      // wallFirst＝先貼牆後貼地；floorFirst＝先貼地後貼牆
     corner: 'butt',             // butt＝長牆通到底、短牆被夾住；both＝每面牆兩端都扣
@@ -269,6 +269,10 @@ function validate(pj) {
     if (!(d.size >= 3 && d.size <= 40)) { errs.push('落水孔尺寸須在 3～40 cm（目前 ' + sv(d.size) + '）'); }
     if (!(d.slope >= 0 && d.slope <= 5)) { errs.push('洩水坡度須在 0～5 %（目前 ' + sv(d.slope) + '）'); }
   }
+  ['N', 'E', 'S', 'W'].forEach(function (w) {
+    var t = R.wallT && R.wallT[w];
+    if (!fin(t) || t < 0 || t > 100) { errs.push(WALL_ZH[w] + '牆厚度須在 0～100 cm（目前 ' + sv(t) + '）'); }
+  });
   pj.floorHoles.forEach(function (h) {
     var lab = '地面開孔 ' + h.id;
     if (!fin(h.x) || !fin(h.y) || !fin(h.size)) { errs.push(lab + '：位置或尺寸未填或不是數字'); }
@@ -315,7 +319,9 @@ function validate(pj) {
 
 function normalize(raw) {
   var base = defaultProject(), pj = clone(raw || base);
+  var wt0 = (pj.room && pj.room.wallT) || base.room.wallT;
   pj.room = { L: num(pj.room && pj.room.L, base.room.L), D: num(pj.room && pj.room.D, base.room.D), H: num(pj.room && pj.room.H, base.room.H) };
+  pj.room.wallT = { N: num(wt0.N, 0), E: num(wt0.E, 0), S: num(wt0.S, 0), W: num(wt0.W, 0) };
   pj.wallTop = num(pj.wallTop, pj.room.H);
   pj.sequence = pj.sequence === 'floorFirst' ? 'floorFirst' : 'wallFirst';
   pj.corner = pj.corner === 'both' ? 'both' : 'butt';

@@ -68,7 +68,8 @@ function renderForm() {
     '<div class="hl">' + inp('★ 牆磚要貼的高度 cm（從地面起算，可小於天花板高）', 'wallTop') +
     '<p class="hint">例：天花板 320、只貼到 240 → 填 240，頂端自動加收邊條並重算片數。</p></div><div class="grid2">' +
     inp('專案名稱', 'name', { type: 'text' }) +
-    inp('房間寬（東西向）cm', 'room.L') + inp('房間深（南北向）cm', 'room.D') + inp('天花板高 cm', 'room.H') +
+    inp('房間寬（東西向）cm', 'room.L') + inp('房間深（南北向）cm', 'room.D') + inp('天花板高 cm', 'room.H') + '<span></span>' +
+    inp('北牆厚 cm', 'room.wallT.N') + inp('東牆厚 cm', 'room.wallT.E') + inp('南牆厚 cm', 'room.wallT.S') + inp('西牆厚 cm', 'room.wallT.W') +
     inp('施工順序', 'sequence', { type: 'select', options: [['wallFirst', '先貼牆、後貼地'], ['floorFirst', '先貼地、後貼牆']] }) +
     inp('轉角收法', 'corner', { type: 'select', options: [['butt', '長牆通到底、短牆被夾住'], ['both', '每面牆兩端都扣（保守）']] }) +
     '</div><div class="row">貼牆磚的牆：' + ['N', 'E', 'S', 'W'].map(function (w) { return inp(E.WALL_ZH[w], 'wallTiled.' + w, { type: 'bool' }); }).join('') + '</div>' +
@@ -205,6 +206,7 @@ function dataURLtoBlob(u) {
 }
 document.addEventListener('change', function (e) {
   var t = e.target;
+  if (t.getAttribute && t.getAttribute('data-xray') !== null) { viewer.xray = t.checked; viewer.draw(); }
   if (t.getAttribute && t.getAttribute('data-wall3d')) {
     viewer.showWalls[t.getAttribute('data-wall3d')] = t.checked; viewer.draw();
   }
@@ -214,5 +216,5 @@ document.addEventListener('change', function (e) {
 renderForm();
 viewer = new D.Viewer3D($('cv3d'));
 recalc();
-window.__tile = { get state() { return S; }, get result() { return lastRes; }, recalc: recalc, setState: function (o) { S = o; renderForm(); recalc(); } };
+window.__tile = { get viewer() { return viewer; }, get state() { return S; }, get result() { return lastRes; }, recalc: recalc, setState: function (o) { S = o; renderForm(); recalc(); } };
 })();

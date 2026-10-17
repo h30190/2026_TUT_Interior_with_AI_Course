@@ -237,7 +237,7 @@ function thresholdSVG(res) {
 /* ---------------------------------------------------------------- 3D 檢視器（canvas，滑鼠旋轉、滾輪縮放） */
 function Viewer3D(canvas) {
   this.cv = canvas; this.ctx = canvas.getContext('2d');
-  this.yaw = -0.6; this.pitch = 0.62; this.zoom = 1; this.res = null; this.showWalls = { N: true, E: true, S: true, W: true };
+  this.yaw = -0.6; this.pitch = 0.62; this.zoom = 1; this.res = null; this.showWalls = { N: true, E: true, S: true, W: true }; this.xray = true;
   var me = this, drag = null;
   canvas.addEventListener('mousedown', function (e) { drag = { x: e.clientX, y: e.clientY, yaw: me.yaw, pitch: me.pitch }; });
   window.addEventListener('mouseup', function () { drag = null; });
@@ -309,8 +309,38 @@ Viewer3D.prototype.draw = function () {
       ctx.beginPath(); ctx.arc(c[0], c[1], Math.max(2.5, f.dia * scale / 2), 0, 6.283);
       ctx.fillStyle = f.kind === 'supply' ? '#1d6fa5' : '#666'; ctx.fill();
     });
+    var tk = (R.wallT && R.wallT[dw.w]) || 0;
+    if (tk > 0) {
+      var bd = tk + ew;
+      var back = function (u, z) { var p = dw.map(u, z); return [p[0] - dw.n[0] * bd, p[1] - dw.n[1] * bd, p[2]]; };
+      // 洞口側壁（門窗框厚度）
+      sf.openRects.forEach(function (q) {
+        var r = q.r, A = [r[0], r[1]], B = [r[2], r[1]], Cc = [r[2], r[3]], D2 = [r[0], r[3]];
+        [[A, B], [B, Cc], [Cc, D2], [D2, A]].forEach(function (s2) {
+          poly([dw.map(s2[0][0], s2[0][1]), dw.map(s2[1][0], s2[1][1]), back(s2[1][0], s2[1][1]), back(s2[0][0], s2[0][1])], '#cfc9bc', '#8a8578', 1);
+        });
+      });
+      if (me.xray) {
+        poly([back(0, 0), back(sf.len, 0), back(sf.len, R.H), back(0, R.H)], 'rgba(110,110,110,0.10)', 'rgba(90,90,90,0.55)', 1);
+        [[0, 0], [sf.len, 0], [sf.len, R.H], [0, R.H]].forEach(function (c4) {
+          var p0 = P(dw.map(c4[0], c4[1])), p1 = P(back(c4[0], c4[1]));
+          ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.strokeStyle = 'rgba(90,90,90,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+        });
+        sf.fixtureRects.forEach(function (q) {
+          var f = q.f, p0 = P(dw.map(f.offset, f.height)), p1 = P(back(f.offset, f.height));
+          ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]);
+          ctx.strokeStyle = f.kind === 'supply' ? '#1d6fa5' : '#444'; ctx.lineWidth = Math.max(3, f.dia * scale); ctx.lineCap = 'round'; ctx.stroke(); ctx.lineCap = 'butt';
+          ctx.beginPath(); ctx.arc(p1[0], p1[1], Math.max(3, f.dia * scale / 2), 0, 6.283); ctx.fillStyle = f.kind === 'supply' ? '#1d6fa5' : '#444'; ctx.fill();
+        });
+      }
+      // 牆頂斷面（天花板高處的牆厚）
+      var pc = [back(0, R.H), back(sf.len, R.H), dw.map(sf.len, R.H), dw.map(0, R.H)];
+      poly(pc, '#9a968c', '#555', 1);
+      ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+      var mc = P(back(sf.len / 2, R.H)); ctx.fillText('牆厚 ' + tk + ' cm', mc[0], mc[1] - 3);
+    }
     ctx.fillStyle = '#333'; ctx.font = '12px sans-serif';
-    var lp = P(dw.map(sf.len / 2, R.H + 2)); ctx.textAlign = 'center'; ctx.fillText(E.WALL_ZH[dw.w], lp[0], lp[1] - 4);
+    var lp = P(dw.map(sf.len / 2, R.H + 2)); ctx.textAlign = 'center'; ctx.fillText(E.WALL_ZH[dw.w], lp[0], lp[1] - (tk > 0 ? 30 : 4));
   });
   // 起始點
   var o = res.floor.chosen.origin;
