@@ -318,6 +318,7 @@ function defaultProject() {
     floorMethod: 'auto', floorStart: 'auto', wallMethod: 'auto', wallStart: 'auto',
     breakagePct: 3, adhesiveKgPerM2PerMm: 1.6, bagKg: 20, trimLossPct: 5,
     drain: { x: 60, y: 130, size: 10, slope: 1, mode: 'point', dir: 'N' },
+    floorHoles: [],
     openings: [
       { id: 'D1', type: 'door', wall: 'S', offset: 50, width: 80, height: 200, sill: 0 },
       { id: 'WN1', type: 'window', wall: 'N', offset: 60, width: 60, height: 60, sill: 150 }
@@ -360,6 +361,12 @@ function validate(pj) {
     if (!(d.size >= 3 && d.size <= 40)) { errs.push('落水孔尺寸須在 3～40 cm（目前 ' + sv(d.size) + '）'); }
     if (!(d.slope >= 0 && d.slope <= 5)) { errs.push('洩水坡度須在 0～5 %（目前 ' + sv(d.slope) + '）'); }
   }
+  pj.floorHoles.forEach(function (h) {
+    var lab = '地面開孔 ' + h.id;
+    if (!fin(h.x) || !fin(h.y) || !fin(h.size)) { errs.push(lab + '：位置或尺寸未填或不是數字'); }
+    else if (!(h.size >= 2 && h.size <= 40)) { errs.push(lab + '：尺寸須在 2～40 cm（目前 ' + h.size + '）'); }
+    else if (fin(R.L) && fin(R.D) && !(h.x > 0 && h.x < R.L && h.y > 0 && h.y < R.D)) { errs.push(lab + '：位置 (' + h.x + ',' + h.y + ') 必須在房間之內'); }
+  });
   pj.openings.forEach(function (o) {
     var len = (o.wall === 'N' || o.wall === 'S') ? R.L : R.D;
     var lab = WALL_ZH[o.wall] + (o.type === 'door' ? '門 ' : '窗 ') + o.id;
@@ -417,6 +424,9 @@ function normalize(raw) {
   pj.bagKg = num(pj.bagKg, 20); pj.trimLossPct = num(pj.trimLossPct, 5);
   var d = pj.drain || base.drain;
   pj.drain = { x: num(d.x, NaN), y: num(d.y, NaN), size: num(d.size, 10), slope: num(d.slope, 1), mode: d.mode === 'oneway' ? 'oneway' : 'point', dir: d.dir || 'N' };
+  pj.floorHoles = (pj.floorHoles || []).map(function (h) {
+    return { id: String(h.id || ''), label: String(h.label || '地面開孔'), x: num(h.x, NaN), y: num(h.y, NaN), size: num(h.size, 10) };
+  });
   pj.openings = (pj.openings || []).map(function (o) {
     return { id: String(o.id || ''), type: o.type === 'window' ? 'window' : 'door', wall: o.wall, offset: num(o.offset, NaN),
              width: num(o.width, NaN), height: num(o.height, NaN), sill: o.type === 'window' ? num(o.sill, 0) : 0 };
@@ -455,7 +465,9 @@ function floorSurface(pj) {
   var d = pj.drain;
   hole = [d.x - d.size / 2, d.y - d.size / 2, d.x + d.size / 2, d.y + d.size / 2];
   void ft; void i;
-  return { rects: [rect].concat(strips), holes: [hole], net: rect, ins: ins, ew: ew, ef: ft.t / 10 + ADH };
+  var holes = [hole];
+  pj.floorHoles.forEach(function (h) { holes.push([h.x - h.size / 2, h.y - h.size / 2, h.x + h.size / 2, h.y + h.size / 2]); });
+  return { rects: [rect].concat(strips), holes: holes, net: rect, ins: ins, ew: ew, ef: ft.t / 10 + ADH };
 }
 
 function wallSurface(pj, w) {
@@ -662,7 +674,7 @@ function computeAllInner(raw) {
 
   /* 地面 */
   var fs = floorSurface(pj), fp = pickOrOverride(pj, ft, fs, 'floor');
-  var fArea = (rectArea(fs.rects[0]) + fs.rects.slice(1).reduce(function (s, r) { return s + rectArea(r); }, 0)) - pj.drain.size * pj.drain.size;
+  var fArea = (rectArea(fs.rects[0]) + fs.rects.slice(1).reduce(function (s, r) { return s + rectArea(r); }, 0)) - pj.drain.size * pj.drain.size - pj.floorHoles.reduce(function (s, h) { return s + h.size * h.size; }, 0);
   var floor = { surface: fs, tile: ft, netArea: fArea / 1e4, chosen: fp.chosen, compare: fp.table, methods: fp.methods };
   floor.slope = slopeInfo(pj, fs, ft);
   out.floor = floor;
@@ -852,6 +864,11 @@ function planSVG(res, opts) {
   s += '<rect x="' + X(n[0]) + '" y="' + Y(n[1]) + '" width="' + ((n[2] - n[0]) * sc) + '" height="' + ((n[3] - n[1]) * sc) + '" fill="none" stroke="#b08968" stroke-width="1" stroke-dasharray="4 3"/>';
   // 落水孔
   var d = pj.drain, ds = d.size * sc;
+  (pj.floorHoles || []).forEach(function (h) {
+    var hs = h.size * sc;
+    s += '<rect x="' + (X(h.x) - hs / 2) + '" y="' + (Y(h.y) - hs / 2) + '" width="' + hs + '" height="' + hs + '" fill="#fff" stroke="' + C.dra + '" stroke-width="1.5" stroke-dasharray="4 2"/>';
+    s += text(X(h.x) + hs / 2 + 4, Y(h.y) + 4, h.label + ' ' + h.size + 'cm', { size: 11, fill: C.dra, bold: true });
+  });
   s += '<rect x="' + (X(d.x) - ds / 2) + '" y="' + (Y(d.y) - ds / 2) + '" width="' + ds + '" height="' + ds + '" fill="#fff" stroke="' + C.drain + '" stroke-width="1.5"/>';
   s += '<line x1="' + (X(d.x) - ds / 2) + '" y1="' + (Y(d.y) - ds / 2) + '" x2="' + (X(d.x) + ds / 2) + '" y2="' + (Y(d.y) + ds / 2) + '" stroke="' + C.drain + '"/>';
   s += '<line x1="' + (X(d.x) + ds / 2) + '" y1="' + (Y(d.y) - ds / 2) + '" x2="' + (X(d.x) - ds / 2) + '" y2="' + (Y(d.y) + ds / 2) + '" stroke="' + C.drain + '"/>';
@@ -1416,7 +1433,9 @@ function renderForm() {
   h += '<details open><summary>② 落水孔與洩水坡度（地面）</summary><div class="grid2">' +
     inp('落水孔中心 x cm', 'drain.x') + inp('落水孔中心 y cm', 'drain.y') + inp('格柵邊長 cm', 'drain.size') + inp('洩水坡度 %', 'drain.slope', { step: '0.1' }) +
     inp('洩水方式', 'drain.mode', { type: 'select', options: [['point', '四周往落水孔（點收水）'], ['oneway', '單向洩水']] }) +
-    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) + '</div></details>';
+    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) + '</div>' +
+    '<p class="hint">其他地面開孔（例：馬桶糞管孔 4"）：</p>' + listTable('floorHoles', [
+      { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'label', t: 'str' }, { h: 'x', k: 'x', t: 'num' }, { h: 'y', k: 'y', t: 'num' }, { h: '邊長', k: 'size', t: 'num' }], '新增地面開孔') + '</details>';
 
   h += '<details open><summary>③ 門／窗（立面）</summary>' + listTable('openings', [
     { h: '編號', k: 'id', t: 'str' }, { h: '類型', k: 'type', t: 'select', o: [['door', '門'], ['window', '窗']] }, { h: '牆', k: 'wall', t: 'select', o: WALL_OPTS },
@@ -1474,6 +1493,7 @@ document.addEventListener('click', function (e) {
     var k = t.getAttribute('data-add'), a = getPath(S, k);
     var n = a.length + 1;
     if (k === 'openings') { a.push({ id: 'O' + n, type: 'window', wall: 'N', offset: 10, width: 50, height: 50, sill: 100 }); }
+    else if (k === 'floorHoles') { a.push({ id: 'H' + n, label: '地面開孔', x: 30, y: 30, size: 10 }); }
     else if (k === 'fixtures') { a.push({ id: 'X' + n, kind: 'supply', wall: 'W', offset: 50, height: 100, dia: 2.5 }); }
     else if (k === 'tiles') { a.push({ id: 'T' + n, name: '新磁磚', w: 30, h: 60, t: 9, perBox: 6, use: 'both' }); }
     else if (k === 'trim.outerCorners') { a.push({ label: '陽角 ' + n, len: 240, n: 1 }); }

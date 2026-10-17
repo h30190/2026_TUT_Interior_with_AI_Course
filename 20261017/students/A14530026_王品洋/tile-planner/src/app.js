@@ -77,7 +77,9 @@ function renderForm() {
   h += '<details open><summary>② 落水孔與洩水坡度（地面）</summary><div class="grid2">' +
     inp('落水孔中心 x cm', 'drain.x') + inp('落水孔中心 y cm', 'drain.y') + inp('格柵邊長 cm', 'drain.size') + inp('洩水坡度 %', 'drain.slope', { step: '0.1' }) +
     inp('洩水方式', 'drain.mode', { type: 'select', options: [['point', '四周往落水孔（點收水）'], ['oneway', '單向洩水']] }) +
-    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) + '</div></details>';
+    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) + '</div>' +
+    '<p class="hint">其他地面開孔（例：馬桶糞管孔 4"）：</p>' + listTable('floorHoles', [
+      { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'label', t: 'str' }, { h: 'x', k: 'x', t: 'num' }, { h: 'y', k: 'y', t: 'num' }, { h: '邊長', k: 'size', t: 'num' }], '新增地面開孔') + '</details>';
 
   h += '<details open><summary>③ 門／窗（立面）</summary>' + listTable('openings', [
     { h: '編號', k: 'id', t: 'str' }, { h: '類型', k: 'type', t: 'select', o: [['door', '門'], ['window', '窗']] }, { h: '牆', k: 'wall', t: 'select', o: WALL_OPTS },
@@ -135,6 +137,7 @@ document.addEventListener('click', function (e) {
     var k = t.getAttribute('data-add'), a = getPath(S, k);
     var n = a.length + 1;
     if (k === 'openings') { a.push({ id: 'O' + n, type: 'window', wall: 'N', offset: 10, width: 50, height: 50, sill: 100 }); }
+    else if (k === 'floorHoles') { a.push({ id: 'H' + n, label: '地面開孔', x: 30, y: 30, size: 10 }); }
     else if (k === 'fixtures') { a.push({ id: 'X' + n, kind: 'supply', wall: 'W', offset: 50, height: 100, dia: 2.5 }); }
     else if (k === 'tiles') { a.push({ id: 'T' + n, name: '新磁磚', w: 30, h: 60, t: 9, perBox: 6, use: 'both' }); }
     else if (k === 'trim.outerCorners') { a.push({ label: '陽角 ' + n, len: 240, n: 1 }); }

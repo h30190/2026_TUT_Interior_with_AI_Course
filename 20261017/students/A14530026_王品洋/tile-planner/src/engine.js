@@ -226,6 +226,7 @@ function defaultProject() {
     floorMethod: 'auto', floorStart: 'auto', wallMethod: 'auto', wallStart: 'auto',
     breakagePct: 3, adhesiveKgPerM2PerMm: 1.6, bagKg: 20, trimLossPct: 5,
     drain: { x: 60, y: 130, size: 10, slope: 1, mode: 'point', dir: 'N' },
+    floorHoles: [],
     openings: [
       { id: 'D1', type: 'door', wall: 'S', offset: 50, width: 80, height: 200, sill: 0 },
       { id: 'WN1', type: 'window', wall: 'N', offset: 60, width: 60, height: 60, sill: 150 }
@@ -268,6 +269,12 @@ function validate(pj) {
     if (!(d.size >= 3 && d.size <= 40)) { errs.push('落水孔尺寸須在 3～40 cm（目前 ' + sv(d.size) + '）'); }
     if (!(d.slope >= 0 && d.slope <= 5)) { errs.push('洩水坡度須在 0～5 %（目前 ' + sv(d.slope) + '）'); }
   }
+  pj.floorHoles.forEach(function (h) {
+    var lab = '地面開孔 ' + h.id;
+    if (!fin(h.x) || !fin(h.y) || !fin(h.size)) { errs.push(lab + '：位置或尺寸未填或不是數字'); }
+    else if (!(h.size >= 2 && h.size <= 40)) { errs.push(lab + '：尺寸須在 2～40 cm（目前 ' + h.size + '）'); }
+    else if (fin(R.L) && fin(R.D) && !(h.x > 0 && h.x < R.L && h.y > 0 && h.y < R.D)) { errs.push(lab + '：位置 (' + h.x + ',' + h.y + ') 必須在房間之內'); }
+  });
   pj.openings.forEach(function (o) {
     var len = (o.wall === 'N' || o.wall === 'S') ? R.L : R.D;
     var lab = WALL_ZH[o.wall] + (o.type === 'door' ? '門 ' : '窗 ') + o.id;
@@ -325,6 +332,9 @@ function normalize(raw) {
   pj.bagKg = num(pj.bagKg, 20); pj.trimLossPct = num(pj.trimLossPct, 5);
   var d = pj.drain || base.drain;
   pj.drain = { x: num(d.x, NaN), y: num(d.y, NaN), size: num(d.size, 10), slope: num(d.slope, 1), mode: d.mode === 'oneway' ? 'oneway' : 'point', dir: d.dir || 'N' };
+  pj.floorHoles = (pj.floorHoles || []).map(function (h) {
+    return { id: String(h.id || ''), label: String(h.label || '地面開孔'), x: num(h.x, NaN), y: num(h.y, NaN), size: num(h.size, 10) };
+  });
   pj.openings = (pj.openings || []).map(function (o) {
     return { id: String(o.id || ''), type: o.type === 'window' ? 'window' : 'door', wall: o.wall, offset: num(o.offset, NaN),
              width: num(o.width, NaN), height: num(o.height, NaN), sill: o.type === 'window' ? num(o.sill, 0) : 0 };
@@ -363,7 +373,9 @@ function floorSurface(pj) {
   var d = pj.drain;
   hole = [d.x - d.size / 2, d.y - d.size / 2, d.x + d.size / 2, d.y + d.size / 2];
   void ft; void i;
-  return { rects: [rect].concat(strips), holes: [hole], net: rect, ins: ins, ew: ew, ef: ft.t / 10 + ADH };
+  var holes = [hole];
+  pj.floorHoles.forEach(function (h) { holes.push([h.x - h.size / 2, h.y - h.size / 2, h.x + h.size / 2, h.y + h.size / 2]); });
+  return { rects: [rect].concat(strips), holes: holes, net: rect, ins: ins, ew: ew, ef: ft.t / 10 + ADH };
 }
 
 function wallSurface(pj, w) {
@@ -570,7 +582,7 @@ function computeAllInner(raw) {
 
   /* 地面 */
   var fs = floorSurface(pj), fp = pickOrOverride(pj, ft, fs, 'floor');
-  var fArea = (rectArea(fs.rects[0]) + fs.rects.slice(1).reduce(function (s, r) { return s + rectArea(r); }, 0)) - pj.drain.size * pj.drain.size;
+  var fArea = (rectArea(fs.rects[0]) + fs.rects.slice(1).reduce(function (s, r) { return s + rectArea(r); }, 0)) - pj.drain.size * pj.drain.size - pj.floorHoles.reduce(function (s, h) { return s + h.size * h.size; }, 0);
   var floor = { surface: fs, tile: ft, netArea: fArea / 1e4, chosen: fp.chosen, compare: fp.table, methods: fp.methods };
   floor.slope = slopeInfo(pj, fs, ft);
   out.floor = floor;

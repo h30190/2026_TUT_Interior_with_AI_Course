@@ -64,6 +64,11 @@ function planSVG(res, opts) {
   s += '<rect x="' + X(n[0]) + '" y="' + Y(n[1]) + '" width="' + ((n[2] - n[0]) * sc) + '" height="' + ((n[3] - n[1]) * sc) + '" fill="none" stroke="#b08968" stroke-width="1" stroke-dasharray="4 3"/>';
   // 落水孔
   var d = pj.drain, ds = d.size * sc;
+  (pj.floorHoles || []).forEach(function (h) {
+    var hs = h.size * sc;
+    s += '<rect x="' + (X(h.x) - hs / 2) + '" y="' + (Y(h.y) - hs / 2) + '" width="' + hs + '" height="' + hs + '" fill="#fff" stroke="' + C.dra + '" stroke-width="1.5" stroke-dasharray="4 2"/>';
+    s += text(X(h.x) + hs / 2 + 4, Y(h.y) + 4, h.label + ' ' + h.size + 'cm', { size: 11, fill: C.dra, bold: true });
+  });
   s += '<rect x="' + (X(d.x) - ds / 2) + '" y="' + (Y(d.y) - ds / 2) + '" width="' + ds + '" height="' + ds + '" fill="#fff" stroke="' + C.drain + '" stroke-width="1.5"/>';
   s += '<line x1="' + (X(d.x) - ds / 2) + '" y1="' + (Y(d.y) - ds / 2) + '" x2="' + (X(d.x) + ds / 2) + '" y2="' + (Y(d.y) + ds / 2) + '" stroke="' + C.drain + '"/>';
   s += '<line x1="' + (X(d.x) + ds / 2) + '" y1="' + (Y(d.y) - ds / 2) + '" x2="' + (X(d.x) - ds / 2) + '" y2="' + (Y(d.y) + ds / 2) + '" stroke="' + C.drain + '"/>';
