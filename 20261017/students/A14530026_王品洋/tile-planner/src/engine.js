@@ -226,6 +226,7 @@ function defaultProject() {
     floorMethod: 'auto', floorStart: 'auto', wallMethod: 'auto', wallStart: 'auto',
     breakagePct: 3, adhesiveKgPerM2PerMm: 1.6, bagKg: 20, trimLossPct: 5,
     drain: { x: 60, y: 130, size: 10, slope: 1, mode: 'point', dir: 'N' },
+    floorHeightLimit: 0,
     floorHoles: [],
     openings: [
       { id: 'D1', type: 'door', wall: 'S', offset: 50, width: 80, height: 200, sill: 0 },
@@ -269,6 +270,7 @@ function validate(pj) {
     if (!(d.size >= 3 && d.size <= 40)) { errs.push('落水孔尺寸須在 3～40 cm（目前 ' + sv(d.size) + '）'); }
     if (!(d.slope >= 0 && d.slope <= 5)) { errs.push('洩水坡度須在 0～5 %（目前 ' + sv(d.slope) + '）'); }
   }
+  if (!fin(pj.floorHeightLimit) || pj.floorHeightLimit < 0 || pj.floorHeightLimit > 100) { errs.push('完成面高度限制須在 0～100 cm（0＝不限），目前 ' + sv(pj.floorHeightLimit)); }
   ['N', 'E', 'S', 'W'].forEach(function (w) {
     var t = R.wallT && R.wallT[w];
     if (!fin(t) || t < 0 || t > 100) { errs.push(WALL_ZH[w] + '牆厚度須在 0～100 cm（目前 ' + sv(t) + '）'); }
@@ -338,6 +340,7 @@ function normalize(raw) {
   pj.bagKg = num(pj.bagKg, 20); pj.trimLossPct = num(pj.trimLossPct, 5);
   var d = pj.drain || base.drain;
   pj.drain = { x: num(d.x, NaN), y: num(d.y, NaN), size: num(d.size, 10), slope: num(d.slope, 1), mode: d.mode === 'oneway' ? 'oneway' : 'point', dir: d.dir || 'N' };
+  pj.floorHeightLimit = num(pj.floorHeightLimit, 0);
   pj.floorHoles = (pj.floorHoles || []).map(function (h) {
     return { id: String(h.id || ''), label: String(h.label || '地面開孔'), x: num(h.x, NaN), y: num(h.y, NaN), size: num(h.size, 10) };
   });
@@ -566,7 +569,11 @@ function slopeInfo(pj, sf, tile) {
   var maxSize = d.mode === 'point' ? Math.floor(maxDiag / Math.SQRT2) : Math.floor(maxDiag);  // 正方形磚邊長上限
   var near = Math.round(Math.pow(Math.ceil(2 * L / Math.min(tile.w, tile.h)) + 1, 2));
   return { slopePct: d.slope, mode: d.mode, maxFall: maxFall, avgFall: avg, bedVolumeM3: avg * area / 1e6, area: area,
-           lip: lip, lipOk: lip <= 0.3 + 1e-9, maxDiag: maxDiag, maxTileSide: maxSize, nearDrainTiles: near };
+           lip: lip, lipOk: lip <= 0.3 + 1e-9, maxDiag: maxDiag, maxTileSide: maxSize, nearDrainTiles: near,
+           ef: tile.t / 10 + ADH, maxLevel: tile.t / 10 + ADH + maxFall, limit: pj.floorHeightLimit,
+           limitOk: !(pj.floorHeightLimit > 0) || tile.t / 10 + ADH + maxFall <= pj.floorHeightLimit + 1e-9,
+           headroom: pj.floorHeightLimit > 0 ? pj.floorHeightLimit - (tile.t / 10 + ADH + maxFall) : null,
+           maxSlopeForLimit: (pj.floorHeightLimit > 0 && maxFall > 0 && s > 0) ? (pj.floorHeightLimit - (tile.t / 10 + ADH)) / (maxFall / s) * 100 : null };
 }
 
 /* ---------------------------------------------------------------- 總計算 */
@@ -698,6 +705,10 @@ function addWarnings(pj, out) {
            ' cm），或落水孔周圍改「對角切割四向收水」。');
   }
   if (pj.drain.slope === 0) { w.push('洩水坡度為 0：地面不會往落水孔排水，請確認。'); }
+  if (!sl.limitOk) {
+    w.push('⚠ 超過完成面高度限制：最高點離結構樓板 ' + sl.maxLevel.toFixed(2) + ' cm（磚＋黏著劑 ' + sl.ef.toFixed(1) + ' ＋ 洩水高差 ' + sl.maxFall.toFixed(2) + '），限制 ' + sl.limit +
+           ' cm，超出 ' + (-sl.headroom).toFixed(2) + ' cm。' + (sl.maxSlopeForLimit != null && sl.maxSlopeForLimit > 0 ? '在此限制下坡度最多約 ' + sl.maxSlopeForLimit.toFixed(2) + '%。' : '磚加黏著劑本身已超過限制，請改薄磚或提高限制。'));
+  }
   var fev = f.chosen.ev;
   if (fev.slivers > 0) { w.push('地面有 ' + fev.slivers + ' 片「細條切磚」（切邊 < ' + fev.sliverMin.toFixed(1) + ' cm），容易斷裂、也不好看，建議換起始點或貼法。'); }
   Object.keys(out.walls).forEach(function (k) {

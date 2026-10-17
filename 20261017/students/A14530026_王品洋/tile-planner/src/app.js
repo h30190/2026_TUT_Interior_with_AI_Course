@@ -78,7 +78,8 @@ function renderForm() {
   h += '<details open><summary>② 落水孔與洩水坡度（地面）</summary><div class="grid2">' +
     inp('落水孔中心 x cm', 'drain.x') + inp('落水孔中心 y cm', 'drain.y') + inp('格柵邊長 cm', 'drain.size') + inp('洩水坡度 %', 'drain.slope', { step: '0.1' }) +
     inp('洩水方式', 'drain.mode', { type: 'select', options: [['point', '四周往落水孔（點收水）'], ['oneway', '單向洩水']] }) +
-    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) + '</div>' +
+    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) +
+    inp('完成面高度限制 cm（離結構樓板；0＝不限）', 'floorHeightLimit') + '</div>' +
     '<p class="hint">其他地面開孔（例：馬桶糞管孔 4"）：</p>' + listTable('floorHoles', [
       { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'label', t: 'str' }, { h: 'x', k: 'x', t: 'num' }, { h: 'y', k: 'y', t: 'num' }, { h: '邊長', k: 'size', t: 'num' }], '新增地面開孔') + '</details>';
 
@@ -160,7 +161,8 @@ function syncSec(mode) {
   viewer.sec.axis = axis;
   var pos = viewer.secPos(); sl.value = pos;
   $('secVal').textContent = (axis === 'x' ? 'x = ' : 'y = ') + (Math.round(pos * 10) / 10) + ' cm';
-  viewer.k = parseFloat($('secK').value) || 1; $('kVal').textContent = viewer.k;
+  var kv = parseFloat($('secK').value), kOk = isFinite(kv) && kv >= 1 && kv <= 50;
+  viewer.k = kOk ? kv : 10; $('kMsg').textContent = kOk ? '' : '請輸入 1～50，暫用 ×10';
   viewer.draw();
   $('secProf').innerHTML = D.profileSVG(res, axis, pos);
 }
@@ -233,6 +235,7 @@ renderForm();
 viewer = new D.Viewer3D($('cv3d'));
 viewer.onSec = function () { var p = viewer.secPos(); $('secPos').value = p; $('secVal').textContent = (viewer.sec.axis === 'x' ? 'x = ' : 'y = ') + (Math.round(p * 10) / 10) + ' cm'; $('secProf').innerHTML = D.profileSVG(lastRes, viewer.sec.axis, p); };
 document.addEventListener('input', function (e) { if (e.target.id === 'secPos') { syncSec('slider'); } else if (e.target.id === 'secK') { syncSec(); } });
+document.addEventListener('change', function (e) { if (e.target.id === 'secK') { var v = parseFloat(e.target.value); e.target.value = isFinite(v) ? Math.max(1, Math.min(50, v)) : 10; syncSec(); } });
 document.addEventListener('change', function (e) { if (e.target.name === 'secAxis') { syncSec('axis'); } });
 $('secDrain').addEventListener('click', function () { syncSec('drain'); });
 recalc();

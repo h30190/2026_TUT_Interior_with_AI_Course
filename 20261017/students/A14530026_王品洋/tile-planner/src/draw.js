@@ -429,6 +429,14 @@ Viewer3D.prototype.draw = function () {
     ctx.fillStyle = '#333'; ctx.font = '12px sans-serif';
     var lp = P(dw.map(sf.len / 2, R.H + 2)); ctx.textAlign = 'center'; ctx.fillText(E.WALL_ZH[dw.w], lp[0], lp[1] - (tk > 0 ? 30 : 4));
   });
+  // 完成面高度限制平面（以放大後的洩水高差換算位置）
+  var slI = res.floor.slope;
+  if (slI && slI.limit > 0) {
+    var zl = ef + kk * (slI.limit - ef), bad = !slI.limitOk;
+    poly([[0, 0, zl], [R.L, 0, zl], [R.L, R.D, zl], [0, R.D, zl]], bad ? 'rgba(214,40,40,0.10)' : 'rgba(30,110,200,0.07)', bad ? '#c0392b' : '#2a6db5', 1.2);
+    var ll = P([R.L, 0, zl]); ctx.fillStyle = bad ? '#c0392b' : '#2a6db5'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText('完成面高度限制 ' + slI.limit + ' cm' + (bad ? '（已超出 ' + (-slI.headroom).toFixed(2) + ' cm）' : '（餘裕 ' + slI.headroom.toFixed(2) + ' cm）'), ll[0], ll[1] - 4);
+  }
   // 洩水剖面（可拖動）
   var sec = this.sec;
   if (sec && sec.on !== false) {
@@ -479,7 +487,8 @@ function profileSVG(res, axis, pos) {
   var ef = res.floorTile.t / 10 + E.ADH, N = 160, i, f = [], fmin = Infinity, fmax = -Infinity, tmin = 0, tmax = 0;
   var at = function (t) { return axis === 'x' ? [pos, t] : [t, pos]; };
   for (i = 0; i <= N; i++) { var t = len * i / N, q = at(t), v = E.fallAt(pj, q[0], q[1]); f.push([t, v]); if (v < fmin) { fmin = v; tmin = t; } if (v > fmax) { fmax = v; tmax = t; } }
-  var vmax = ef + fmax + 0.6, sx = (W - pl - pr) / len, sv = (Hh - pt - pb) / vmax, kEff = sv / sx;
+  var lim = pj.floorHeightLimit > 0 ? pj.floorHeightLimit : 0;
+  var vmax = Math.max(ef + fmax + 0.6, lim > 0 ? lim + 0.6 : 0), sx = (W - pl - pr) / len, sv = (Hh - pt - pb) / vmax, kEff = sv / sx;
   var X = function (t) { return pl + t * sx; }, Y = function (z) { return Hh - pb - z * sv; };
   function fv(t) { var q = at(t); return E.fallAt(pj, q[0], q[1]); }
   var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + Hh + '" class="fig" role="img" aria-label="洩水剖面圖">';
@@ -500,6 +509,11 @@ function profileSVG(res, axis, pos) {
   }
   s += '<line x1="' + pl + '" y1="' + Y(ef) + '" x2="' + X(len) + '" y2="' + Y(ef) + '" stroke="#0a8f7e" stroke-width="0.8" stroke-dasharray="5 4"/>';
   s += text(X(len) - 2, Y(ef) + 14, '落水孔處完成面（磚＋黏著劑 ' + f1(ef) + ' cm）', { size: 10, fill: '#0a8f7e', anchor: 'end' });
+  if (lim > 0) {
+    var badL = ef + fmax > lim + 1e-9;
+    s += '<line x1="' + pl + '" y1="' + Y(lim) + '" x2="' + X(len) + '" y2="' + Y(lim) + '" stroke="' + (badL ? '#c0392b' : '#2a6db5') + '" stroke-width="1.6" stroke-dasharray="8 4"/>';
+    s += text(pl + 8, Y(lim) - 5, '完成面高度限制 ' + lim + ' cm' + (badL ? '（本剖面最高 ' + (ef + fmax).toFixed(2) + ' cm，超出 ' + (ef + fmax - lim).toFixed(2) + '）' : '（本剖面最高 ' + (ef + fmax).toFixed(2) + ' cm，餘裕 ' + (lim - ef - fmax).toFixed(2) + '）'), { size: 11, fill: badL ? '#c0392b' : '#2a6db5', anchor: 'start', bold: true });
+  }
   s += '<rect x="' + (pl - 12) + '" y="' + Y(vmax) + '" width="12" height="' + (Y(0) + 14 - Y(vmax)) + '" fill="#9a968c" stroke="#555"/>';
   s += '<rect x="' + X(len) + '" y="' + Y(vmax) + '" width="12" height="' + (Y(0) + 14 - Y(vmax)) + '" fill="#9a968c" stroke="#555"/>';
   function tag(t, label, color, up) {

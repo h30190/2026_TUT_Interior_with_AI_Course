@@ -133,6 +133,8 @@ function floorSection(res) {
     ['洩水方式', pj.drain.mode === 'point' ? '四周往落水孔（點收水）' : '單向往' + E.WALL_ZH[pj.drain.dir] + '方向'],
     ['洩水坡度', pj.drain.slope + '%（每 100 cm 下降 ' + pj.drain.slope + ' cm）'],
     ['最大落差', f1(sl.maxFall) + ' cm（最遠角到落水孔）；平均 ' + f1(sl.avgFall) + ' cm'],
+    ['完成面最高點離樓板', sl.maxLevel.toFixed(2) + ' cm（磚＋黏著劑 ' + sl.ef.toFixed(1) + ' ＋ 洩水高差 ' + sl.maxFall.toFixed(2) + '）'],
+    ['完成面高度限制', sl.limit > 0 ? sl.limit + ' cm　' + (sl.limitOk ? '✔ 符合，餘裕 ' + sl.headroom.toFixed(2) + ' cm' : '⚠ 超出 ' + (-sl.headroom).toFixed(2) + ' cm；' + (sl.maxSlopeForLimit > 0 ? '此限制下坡度最多約 ' + sl.maxSlopeForLimit.toFixed(2) + '%' : '磚＋黏著劑已超過限制')) : '未設定（0＝不限）'],
     ['找坡砂漿量（估）', sl.bedVolumeM3.toFixed(3) + ' m³', ],
     ['單片磚面內高低差', (sl.lip * 10).toFixed(1) + ' mm' + (sl.lipOk ? '（≤ 3 mm，磚面可貼平）' : '（> 3 mm，建議對角線 ≤ ' + Math.floor(sl.maxDiag) + ' cm、正方形磚邊長 ≤ ' + sl.maxTileSide + ' cm，或落水孔周圍對角切割）')],
     ['落水孔周圍', '約 ' + sl.nearDrainTiles + ' 片磚受洩水面影響，建議此範圍先放樣再貼，磚縫對準洩水方向']

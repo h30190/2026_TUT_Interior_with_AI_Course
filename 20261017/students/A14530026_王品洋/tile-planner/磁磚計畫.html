@@ -98,7 +98,7 @@ body.standalone .doc{max-width:960px;margin:0 auto;padding:16px}body.standalone 
     <label><input type="radio" name="secAxis" value="y"> 橫剖（西→東）</label>
     <input type="range" id="secPos" min="0" max="100" step="0.5" value="0" style="width:240px"> <b id="secVal"></b>
     <button type="button" id="secDrain">對準落水孔</button>
-    <label style="margin-left:10px">3D 地面高程放大 ×<input type="range" id="secK" min="1" max="30" value="10" style="width:110px"> <b id="kVal">10</b></label>
+    <label style="margin-left:10px">3D 地面高程放大 ×<input type="number" id="secK" min="1" max="50" step="1" value="10" style="width:64px"></label> <span id="kMsg" class="hint" style="color:#c0392b"></span>
     <span class="hint">也可按住 Shift 在 3D 畫面左右拖曳來移動剖面線。</span></div>
   <div id="secProf" class="figbox"></div>
 </div>
@@ -330,6 +330,7 @@ function defaultProject() {
     floorMethod: 'auto', floorStart: 'auto', wallMethod: 'auto', wallStart: 'auto',
     breakagePct: 3, adhesiveKgPerM2PerMm: 1.6, bagKg: 20, trimLossPct: 5,
     drain: { x: 60, y: 130, size: 10, slope: 1, mode: 'point', dir: 'N' },
+    floorHeightLimit: 0,
     floorHoles: [],
     openings: [
       { id: 'D1', type: 'door', wall: 'S', offset: 50, width: 80, height: 200, sill: 0 },
@@ -373,6 +374,7 @@ function validate(pj) {
     if (!(d.size >= 3 && d.size <= 40)) { errs.push('落水孔尺寸須在 3～40 cm（目前 ' + sv(d.size) + '）'); }
     if (!(d.slope >= 0 && d.slope <= 5)) { errs.push('洩水坡度須在 0～5 %（目前 ' + sv(d.slope) + '）'); }
   }
+  if (!fin(pj.floorHeightLimit) || pj.floorHeightLimit < 0 || pj.floorHeightLimit > 100) { errs.push('完成面高度限制須在 0～100 cm（0＝不限），目前 ' + sv(pj.floorHeightLimit)); }
   ['N', 'E', 'S', 'W'].forEach(function (w) {
     var t = R.wallT && R.wallT[w];
     if (!fin(t) || t < 0 || t > 100) { errs.push(WALL_ZH[w] + '牆厚度須在 0～100 cm（目前 ' + sv(t) + '）'); }
@@ -442,6 +444,7 @@ function normalize(raw) {
   pj.bagKg = num(pj.bagKg, 20); pj.trimLossPct = num(pj.trimLossPct, 5);
   var d = pj.drain || base.drain;
   pj.drain = { x: num(d.x, NaN), y: num(d.y, NaN), size: num(d.size, 10), slope: num(d.slope, 1), mode: d.mode === 'oneway' ? 'oneway' : 'point', dir: d.dir || 'N' };
+  pj.floorHeightLimit = num(pj.floorHeightLimit, 0);
   pj.floorHoles = (pj.floorHoles || []).map(function (h) {
     return { id: String(h.id || ''), label: String(h.label || '地面開孔'), x: num(h.x, NaN), y: num(h.y, NaN), size: num(h.size, 10) };
   });
@@ -670,7 +673,11 @@ function slopeInfo(pj, sf, tile) {
   var maxSize = d.mode === 'point' ? Math.floor(maxDiag / Math.SQRT2) : Math.floor(maxDiag);  // 正方形磚邊長上限
   var near = Math.round(Math.pow(Math.ceil(2 * L / Math.min(tile.w, tile.h)) + 1, 2));
   return { slopePct: d.slope, mode: d.mode, maxFall: maxFall, avgFall: avg, bedVolumeM3: avg * area / 1e6, area: area,
-           lip: lip, lipOk: lip <= 0.3 + 1e-9, maxDiag: maxDiag, maxTileSide: maxSize, nearDrainTiles: near };
+           lip: lip, lipOk: lip <= 0.3 + 1e-9, maxDiag: maxDiag, maxTileSide: maxSize, nearDrainTiles: near,
+           ef: tile.t / 10 + ADH, maxLevel: tile.t / 10 + ADH + maxFall, limit: pj.floorHeightLimit,
+           limitOk: !(pj.floorHeightLimit > 0) || tile.t / 10 + ADH + maxFall <= pj.floorHeightLimit + 1e-9,
+           headroom: pj.floorHeightLimit > 0 ? pj.floorHeightLimit - (tile.t / 10 + ADH + maxFall) : null,
+           maxSlopeForLimit: (pj.floorHeightLimit > 0 && maxFall > 0 && s > 0) ? (pj.floorHeightLimit - (tile.t / 10 + ADH)) / (maxFall / s) * 100 : null };
 }
 
 /* ---------------------------------------------------------------- 總計算 */
@@ -802,6 +809,10 @@ function addWarnings(pj, out) {
            ' cm），或落水孔周圍改「對角切割四向收水」。');
   }
   if (pj.drain.slope === 0) { w.push('洩水坡度為 0：地面不會往落水孔排水，請確認。'); }
+  if (!sl.limitOk) {
+    w.push('⚠ 超過完成面高度限制：最高點離結構樓板 ' + sl.maxLevel.toFixed(2) + ' cm（磚＋黏著劑 ' + sl.ef.toFixed(1) + ' ＋ 洩水高差 ' + sl.maxFall.toFixed(2) + '），限制 ' + sl.limit +
+           ' cm，超出 ' + (-sl.headroom).toFixed(2) + ' cm。' + (sl.maxSlopeForLimit != null && sl.maxSlopeForLimit > 0 ? '在此限制下坡度最多約 ' + sl.maxSlopeForLimit.toFixed(2) + '%。' : '磚加黏著劑本身已超過限制，請改薄磚或提高限制。'));
+  }
   var fev = f.chosen.ev;
   if (fev.slivers > 0) { w.push('地面有 ' + fev.slivers + ' 片「細條切磚」（切邊 < ' + fev.sliverMin.toFixed(1) + ' cm），容易斷裂、也不好看，建議換起始點或貼法。'); }
   Object.keys(out.walls).forEach(function (k) {
@@ -1270,6 +1281,14 @@ Viewer3D.prototype.draw = function () {
     ctx.fillStyle = '#333'; ctx.font = '12px sans-serif';
     var lp = P(dw.map(sf.len / 2, R.H + 2)); ctx.textAlign = 'center'; ctx.fillText(E.WALL_ZH[dw.w], lp[0], lp[1] - (tk > 0 ? 30 : 4));
   });
+  // 完成面高度限制平面（以放大後的洩水高差換算位置）
+  var slI = res.floor.slope;
+  if (slI && slI.limit > 0) {
+    var zl = ef + kk * (slI.limit - ef), bad = !slI.limitOk;
+    poly([[0, 0, zl], [R.L, 0, zl], [R.L, R.D, zl], [0, R.D, zl]], bad ? 'rgba(214,40,40,0.10)' : 'rgba(30,110,200,0.07)', bad ? '#c0392b' : '#2a6db5', 1.2);
+    var ll = P([R.L, 0, zl]); ctx.fillStyle = bad ? '#c0392b' : '#2a6db5'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText('完成面高度限制 ' + slI.limit + ' cm' + (bad ? '（已超出 ' + (-slI.headroom).toFixed(2) + ' cm）' : '（餘裕 ' + slI.headroom.toFixed(2) + ' cm）'), ll[0], ll[1] - 4);
+  }
   // 洩水剖面（可拖動）
   var sec = this.sec;
   if (sec && sec.on !== false) {
@@ -1320,7 +1339,8 @@ function profileSVG(res, axis, pos) {
   var ef = res.floorTile.t / 10 + E.ADH, N = 160, i, f = [], fmin = Infinity, fmax = -Infinity, tmin = 0, tmax = 0;
   var at = function (t) { return axis === 'x' ? [pos, t] : [t, pos]; };
   for (i = 0; i <= N; i++) { var t = len * i / N, q = at(t), v = E.fallAt(pj, q[0], q[1]); f.push([t, v]); if (v < fmin) { fmin = v; tmin = t; } if (v > fmax) { fmax = v; tmax = t; } }
-  var vmax = ef + fmax + 0.6, sx = (W - pl - pr) / len, sv = (Hh - pt - pb) / vmax, kEff = sv / sx;
+  var lim = pj.floorHeightLimit > 0 ? pj.floorHeightLimit : 0;
+  var vmax = Math.max(ef + fmax + 0.6, lim > 0 ? lim + 0.6 : 0), sx = (W - pl - pr) / len, sv = (Hh - pt - pb) / vmax, kEff = sv / sx;
   var X = function (t) { return pl + t * sx; }, Y = function (z) { return Hh - pb - z * sv; };
   function fv(t) { var q = at(t); return E.fallAt(pj, q[0], q[1]); }
   var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + Hh + '" class="fig" role="img" aria-label="洩水剖面圖">';
@@ -1341,6 +1361,11 @@ function profileSVG(res, axis, pos) {
   }
   s += '<line x1="' + pl + '" y1="' + Y(ef) + '" x2="' + X(len) + '" y2="' + Y(ef) + '" stroke="#0a8f7e" stroke-width="0.8" stroke-dasharray="5 4"/>';
   s += text(X(len) - 2, Y(ef) + 14, '落水孔處完成面（磚＋黏著劑 ' + f1(ef) + ' cm）', { size: 10, fill: '#0a8f7e', anchor: 'end' });
+  if (lim > 0) {
+    var badL = ef + fmax > lim + 1e-9;
+    s += '<line x1="' + pl + '" y1="' + Y(lim) + '" x2="' + X(len) + '" y2="' + Y(lim) + '" stroke="' + (badL ? '#c0392b' : '#2a6db5') + '" stroke-width="1.6" stroke-dasharray="8 4"/>';
+    s += text(pl + 8, Y(lim) - 5, '完成面高度限制 ' + lim + ' cm' + (badL ? '（本剖面最高 ' + (ef + fmax).toFixed(2) + ' cm，超出 ' + (ef + fmax - lim).toFixed(2) + '）' : '（本剖面最高 ' + (ef + fmax).toFixed(2) + ' cm，餘裕 ' + (lim - ef - fmax).toFixed(2) + '）'), { size: 11, fill: badL ? '#c0392b' : '#2a6db5', anchor: 'start', bold: true });
+  }
   s += '<rect x="' + (pl - 12) + '" y="' + Y(vmax) + '" width="12" height="' + (Y(0) + 14 - Y(vmax)) + '" fill="#9a968c" stroke="#555"/>';
   s += '<rect x="' + X(len) + '" y="' + Y(vmax) + '" width="12" height="' + (Y(0) + 14 - Y(vmax)) + '" fill="#9a968c" stroke="#555"/>';
   function tag(t, label, color, up) {
@@ -1500,6 +1525,8 @@ function floorSection(res) {
     ['洩水方式', pj.drain.mode === 'point' ? '四周往落水孔（點收水）' : '單向往' + E.WALL_ZH[pj.drain.dir] + '方向'],
     ['洩水坡度', pj.drain.slope + '%（每 100 cm 下降 ' + pj.drain.slope + ' cm）'],
     ['最大落差', f1(sl.maxFall) + ' cm（最遠角到落水孔）；平均 ' + f1(sl.avgFall) + ' cm'],
+    ['完成面最高點離樓板', sl.maxLevel.toFixed(2) + ' cm（磚＋黏著劑 ' + sl.ef.toFixed(1) + ' ＋ 洩水高差 ' + sl.maxFall.toFixed(2) + '）'],
+    ['完成面高度限制', sl.limit > 0 ? sl.limit + ' cm　' + (sl.limitOk ? '✔ 符合，餘裕 ' + sl.headroom.toFixed(2) + ' cm' : '⚠ 超出 ' + (-sl.headroom).toFixed(2) + ' cm；' + (sl.maxSlopeForLimit > 0 ? '此限制下坡度最多約 ' + sl.maxSlopeForLimit.toFixed(2) + '%' : '磚＋黏著劑已超過限制')) : '未設定（0＝不限）'],
     ['找坡砂漿量（估）', sl.bedVolumeM3.toFixed(3) + ' m³', ],
     ['單片磚面內高低差', (sl.lip * 10).toFixed(1) + ' mm' + (sl.lipOk ? '（≤ 3 mm，磚面可貼平）' : '（> 3 mm，建議對角線 ≤ ' + Math.floor(sl.maxDiag) + ' cm、正方形磚邊長 ≤ ' + sl.maxTileSide + ' cm，或落水孔周圍對角切割）')],
     ['落水孔周圍', '約 ' + sl.nearDrainTiles + ' 片磚受洩水面影響，建議此範圍先放樣再貼，磚縫對準洩水方向']
@@ -1677,7 +1704,8 @@ function renderForm() {
   h += '<details open><summary>② 落水孔與洩水坡度（地面）</summary><div class="grid2">' +
     inp('落水孔中心 x cm', 'drain.x') + inp('落水孔中心 y cm', 'drain.y') + inp('格柵邊長 cm', 'drain.size') + inp('洩水坡度 %', 'drain.slope', { step: '0.1' }) +
     inp('洩水方式', 'drain.mode', { type: 'select', options: [['point', '四周往落水孔（點收水）'], ['oneway', '單向洩水']] }) +
-    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) + '</div>' +
+    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) +
+    inp('完成面高度限制 cm（離結構樓板；0＝不限）', 'floorHeightLimit') + '</div>' +
     '<p class="hint">其他地面開孔（例：馬桶糞管孔 4"）：</p>' + listTable('floorHoles', [
       { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'label', t: 'str' }, { h: 'x', k: 'x', t: 'num' }, { h: 'y', k: 'y', t: 'num' }, { h: '邊長', k: 'size', t: 'num' }], '新增地面開孔') + '</details>';
 
@@ -1759,7 +1787,8 @@ function syncSec(mode) {
   viewer.sec.axis = axis;
   var pos = viewer.secPos(); sl.value = pos;
   $('secVal').textContent = (axis === 'x' ? 'x = ' : 'y = ') + (Math.round(pos * 10) / 10) + ' cm';
-  viewer.k = parseFloat($('secK').value) || 1; $('kVal').textContent = viewer.k;
+  var kv = parseFloat($('secK').value), kOk = isFinite(kv) && kv >= 1 && kv <= 50;
+  viewer.k = kOk ? kv : 10; $('kMsg').textContent = kOk ? '' : '請輸入 1～50，暫用 ×10';
   viewer.draw();
   $('secProf').innerHTML = D.profileSVG(res, axis, pos);
 }
@@ -1832,6 +1861,7 @@ renderForm();
 viewer = new D.Viewer3D($('cv3d'));
 viewer.onSec = function () { var p = viewer.secPos(); $('secPos').value = p; $('secVal').textContent = (viewer.sec.axis === 'x' ? 'x = ' : 'y = ') + (Math.round(p * 10) / 10) + ' cm'; $('secProf').innerHTML = D.profileSVG(lastRes, viewer.sec.axis, p); };
 document.addEventListener('input', function (e) { if (e.target.id === 'secPos') { syncSec('slider'); } else if (e.target.id === 'secK') { syncSec(); } });
+document.addEventListener('change', function (e) { if (e.target.id === 'secK') { var v = parseFloat(e.target.value); e.target.value = isFinite(v) ? Math.max(1, Math.min(50, v)) : 10; syncSec(); } });
 document.addEventListener('change', function (e) { if (e.target.name === 'secAxis') { syncSec('axis'); } });
 $('secDrain').addEventListener('click', function () { syncSec('drain'); });
 recalc();

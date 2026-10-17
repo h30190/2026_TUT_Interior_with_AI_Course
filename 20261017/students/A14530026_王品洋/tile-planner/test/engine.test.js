@@ -344,5 +344,28 @@ t('輸入非物件／缺欄位：computeAll 不會丟例外', () => {
   [undefined, {}, { room: {} }, { tiles: [] }].forEach(x => { try { E.computeAll(x); } catch (e) { assert.fail('丟出例外：' + e.message + ' 輸入=' + JSON.stringify(x)); } });
 });
 
+t('洩水：高差＝坡度×離落水孔距離（手算：落水孔 (60,130)、1%，最遠角 (180,0)→距離 √(120²+130²)=176.9 → 1.769 cm）', () => {
+  const p = E.defaultProject();
+  assert.ok(Math.abs(E.fallAt(p, 180, 0) - Math.hypot(120, 130) / 100) < 1e-9);
+  assert.strictEqual(E.fallAt(p, 60, 130), 0);
+});
+
+t('完成面高度限制：未超過→通過；超過→警告並算出此限制下可用的最大坡度；照建議坡度即符合；負值被擋', () => {
+  const p = E.defaultProject(), ef = 0.9 + 0.5;
+  const r0 = E.computeAll(p), maxL = r0.floor.slope.maxLevel;
+  assert.ok(Math.abs(maxL - (ef + r0.floor.slope.maxFall)) < 1e-9);
+  p.floorHeightLimit = Math.ceil(maxL) + 1;
+  assert.ok(E.computeAll(p).floor.slope.limitOk);
+  p.floorHeightLimit = maxL - 0.1;
+  const r2 = E.computeAll(p);
+  assert.ok(!r2.floor.slope.limitOk && r2.warnings.some(w => /超過完成面高度限制/.test(w)));
+  assert.ok(r2.floor.slope.maxSlopeForLimit < p.drain.slope);
+  p.drain.slope = r2.floor.slope.maxSlopeForLimit;
+  assert.ok(E.computeAll(p).floor.slope.limitOk);
+  p.floorHeightLimit = -1;
+  assert.ok(!E.computeAll(p).ok);
+});
+
+
 console.log('\n結果：' + pass + ' 項通過，' + fail + ' 項失敗');
 process.exit(fail ? 1 : 0);
