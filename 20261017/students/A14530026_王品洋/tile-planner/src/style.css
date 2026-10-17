@@ -57,3 +57,6 @@ body.standalone .doc{max-width:960px;margin:0 auto;padding:16px}body.standalone 
 
 .hl{background:#fff6e0;border:2px solid #e0a020;border-radius:8px;padding:8px 10px;margin-bottom:10px}
 .hl .hint{margin:4px 0 0}
+
+.v3sec{margin:8px 0;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:13px}
+.v3sec button{padding:3px 10px;border:1px solid #bbb;border-radius:6px;background:#fff;cursor:pointer}

@@ -31,6 +31,14 @@
     <label style="margin-left:12px"><input type="checkbox" data-xray checked> <b>牆體透視（看牆厚、管道）</b></label>
     <span class="hint">面向鏡頭的牆會自動隱藏，方便看室內；拖曳旋轉、滾輪縮放。</span></div>
   <canvas id="cv3d" width="900" height="600"></canvas>
+  <div class="v3sec"><b>洩水剖面線：</b>
+    <label><input type="radio" name="secAxis" value="x" checked> 縱剖（北→南）</label>
+    <label><input type="radio" name="secAxis" value="y"> 橫剖（西→東）</label>
+    <input type="range" id="secPos" min="0" max="100" step="0.5" value="0" style="width:240px"> <b id="secVal"></b>
+    <button type="button" id="secDrain">對準落水孔</button>
+    <label style="margin-left:10px">3D 地面高程放大 ×<input type="range" id="secK" min="1" max="30" value="10" style="width:110px"> <b id="kVal">10</b></label>
+    <span class="hint">也可按住 Shift 在 3D 畫面左右拖曳來移動剖面線。</span></div>
+  <div id="secProf" class="figbox"></div>
 </div>
 <script>/*ENGINE*/</script>
 <script>/*DRAW*/</script>

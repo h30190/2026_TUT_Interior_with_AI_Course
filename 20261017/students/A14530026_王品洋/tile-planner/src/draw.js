@@ -59,8 +59,34 @@ function planSVG(res, opts) {
       s += '<polygon points="' + pts(c, X, Y) + '" fill="' + C[p.kind] + '" stroke="' + C.line + '" stroke-width="0.5"/>';
     });
   });
+  // 洩水等高線與角隅高差
+  var dr0 = pj.drain, n = sf.net;
+  if (dr0.slope > 0) {
+    var cs = [[n[0], n[1]], [n[2], n[1]], [n[2], n[3]], [n[0], n[3]]], fmax = 0, far = cs[0];
+    cs.forEach(function (c) { var f = E.fallAt(pj, c[0], c[1]); if (f > fmax) { fmax = f; far = c; } });
+    var step = fmax > 6 ? 1 : (fmax > 1.5 ? 0.5 : 0.25), sl0 = dr0.slope / 100, lv, lbl = '';
+    s += '<clipPath id="cpNet"><rect x="' + X(n[0]) + '" y="' + Y(n[1]) + '" width="' + ((n[2] - n[0]) * sc) + '" height="' + ((n[3] - n[1]) * sc) + '"/></clipPath>';
+    s += '<g clip-path="url(#cpNet)" fill="none" stroke="#0a8f7e" stroke-width="1.1" stroke-dasharray="5 3">';
+    for (lv = step; lv < fmax - 1e-6; lv += step) {
+      var rr = lv / sl0;
+      if (dr0.mode === 'point') { s += '<circle cx="' + X(dr0.x) + '" cy="' + Y(dr0.y) + '" r="' + (rr * sc) + '"/>'; }
+      else if (dr0.dir === 'N' || dr0.dir === 'S') { var yy = dr0.dir === 'N' ? dr0.y + rr : dr0.y - rr; s += '<line x1="' + X(n[0]) + '" y1="' + Y(yy) + '" x2="' + X(n[2]) + '" y2="' + Y(yy) + '"/>'; }
+      else { var xx = dr0.dir === 'W' ? dr0.x + rr : dr0.x - rr; s += '<line x1="' + X(xx) + '" y1="' + Y(n[1]) + '" x2="' + X(xx) + '" y2="' + Y(n[3]) + '"/>'; }
+      var lx, ly;
+      if (dr0.mode === 'point') { var dd = Math.hypot(far[0] - dr0.x, far[1] - dr0.y) || 1; lx = dr0.x + (far[0] - dr0.x) / dd * rr; ly = dr0.y + (far[1] - dr0.y) / dd * rr; }
+      else if (dr0.dir === 'N' || dr0.dir === 'S') { lx = (n[0] + n[2]) / 2; ly = dr0.dir === 'N' ? dr0.y + rr : dr0.y - rr; }
+      else { ly = (n[1] + n[3]) / 2; lx = dr0.dir === 'W' ? dr0.x + rr : dr0.x - rr; }
+      if (lx > n[0] && lx < n[2] && ly > n[1] && ly < n[3]) { lbl += text(X(lx) + 3, Y(ly) - 3, '+' + (Math.round(lv * 100) / 100) + ' cm', { size: 10.5, fill: '#0a8f7e', bold: true }); }
+    }
+    s += '</g>' + lbl;
+    cs.forEach(function (c, i) {
+      var f = E.fallAt(pj, c[0], c[1]), left = i === 0 || i === 3, top = i < 2;
+      s += '<rect x="' + (X(c[0]) + (left ? 3 : -49)) + '" y="' + (Y(c[1]) + (top ? 3 : -17)) + '" width="46" height="14" rx="3" fill="#fff" fill-opacity="0.9" stroke="#0a8f7e" stroke-width="0.8"/>';
+      s += text(X(c[0]) + (left ? 26 : -26), Y(c[1]) + (top ? 13.5 : -6.5), '+' + f.toFixed(2), { size: 10.5, fill: '#0a8f7e', bold: true, anchor: 'middle' });
+    });
+    s += text(X(0), Y(R.D) + 56, '青色虛線＝洩水等高線（每 ' + step + ' cm），數字＝比落水孔高出多少 cm；四角方框＝該角地面完成面高差', { size: 11, fill: '#0a8f7e' });
+  }
   // 牆磚完成層（淨區域外圈）
-  var n = sf.net;
   s += '<rect x="' + X(n[0]) + '" y="' + Y(n[1]) + '" width="' + ((n[2] - n[0]) * sc) + '" height="' + ((n[3] - n[1]) * sc) + '" fill="none" stroke="#b08968" stroke-width="1" stroke-dasharray="4 3"/>';
   // 落水孔
   var d = pj.drain, ds = d.size * sc;
@@ -129,7 +155,7 @@ function wallSVG(res, w, opts) {
   var pj = res.project, R = pj.room, wi = res.walls[w], sf = wi.surface, ev = wi.chosen.ev, W = opts.width || 680, pad = 56;
   var len = sf.len, H = R.H, flip = (w === 'S' || w === 'W');
   var sc = Math.min((W - pad * 2) / len, 440 / H);
-  var hh = H * sc + pad * 2 + 30;
+  var hh = H * sc + pad * 2 + 30 + (res.wallBase && pj.drain.slope > 0 ? 150 : 0);
   var X = function (u) { return pad + (flip ? len - u : u) * sc; }, Y = function (z) { return pad + (H - z) * sc; };
   function polyPts(p) { return p.map(function (q) { return X(q[0]).toFixed(1) + ',' + Y(q[1]).toFixed(1); }).join(' '); }
   function rectEl(r, fill, stroke, sw, dash) {
@@ -166,6 +192,26 @@ function wallSVG(res, w, opts) {
   // 牆磚頂端收邊
   if (pj.trim.topEdge && pj.wallTop < H) {
     s += '<line x1="' + X(sf.net[0]) + '" y1="' + Y(pj.wallTop) + '" x2="' + X(sf.net[2]) + '" y2="' + Y(pj.wallTop) + '" stroke="' + C.trim + '" stroke-width="3"/>';
+  }
+  // 洩水後的地面完成面（牆腳線）
+  var wb = res.wallBase && res.wallBase[w];
+  if (wb && pj.drain.slope > 0) {
+    var efv = res.floorTile.t / 10 + E.ADH;
+    s += '<polyline points="' + wb.samples.map(function (p) { return X(p[0]).toFixed(1) + ',' + Y(efv + p[1]).toFixed(1); }).join(' ') + '" fill="none" stroke="#0a8f7e" stroke-width="2.6"/>';
+    // 牆腳線放大圖（垂直放大，才看得出貼地第一排壁磚下緣的斜度）
+    var top0 = Y(0) + 84, ih = 56, fm = Math.max(wb.max, 0.01), kz = (ih - 20) / fm;
+    s += text(pad, top0 - 12, '牆腳地面線放大圖（垂直放大 ×' + Math.round(kz / sc) + '）：貼地第一排壁磚的下緣要沿此線切斜', { size: 11, fill: '#0a8f7e', bold: true });
+    s += '<rect x="' + X(0 * 1) + '" y="' + top0 + '" width="0" height="0"/>';
+    var xa = Math.min(X(0), X(len)), xb = Math.max(X(0), X(len));
+    s += '<rect x="' + xa + '" y="' + top0 + '" width="' + (xb - xa) + '" height="' + (ih + 14) + '" fill="#f4faf9" stroke="#bcd9d4"/>';
+    s += '<polygon points="' + wb.samples.map(function (p) { return X(p[0]).toFixed(1) + ',' + (top0 + ih - p[1] * kz).toFixed(1); }).join(' ') + ' ' + xb + ',' + (top0 + ih + 14) + ' ' + xa + ',' + (top0 + ih + 14) + '" fill="#efe9dd" stroke="none"/>';
+    s += '<polyline points="' + wb.samples.map(function (p) { return X(p[0]).toFixed(1) + ',' + (top0 + ih - p[1] * kz).toFixed(1); }).join(' ') + '" fill="none" stroke="#0a8f7e" stroke-width="2.4"/>';
+    [[0, wb.atStart], [wb.len / 2, wb.atMid], [wb.len, wb.atEnd]].forEach(function (q, i) {
+      var yy = top0 + ih - q[1] * kz;
+      s += '<circle cx="' + X(q[0]) + '" cy="' + yy + '" r="3.5" fill="#0a8f7e"/>';
+      s += text(X(q[0]) + (i === 1 ? 0 : (((i === 0) !== flip) ? 7 : -7)), yy - 8, '+' + q[1].toFixed(2), { size: 11, fill: '#0a8f7e', bold: true, anchor: i === 1 ? 'middle' : (((i === 0) !== flip) ? 'start' : 'end') });
+    });
+    s += text(pad, top0 + ih + 30, '數字＝該處比落水孔處完成面高出多少 cm（真實值）；最低 +' + wb.min.toFixed(2) + '（距起點 ' + f1(wb.minAt) + ' cm）、最高 +' + wb.max.toFixed(2) + '（距起點 ' + f1(wb.maxAt) + ' cm）', { size: 11, fill: '#0a8f7e' });
   }
   // 起始點
   var o = wi.chosen.origin;
@@ -237,17 +283,47 @@ function thresholdSVG(res) {
 /* ---------------------------------------------------------------- 3D 檢視器（canvas，滑鼠旋轉、滾輪縮放） */
 function Viewer3D(canvas) {
   this.cv = canvas; this.ctx = canvas.getContext('2d');
-  this.yaw = -0.6; this.pitch = 0.62; this.zoom = 1; this.res = null; this.showWalls = { N: true, E: true, S: true, W: true }; this.xray = true;
+  this.yaw = -0.6; this.pitch = 0.62; this.zoom = 1; this.res = null; this.showWalls = { N: true, E: true, S: true, W: true }; this.xray = true; this.k = 10; this.sec = { on: true, axis: 'x', pos: null }; this.onSec = null;
   var me = this, drag = null;
-  canvas.addEventListener('mousedown', function (e) { drag = { x: e.clientX, y: e.clientY, yaw: me.yaw, pitch: me.pitch }; });
+  canvas.addEventListener('mousedown', function (e) { drag = { x: e.clientX, y: e.clientY, yaw: me.yaw, pitch: me.pitch, shift: e.shiftKey, pos: me.secPos() }; });
   window.addEventListener('mouseup', function () { drag = null; });
   window.addEventListener('mousemove', function (e) {
     if (!drag) { return; }
+    if (drag.shift && me.res && me.res.ok) {
+      var R0 = me.res.project.room, L0 = me.sec.axis === 'x' ? R0.L : R0.D;
+      me.sec.pos = Math.max(0, Math.min(L0, drag.pos + (e.clientX - drag.x) * L0 / 300));
+      me.draw(); if (me.onSec) { me.onSec(); } return;
+    }
     me.yaw = drag.yaw + (e.clientX - drag.x) * 0.008;
     me.pitch = Math.max(0.05, Math.min(1.5, drag.pitch + (e.clientY - drag.y) * 0.006));
     me.draw();
   });
   canvas.addEventListener('wheel', function (e) { e.preventDefault(); me.zoom = Math.max(0.4, Math.min(3, me.zoom * (e.deltaY < 0 ? 1.1 : 0.9))); me.draw(); }, { passive: false });
+}
+Viewer3D.prototype.secPos = function () {
+  var r = this.res; if (!r || !r.ok) { return 0; }
+  var R = r.project.room, dr = r.project.drain, L = this.sec.axis === 'x' ? R.L : R.D;
+  var p = this.sec.pos == null ? (this.sec.axis === 'x' ? dr.x : dr.y) : this.sec.pos;
+  return Math.max(0, Math.min(L, p));
+};
+function clipHalf(poly, g) {
+  var out = [], n = poly.length, j, cur, nxt, gc, gn, t;
+  for (j = 0; j < n; j++) {
+    cur = poly[j]; nxt = poly[(j + 1) % n]; gc = g(cur); gn = g(nxt);
+    if (gc >= 0) { out.push(cur); }
+    if ((gc >= 0) !== (gn >= 0)) { t = gc / (gc - gn); out.push([cur[0] + (nxt[0] - cur[0]) * t, cur[1] + (nxt[1] - cur[1]) * t]); }
+  }
+  return out;
+}
+function clipAbove(poly, base) {          // base：由左到右的凸折線 [[u,z]]；保留折線上方
+  var out = poly, i;
+  for (i = 0; i < base.length - 1 && out.length; i++) {
+    var a = base[i], b = base[i + 1];
+    if (b[0] - a[0] < 1e-9) { continue; }
+    var m = (b[1] - a[1]) / (b[0] - a[0]);
+    out = clipHalf(out, function (p) { return p[1] - (a[1] + m * (p[0] - a[0])); });
+  }
+  return out;
 }
 Viewer3D.prototype.setResult = function (res) { this.res = res; this.draw(); };
 Viewer3D.prototype.draw = function () {
@@ -269,13 +345,19 @@ Viewer3D.prototype.draw = function () {
     ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 0.5; ctx.stroke(); }
   }
   // 地面
-  var fev = res.floor.chosen.ev;
+  var fev = res.floor.chosen.ev, kk = this.k || 1, ef = res.floorTile.t / 10 + E.ADH, fmaxAll = 0.0001;
+  [[0, 0], [R.L, 0], [R.L, R.D], [0, R.D]].forEach(function (c) { fmaxAll = Math.max(fmaxAll, E.fallAt(pj, c[0], c[1])); });
+  function zf(x, y) { return ef + kk * E.fallAt(pj, x, y); }
   poly([[0, 0, -0.5], [R.L, 0, -0.5], [R.L, R.D, -0.5], [0, R.D, -0.5]], '#d9d6cf', '#777', 1);
   fev.polys.forEach(function (p) {
-    p.clipped.forEach(function (c) { poly(c.map(function (q) { return [q[0], q[1], 0]; }), C[p.kind], '#8f8a7c', 0.5); });
+    p.clipped.forEach(function (c) {
+      var mx = 0, my = 0; c.forEach(function (q) { mx += q[0]; my += q[1]; }); mx /= c.length; my /= c.length;
+      var tint = 1 - 0.2 * E.fallAt(pj, mx, my) / fmaxAll;
+      poly(c.map(function (q) { return [q[0], q[1], zf(q[0], q[1])]; }), shadeColor(C[p.kind], tint), '#8f8a7c', 0.5);
+    });
   });
   var d = pj.drain, h = d.size / 2;
-  poly([[d.x - h, d.y - h, 0.1], [d.x + h, d.y - h, 0.1], [d.x + h, d.y + h, 0.1], [d.x - h, d.y + h, 0.1]], '#ffffff', '#1d6fa5', 1.5);
+  poly([[d.x - h, d.y - h], [d.x + h, d.y - h], [d.x + h, d.y + h], [d.x - h, d.y + h]].map(function (q) { return [q[0], q[1], zf(q[0], q[1]) + 0.1]; }), '#ffffff', '#1d6fa5', 1.5);
   // 牆（只畫面向鏡頭的內面，由遠到近）
   var me = this, defs = [
     { w: 'N', n: [0, 1, 0], map: function (u, z) { return [u, ew, z]; } },
@@ -292,9 +374,14 @@ Viewer3D.prototype.draw = function () {
   vis.sort(function (a, b) { return b.depth - a.depth; });
   vis.forEach(function (dw) {
     var wi = res.walls[dw.w], sf = wi.surface, shade = dw.w === 'N' || dw.w === 'S' ? 1 : 0.93;
-    poly([dw.map(0, 0), dw.map(sf.len, 0), dw.map(sf.len, R.H), dw.map(0, R.H)], '#e6e2d8', '#777', 1);
+    var wbs = res.wallBase && res.wallBase[dw.w], baseLine = wbs ? wbs.samples.map(function (q) { return [q[0], ef + kk * q[1]]; }) : null;
+    var bgPoly = [[0, 0], [sf.len, 0], [sf.len, R.H], [0, R.H]];
+    if (baseLine && pj.drain.slope > 0) { bgPoly = clipAbove(bgPoly, baseLine); }
+    poly(bgPoly.map(function (q) { return dw.map(q[0], q[1]); }), '#e6e2d8', '#777', 1);
     wi.chosen.ev.polys.forEach(function (p) {
-      p.clipped.forEach(function (c) {
+      p.clipped.forEach(function (c0) {
+        var c = (baseLine && pj.drain.slope > 0) ? clipAbove(c0, baseLine) : c0;
+        if (c.length < 3) { return; }
         var col = p.kind === 'full' ? '#efe9dd' : (p.kind === 'cut' ? '#f2c58a' : '#e9a3a3');
         if (shade < 1) { col = shadeColor(col, shade); }
         poly(c.map(function (q) { return dw.map(q[0], q[1]); }), col, '#8f8a7c', 0.5);
@@ -342,21 +429,97 @@ Viewer3D.prototype.draw = function () {
     ctx.fillStyle = '#333'; ctx.font = '12px sans-serif';
     var lp = P(dw.map(sf.len / 2, R.H + 2)); ctx.textAlign = 'center'; ctx.fillText(E.WALL_ZH[dw.w], lp[0], lp[1] - (tk > 0 ? 30 : 4));
   });
+  // 洩水剖面（可拖動）
+  var sec = this.sec;
+  if (sec && sec.on !== false) {
+    var ax = sec.axis, pos = this.secPos(), len2 = ax === 'x' ? R.D : R.L, NN = 60, line = [], ii;
+    for (ii = 0; ii <= NN; ii++) { var tt = len2 * ii / NN, xx = ax === 'x' ? pos : tt, yy = ax === 'x' ? tt : pos; line.push([xx, yy, zf(xx, yy)]); }
+    var topz = Math.max(40, ef + kk * fmaxAll + 25);
+    poly([[line[0][0], line[0][1], 0], [line[NN][0], line[NN][1], 0], [line[NN][0], line[NN][1], topz], [line[0][0], line[0][1], topz]], 'rgba(214,40,40,0.07)', 'rgba(214,40,40,0.65)', 1);
+    poly(line.concat(line.slice().reverse().map(function (q) { return [q[0], q[1], 0]; })), 'rgba(232,160,48,0.6)', '#b8741a', 1);
+    ctx.beginPath(); line.forEach(function (q, i2) { var pp = P(q); if (i2) { ctx.lineTo(pp[0], pp[1]); } else { ctx.moveTo(pp[0], pp[1]); } });
+    ctx.strokeStyle = '#d62828'; ctx.lineWidth = 3; ctx.stroke();
+    var lt = P([line[NN][0], line[NN][1], topz]);
+    ctx.fillStyle = '#d62828'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('剖面 ' + ax + ' = ' + (Math.round(pos * 10) / 10) + ' cm（垂直放大 ×' + kk + '）', lt[0], lt[1] - 6);
+  }
   // 起始點
   var o = res.floor.chosen.origin;
   if (o) {
-    var c = P([o[0], o[1], 0.3]);
+    var c = P([o[0], o[1], zf(o[0], o[1]) + 0.3]);
     ctx.strokeStyle = '#d62828'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c[0], c[1], 6, 0, 6.283); ctx.moveTo(c[0] - 10, c[1]); ctx.lineTo(c[0] + 10, c[1]); ctx.moveTo(c[0], c[1] - 10); ctx.lineTo(c[0], c[1] + 10); ctx.stroke();
     ctx.fillStyle = '#d62828'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.fillText('起始磚', c[0] + 10, c[1] - 8);
   }
   ctx.fillStyle = '#666'; ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('拖曳旋轉 ｜ 滾輪縮放 ｜ 淺色＝整磚、橘色＝切磚、紅色＝開孔磚', 10, cv.height - 10);
+  ctx.fillText('拖曳旋轉 ｜ 滾輪縮放 ｜ Shift＋左右拖曳＝移動剖面 ｜ 淺色＝整磚、橘色＝切磚、紅色＝開孔磚；地面高程已放大 ×' + kk, 10, cv.height - 10);
 };
 function shadeColor(hex, k) {
   var n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   return 'rgb(' + Math.round(r * k) + ',' + Math.round(g * k) + ',' + Math.round(b * k) + ')';
 }
 
-var api = { planSVG: planSVG, wallSVG: wallSVG, thumbSVG: thumbSVG, thresholdSVG: thresholdSVG, Viewer3D: Viewer3D, C: C, f1: f1, esc: esc };
+/* ---------------------------------------------------------------- 洩水剖面圖（沿某條線切地面） */
+function lineIntervals(polys, axis, pos) {
+  var out = [];
+  polys.forEach(function (p) {
+    p.clipped.forEach(function (c) {
+      var ts = [], j;
+      for (j = 0; j < c.length; j++) {
+        var a = c[j], b = c[(j + 1) % c.length], av = axis === 'x' ? a[0] : a[1], bv = axis === 'x' ? b[0] : b[1], ao = axis === 'x' ? a[1] : a[0], bo = axis === 'x' ? b[1] : b[0];
+        if (Math.abs(av - pos) < 1e-9 && Math.abs(bv - pos) < 1e-9) { ts.push(ao, bo); }
+        else if ((av - pos) * (bv - pos) <= 0 && av !== bv) { ts.push(ao + (bo - ao) * (pos - av) / (bv - av)); }
+      }
+      if (ts.length >= 2) { var lo = Math.min.apply(null, ts), hi = Math.max.apply(null, ts); if (hi - lo > 1e-6) { out.push({ a: lo, b: hi, kind: p.kind }); } }
+    });
+  });
+  return out;
+}
+function profileSVG(res, axis, pos) {
+  var pj = res.project, R = pj.room, len = axis === 'x' ? R.D : R.L, W = 900, Hh = 330, pl = 64, pr = 36, pt = 52, pb = 74;
+  var ef = res.floorTile.t / 10 + E.ADH, N = 160, i, f = [], fmin = Infinity, fmax = -Infinity, tmin = 0, tmax = 0;
+  var at = function (t) { return axis === 'x' ? [pos, t] : [t, pos]; };
+  for (i = 0; i <= N; i++) { var t = len * i / N, q = at(t), v = E.fallAt(pj, q[0], q[1]); f.push([t, v]); if (v < fmin) { fmin = v; tmin = t; } if (v > fmax) { fmax = v; tmax = t; } }
+  var vmax = ef + fmax + 0.6, sx = (W - pl - pr) / len, sv = (Hh - pt - pb) / vmax, kEff = sv / sx;
+  var X = function (t) { return pl + t * sx; }, Y = function (z) { return Hh - pb - z * sv; };
+  function fv(t) { var q = at(t); return E.fallAt(pj, q[0], q[1]); }
+  var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + Hh + '" class="fig" role="img" aria-label="洩水剖面圖">';
+  s += '<rect width="100%" height="100%" fill="#fff"/>';
+  var ttl = (axis === 'x' ? '縱剖面（由北往南）：x = ' : '橫剖面（由西往東）：y = ') + f1(pos) + ' cm';
+  s += text(pl, 22, ttl + '　垂直放大 ×' + kEff.toFixed(0) + '（水平 1：垂直 ' + kEff.toFixed(0) + '，才看得出坡度）', { size: 13, bold: true });
+  s += '<rect x="' + pl + '" y="' + Y(0) + '" width="' + (len * sx) + '" height="14" fill="#cfcac0" stroke="#777"/>' + text(pl + 6, Y(0) + 11, '結構樓板', { size: 10, fill: '#555' });
+  s += '<polygon points="' + f.map(function (p) { return X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1); }).join(' ') + ' ' + X(len) + ',' + Y(0) + ' ' + X(0) + ',' + Y(0) + '" fill="#e6d6b8" stroke="#b8a27a" stroke-width="0.8"/>';
+  lineIntervals(res.floor.chosen.ev.polys, axis, pos).forEach(function (iv) {
+    var f0 = fv(iv.a), f1v = fv(iv.b);
+    s += '<polygon points="' + X(iv.a) + ',' + Y(f0) + ' ' + X(iv.b) + ',' + Y(f1v) + ' ' + X(iv.b) + ',' + Y(f1v + ef) + ' ' + X(iv.a) + ',' + Y(f0 + ef) + '" fill="' + C[iv.kind] + '" stroke="#8f8a7c" stroke-width="0.6"/>';
+  });
+  s += '<polyline points="' + f.map(function (p) { return X(p[0]).toFixed(1) + ',' + Y(p[1] + ef).toFixed(1); }).join(' ') + '" fill="none" stroke="#0a8f7e" stroke-width="2.2"/>';
+  var dr = pj.drain, dc = axis === 'x' ? dr.x : dr.y, dt = axis === 'x' ? dr.y : dr.x;
+  if (Math.abs(dc - pos) <= dr.size / 2) {
+    s += '<rect x="' + X(dt - dr.size / 2) + '" y="' + (Y(ef) - 4) + '" width="' + (dr.size * sx) + '" height="' + (ef * sv + 8) + '" fill="#fff" stroke="#1d6fa5" stroke-width="1.4"/>';
+    s += text(X(dt), Y(ef) - 10, '落水孔', { size: 11, fill: '#1d6fa5', anchor: 'middle', bold: true });
+  }
+  s += '<line x1="' + pl + '" y1="' + Y(ef) + '" x2="' + X(len) + '" y2="' + Y(ef) + '" stroke="#0a8f7e" stroke-width="0.8" stroke-dasharray="5 4"/>';
+  s += text(X(len) - 2, Y(ef) + 14, '落水孔處完成面（磚＋黏著劑 ' + f1(ef) + ' cm）', { size: 10, fill: '#0a8f7e', anchor: 'end' });
+  s += '<rect x="' + (pl - 12) + '" y="' + Y(vmax) + '" width="12" height="' + (Y(0) + 14 - Y(vmax)) + '" fill="#9a968c" stroke="#555"/>';
+  s += '<rect x="' + X(len) + '" y="' + Y(vmax) + '" width="12" height="' + (Y(0) + 14 - Y(vmax)) + '" fill="#9a968c" stroke="#555"/>';
+  function tag(t, label, color, up) {
+    var yy = Y(fv(t) + ef);
+    return '<circle cx="' + X(t) + '" cy="' + yy + '" r="3.5" fill="' + color + '"/>' + text(X(t), yy + (up ? -9 : 17), label, { size: 11, fill: color, anchor: t < len * 0.08 ? 'start' : (t > len * 0.92 ? 'end' : 'middle'), bold: true });
+  }
+  s += tag(0, '+' + fv(0).toFixed(2) + ' cm', '#0a8f7e', true);
+  s += tag(len, '+' + fv(len).toFixed(2) + ' cm', '#0a8f7e', true);
+  if (fmax > 0.05 && tmax > len * 0.1 && tmax < len * 0.9) { s += tag(tmax, '最高 +' + fmax.toFixed(2), '#c0392b', true); }
+  if (fmin > 0.05 && tmin > len * 0.1 && tmin < len * 0.9) { s += tag(tmin, '最低 +' + fmin.toFixed(2), '#1d6fa5', false); }
+  s += text(pl, Hh - 40, axis === 'x' ? '北' : '西', { size: 12, bold: true, anchor: 'middle' });
+  s += text(X(len), Hh - 40, axis === 'x' ? '南' : '東', { size: 12, bold: true, anchor: 'middle' });
+  var endSlope = (fv(len) - fv(0)) / len * 100, locMax = 0;
+  for (i = 1; i <= N; i++) { locMax = Math.max(locMax, Math.abs(f[i][1] - f[i - 1][1]) / (f[i][0] - f[i - 1][0]) * 100); }
+  s += text(pl, Hh - 22, '本剖面：兩端高差 ' + Math.abs(fv(len) - fv(0)).toFixed(2) + ' cm（端到端平均 ' + endSlope.toFixed(2) + '%）｜最大局部坡度 ' + locMax.toFixed(2) + '%｜最高點比最低點高 ' + (fmax - fmin).toFixed(2) + ' cm', { size: 11.5, fill: '#333' });
+  s += text(pl, Hh - 6, '淺色＝整磚、橘色＝切磚、紅色＝開孔磚、米色＝找坡砂漿層、青線＝洩水後的地面完成面', { size: 10.5, fill: '#666' });
+  s += '</svg>';
+  return s;
+}
+
+var api = { profileSVG: profileSVG, planSVG: planSVG, wallSVG: wallSVG, thumbSVG: thumbSVG, thresholdSVG: thresholdSVG, Viewer3D: Viewer3D, C: C, f1: f1, esc: esc };
 if (typeof module !== 'undefined' && module.exports) { module.exports = api; } else { root.TileDraw = api; }
 })(typeof window !== 'undefined' ? window : this);

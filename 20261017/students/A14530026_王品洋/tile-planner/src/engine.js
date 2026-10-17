@@ -518,17 +518,38 @@ function buildChosen(sf, tile, method, startKey, originFn) {
 }
 
 /* ---------------------------------------------------------------- 洩水坡度 */
+/* 地面某點相對落水孔的高差（cm，落水孔處 = 0，越遠越高）。點收水為圓錐、單向洩水為斜面。 */
+function fallAt(pj, x, y) {
+  var d = pj.drain, s = d.slope / 100;
+  if (d.mode === 'oneway') {
+    if (d.dir === 'N') { return s * Math.max(0, y - d.y); }
+    if (d.dir === 'S') { return s * Math.max(0, d.y - y); }
+    if (d.dir === 'W') { return s * Math.max(0, x - d.x); }
+    return s * Math.max(0, d.x - x);
+  }
+  return s * Math.hypot(x - d.x, y - d.y);
+}
+/* 地磚完成面離結構樓板的高度（落水孔處 = 磚厚＋黏著劑，越遠越高） */
+function floorLevel(pj, x, y) { return tileById(pj, pj.floorTileId).t / 10 + ADH + fallAt(pj, x, y); }
+/* 牆腳（地面與牆交線）上每點的落差：洩水讓貼地的那一排壁磚下緣隨之傾斜 */
+function wallBasePoint(pj, w, u) {
+  var R = pj.room;
+  return w === 'N' ? [u, 0] : w === 'S' ? [u, R.D] : w === 'W' ? [0, u] : [R.L, u];
+}
+function wallBaseSlope(pj, w) {
+  var R = pj.room, len = (w === 'N' || w === 'S') ? R.L : R.D, n = 24, i, samples = [], mn = Infinity, mx = -Infinity, mnAt = 0, mxAt = 0;
+  for (i = 0; i <= n; i++) {
+    var u = len * i / n, p = wallBasePoint(pj, w, u), f = fallAt(pj, p[0], p[1]);
+    samples.push([u, f]);
+    if (f < mn) { mn = f; mnAt = u; } if (f > mx) { mx = f; mxAt = u; }
+  }
+  var pa = wallBasePoint(pj, w, 0), pm = wallBasePoint(pj, w, len / 2), pb = wallBasePoint(pj, w, len);
+  return { wall: w, len: len, samples: samples, atStart: fallAt(pj, pa[0], pa[1]), atMid: fallAt(pj, pm[0], pm[1]), atEnd: fallAt(pj, pb[0], pb[1]),
+           min: mn, minAt: mnAt, max: mx, maxAt: mxAt };
+}
 function slopeInfo(pj, sf, tile) {
   var d = pj.drain, s = d.slope / 100, net = sf.net, pts = [[net[0], net[1]], [net[2], net[1]], [net[2], net[3]], [net[0], net[3]]];
-  function height(x, y) {
-    if (d.mode === 'oneway') {
-      if (d.dir === 'N') { return s * Math.max(0, y - d.y); }
-      if (d.dir === 'S') { return s * Math.max(0, d.y - y); }
-      if (d.dir === 'W') { return s * Math.max(0, x - d.x); }
-      return s * Math.max(0, d.x - x);
-    }
-    return s * Math.hypot(x - d.x, y - d.y);
-  }
+  function height(x, y) { return fallAt(pj, x, y); }
   var maxFall = 0, i, j, N = 24, sum = 0, cnt = 0, hx, hy;
   pts.forEach(function (p) { maxFall = Math.max(maxFall, height(p[0], p[1])); });
   for (i = 0; i < N; i++) {
@@ -592,6 +613,8 @@ function computeAllInner(raw) {
   var floor = { surface: fs, tile: ft, netArea: fArea / 1e4, chosen: fp.chosen, compare: fp.table, methods: fp.methods };
   floor.slope = slopeInfo(pj, fs, ft);
   out.floor = floor;
+  out.wallBase = {};
+  WALLS.forEach(function (w) { out.wallBase[w] = wallBaseSlope(pj, w); });
 
   /* 各牆 */
   out.walls = {};
@@ -707,7 +730,7 @@ var api = {
   JOINT: JOINT, ADH: ADH, WALLS: WALLS, WALL_ZH: WALL_ZH, FLOOR_STARTS: FLOOR_STARTS, WALL_STARTS: WALL_STARTS, METHOD_NAMES: METHOD_NAMES,
   polyArea: polyArea, clipRect: clipRect, genTiles: genTiles, tileDims: tileDims, evalTiles: evalTiles, methodsFor: methodsFor,
   defaultProject: defaultProject, normalize: normalize, validate: validate, floorSurface: floorSurface, wallSurface: wallSurface,
-  slopeInfo: slopeInfo, computeAll: computeAll, layoutFor: layoutFor, bboxOf: bboxOf, rectArea: rectArea, interRect: interRect
+  slopeInfo: slopeInfo, fallAt: fallAt, floorLevel: floorLevel, wallBaseSlope: wallBaseSlope, computeAll: computeAll, layoutFor: layoutFor, bboxOf: bboxOf, rectArea: rectArea, interRect: interRect
 };
 if (typeof module !== 'undefined' && module.exports) { module.exports = api; } else { root.TileEngine = api; }
 })(typeof window !== 'undefined' ? window : this);

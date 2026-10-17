@@ -138,6 +138,15 @@ function floorSection(res) {
     ['落水孔周圍', '約 ' + sl.nearDrainTiles + ' 片磚受洩水面影響，建議此範圍先放樣再貼，磚縫對準洩水方向']
   ]);
   if (pj.drain.mode === 'point') { h += '<p class="note">點收水時，磚面必須做成「圍著落水孔向下傾斜」的錐形面；大磚是平面，無法服貼，因此落水孔四周的磚要沿對角線切成 4 個斜面（四向收水），或改用小磚。</p>'; }
+  if (pj.drain.slope > 0 && res.wallBase) {
+    var efr = ft.t / 10 + E.ADH;
+    h += '<h4>牆腳地面高差（洩水造成：貼地第一排壁磚的下緣要沿此線切斜）</h4>' + table(['牆', '長度', '起點', '中點', '終點', '最低', '最高', '下緣離結構樓板'],
+      E.WALLS.map(function (w) {
+        var b = res.wallBase[w], p = function (v) { return '+' + v.toFixed(2) + ' cm'; };
+        return [E.WALL_ZH[w], f1(b.len) + ' cm', p(b.atStart), p(b.atMid), p(b.atEnd), p(b.min) + '（距起點 ' + f1(b.minAt) + '）', p(b.max) + '（距起點 ' + f1(b.maxAt) + '）', f1(efr + b.min) + '～' + f1(efr + b.max) + ' cm'];
+      })) +
+      '<p class="note">高差＝比落水孔處的完成面高出多少。起點：北牆、南牆自西端；東牆、西牆自北端。下緣離結構樓板＝磚厚＋黏著劑 ' + f1(efr) + ' cm＋該處高差。3D 模擬圖下方的「洩水剖面線」可以拉動，直接看任一位置的坡度。</p>';
+  }
   h += '<h3>5. 門檻</h3>' + (res.threshold.count ? table(['門', '位置', '長度', '規格'],
     res.threshold.items.map(function (i) { return [i.id, E.WALL_ZH[i.wall], i.len + ' cm', esc(pj.threshold.label) + '（寬 ' + pj.threshold.width + '、厚 ' + pj.threshold.thick + ' cm，高出地磚 ' + pj.threshold.riseAbove + ' cm）']; }))
     + '<div class="figbox small">' + D.thresholdSVG(res) + '</div>' : '<p>本案沒有門。</p>');

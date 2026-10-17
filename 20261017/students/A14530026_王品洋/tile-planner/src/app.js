@@ -148,6 +148,22 @@ document.addEventListener('click', function (e) {
 
 function schedule() { clearTimeout(timer); timer = setTimeout(recalc, 220); }
 
+/* ---------------------------------------------------------------- 洩水剖面控制 */
+function syncSec(mode) {
+  var res = lastRes;
+  if (!res || !res.ok || !viewer) { return; }
+  var R = res.project.room, dr = res.project.drain;
+  var axis = document.querySelector('input[name="secAxis"]:checked').value, L = axis === 'x' ? R.L : R.D, sl = $('secPos');
+  sl.max = L;
+  if (mode === 'slider') { viewer.sec.pos = parseFloat(sl.value); }
+  else if (mode === 'axis' || mode === 'drain') { viewer.sec.pos = axis === 'x' ? dr.x : dr.y; }
+  viewer.sec.axis = axis;
+  var pos = viewer.secPos(); sl.value = pos;
+  $('secVal').textContent = (axis === 'x' ? 'x = ' : 'y = ') + (Math.round(pos * 10) / 10) + ' cm';
+  viewer.k = parseFloat($('secK').value) || 1; $('kVal').textContent = viewer.k;
+  viewer.draw();
+  $('secProf').innerHTML = D.profileSVG(res, axis, pos);
+}
 /* ---------------------------------------------------------------- 計算與顯示 */
 function recalc() {
   var t0 = performance.now(), res;
@@ -167,7 +183,7 @@ function recalc() {
   $('report').innerHTML = html;
   var slot = $('slot3d');
   if (slot) { slot.appendChild(v3); v3.classList.remove('hide'); }
-  if (viewer) { viewer.setResult(res); }
+  if (viewer) { viewer.setResult(res); syncSec(); }
   $('status').textContent = '已計算（' + Math.round(performance.now() - t0) + ' ms）｜地面 ' + res.floor.pieces + ' 片、牆面 ' + res.wallTotal.pieces + ' 片';
 }
 
@@ -215,6 +231,10 @@ document.addEventListener('change', function (e) {
 /* ---------------------------------------------------------------- 啟動 */
 renderForm();
 viewer = new D.Viewer3D($('cv3d'));
+viewer.onSec = function () { var p = viewer.secPos(); $('secPos').value = p; $('secVal').textContent = (viewer.sec.axis === 'x' ? 'x = ' : 'y = ') + (Math.round(p * 10) / 10) + ' cm'; $('secProf').innerHTML = D.profileSVG(lastRes, viewer.sec.axis, p); };
+document.addEventListener('input', function (e) { if (e.target.id === 'secPos') { syncSec('slider'); } else if (e.target.id === 'secK') { syncSec(); } });
+document.addEventListener('change', function (e) { if (e.target.name === 'secAxis') { syncSec('axis'); } });
+$('secDrain').addEventListener('click', function () { syncSec('drain'); });
 recalc();
 window.__tile = { get viewer() { return viewer; }, get state() { return S; }, get result() { return lastRes; }, recalc: recalc, setState: function (o) { S = o; renderForm(); recalc(); } };
 })();
