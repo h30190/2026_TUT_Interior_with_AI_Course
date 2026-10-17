@@ -54,3 +54,6 @@ ul.warn li{color:var(--warn);margin:4px 0}ul.deduct{font-size:13px;color:var(--m
   .figbox svg.fig{border:none}body{background:#fff}
 }
 body.standalone .doc{max-width:960px;margin:0 auto;padding:16px}body.standalone h1{font-size:22px}
+
+.hl{background:#fff6e0;border:2px solid #e0a020;border-radius:8px;padding:8px 10px;margin-bottom:10px}
+.hl .hint{margin:4px 0 0}
