@@ -195,25 +195,48 @@ function wallSection(res) {
 
 function summarySection(res) {
   var pj = res.project, tr = res.trim, ad = res.adhesive, fl = res.floor, wt = res.wallTotal;
-  var h = '<section class="sec"><h2>四、材料總表</h2>';
+  var h = '<section class="sec"><h2>五、材料總表</h2>';
   h += table(['材料', '規格', '淨量', '實際片數／用量', '損耗', '採購', '包裝'], [
     ['地磚', esc(res.floorTile.name), m2(fl.netArea), fl.pieces + ' 片', pct(fl.waste), fl.purchase + ' 片', fl.boxes + ' 箱'],
     ['壁磚', esc(res.wallTile.name), m2(wt.netArea), wt.pieces + ' 片', pct(wt.waste), wt.purchase + ' 片', wt.boxes + ' 箱'],
     ['黏著劑（0.5 cm）', res.adhesive.kgPerM2.toFixed(1) + ' kg/m²', m2(fl.netArea + wt.netArea), ad.totalKg.toFixed(1) + ' kg', '—', ad.totalKg.toFixed(1) + ' kg', ad.bags + ' 包（' + ad.bagKg + ' kg／包）'],
     [esc(tr.label), '單支 ' + tr.pieceLen + ' cm', (tr.totalCm / 100).toFixed(2) + ' m', (tr.totalCm / 100).toFixed(2) + ' m', pj.trimLossPct + '%', (tr.withLossCm / 100).toFixed(2) + ' m', tr.pieces + ' 支'],
     ['門檻', esc(pj.threshold.label), '—', res.threshold.count + ' 支', '—', res.threshold.count + ' 支', '長度＝門寬']
-  ]);
+  ].concat((res.zones || []).map(function (zi) {
+    var t = zi.tile, lab = '區域 ' + esc(zi.zone.id + ' ' + zi.zone.label);
+    return zi.areaOnly ? [lab, esc(t.name) + '（厚 ' + t.t + ' mm）', m2(zi.area), zi.kg.toFixed(1) + ' kg', '—', zi.kg.toFixed(1) + ' kg', zi.bags + ' 袋（' + t.perBox + ' kg／袋）']
+      : [lab, esc(t.name), m2(zi.area), zi.pieces + ' 片', pct(zi.waste), zi.purchase + ' 片', zi.boxes + ' 箱'];
+  })));
   if (tr.items.length) { h += '<h3>收邊條明細</h3>' + table(['位置', '長度'], tr.items.map(function (i) { return [esc(i.label), (i.len / 100).toFixed(2) + ' m']; })); }
   return h + '</section>';
 }
 
+function zoneSection(res) {
+  var pj = res.project, zs = res.zones || [];
+  var h = '<section class="sec"><h2>三、特殊區域（材質變換、降板、分界收邊）</h2>';
+  if (!zs.length) { return h + '<p>本案沒有設定特殊區域。需要時在表單⑧新增：例如牆面局部換成大理石、抿石子、馬賽克，或地面某區要降板 1 cm、加收邊條。</p></section>'; }
+  var rows = zs.map(function (zi) {
+    var z = zi.zone, t = zi.tile, r = zi.rect, ev = zi.chosen && zi.chosen.ev;
+    var pos = zi.kind === 'floor' ? '地面 x ' + f1(r[0]) + '～' + f1(r[2]) + '、y ' + f1(r[1]) + '～' + f1(r[3]) : E.WALL_ZH[zi.surface] + ' 沿牆 ' + f1(r[0]) + '～' + f1(r[2]) + '、高 ' + f1(r[1]) + '～' + f1(r[3]);
+    var how = zi.areaOnly ? '整面施作（不排磚），厚 ' + t.t + ' mm' : E.METHOD_NAMES[zi.chosen.method] + '，起始 ' + (E.FLOOR_STARTS[zi.chosen.start] || E.WALL_STARTS[zi.chosen.start] || zi.chosen.start);
+    var qty = zi.areaOnly ? zi.kg.toFixed(1) + ' kg（' + m2(zi.area) + ' × ' + t.t + ' mm × ' + t.cover + '）' : zi.pieces + ' 片（整磚 ' + ev.full + '、切磚 ' + ev.cut + '、開孔 ' + ev.holeCut + '）';
+    var buy = zi.areaOnly ? zi.bags + ' 袋（' + t.perBox + ' kg／袋）' : zi.purchase + ' 片（' + zi.boxes + ' 箱）';
+    var lv = zi.kind === 'floor' ? (zi.drop > 0 ? '比主地面低 ' + zi.drop + ' cm' : '與主地面齊平') : (Math.abs(zi.step) < 0.05 ? '與主牆磚齊平' : (zi.step > 0 ? '凸出主牆磚面 ' : '凹入主牆磚面 ') + Math.abs(zi.step).toFixed(2) + ' cm');
+    var trim = zi.trimLen > 0 ? (zi.trimLen / 100).toFixed(2) + ' m（' + esc(pj.trim.label) + '）' : '無（與主鋪面交界長 ' + (zi.boundaryLen / 100).toFixed(2) + ' m）';
+    return [esc(z.id + ' ' + z.label), pos, esc(t.name) + (zi.areaOnly ? '' : '（' + t.w + '×' + t.h + '、厚 ' + t.t + ' mm）'), m2(zi.area), how, qty, zi.areaOnly ? '—' : pct(zi.waste), buy, zi.areaOnly ? '—' : zi.adhesiveKg.toFixed(1) + ' kg', trim, lv];
+  });
+  h += table(['區域', '位置（cm）', '材料', '淨面積', '排法', '實際用量', '損耗', '採購', '黏著劑', '分界收邊', '高低差'], rows);
+  h += '<p class="note">區域從主鋪面「扣掉」後各自排磚，所以主地面／主牆面的片數已經不含區域。降板＝該區完成面比同位置的主地面低；分界收邊＝與主鋪面交界的邊加收邊條（貼在牆邊或洞口邊的邊不算）。材料厚度與主牆磚不同時，交界會有高低差，請依高低差決定收邊條型式。</p>';
+  return h + '</section>';
+}
+
 function warningsSection(res) {
-  if (!res.warnings.length) { return '<section class="sec"><h2>五、注意事項</h2><p>檢查沒有發現需要特別注意的項目。</p></section>'; }
-  return '<section class="sec"><h2>五、注意事項</h2><ul class="warn">' + res.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></section>';
+  if (!res.warnings.length) { return '<section class="sec"><h2>六、注意事項</h2><p>檢查沒有發現需要特別注意的項目。</p></section>'; }
+  return '<section class="sec"><h2>六、注意事項</h2><ul class="warn">' + res.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></section>';
 }
 
 function assumptionsSection() {
-  return '<section class="sec small"><h2>六、計算假設與限制</h2><ul>' +
+  return '<section class="sec small"><h2>七、計算假設與限制</h2><ul>' +
     '<li>單位 cm；磁磚縫 0.2 cm、黏著劑 0.5 cm 為固定值。磁磚尺寸以標稱計，磚距＝磚寬＋0.2 cm。</li>' +
     '<li>片數：每一片被切到的磚都算一整片（不計餘料再利用），所以是保守估計；實際可再利用餘料，用量會略少。</li>' +
     '<li>黏著劑用量＝淨貼磚面積 × 0.5 cm × 耗量係數（預設 1.6 kg/m²/mm，可在「施工選項」調整），以廠牌規格為準。</li>' +
@@ -225,7 +248,7 @@ function assumptionsSection() {
 
 function reportHTML(res) {
   if (!res.ok) { return ''; }
-  return floorSection(res) + wallSection(res) + '<section class="sec" id="sec3d"><h2>三、3D 模擬圖</h2><div id="slot3d"></div></section>' + summarySection(res) + warningsSection(res) + assumptionsSection();
+  return floorSection(res) + wallSection(res) + zoneSection(res) + '<section class="sec" id="sec3d"><h2>四、3D 模擬圖</h2><div id="slot3d"></div></section>' + summarySection(res) + warningsSection(res) + assumptionsSection();
 }
 
 var api = { reportHTML: reportHTML, compareTable: compareTable };

@@ -42,7 +42,7 @@
   ],
   "floorTileId": "F1",
   "wallTileId": "W1",
-  "floorMethod": "stack",
+  "floorMethod": "stack-h",
   "floorStart": "auto",
   "wallMethod": "run2-h",
   "wallStart": "auto",

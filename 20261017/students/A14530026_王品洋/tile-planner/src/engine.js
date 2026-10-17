@@ -227,6 +227,7 @@ function defaultProject() {
     breakagePct: 3, adhesiveKgPerM2PerMm: 1.6, bagKg: 20, trimLossPct: 5,
     drain: { x: 60, y: 130, size: 10, slope: 1, mode: 'point', dir: 'N' },
     floorHeightLimit: 0,
+    zones: [],
     floorHoles: [],
     openings: [
       { id: 'D1', type: 'door', wall: 'S', offset: 50, width: 80, height: 200, sill: 0 },
@@ -257,12 +258,41 @@ function validate(pj) {
     if (!t.id) { errs.push('磁磚表有一列沒有編號'); }
     if (ids[t.id]) { errs.push('磁磚編號重複：' + t.id); }
     ids[t.id] = 1;
+    if (t.kind === 'area') {
+      if (!(t.t >= 3 && t.t <= 100)) { errs.push('面材 ' + t.id + '（整面施作，如抿石子）厚度須在 3～100 mm（目前 ' + sv(t.t) + '）'); }
+      if (!(t.perBox > 0)) { errs.push('面材 ' + t.id + ' 每袋重量（kg）須大於 0'); }
+      if (!(t.cover > 0)) { errs.push('面材 ' + t.id + ' 用量係數（kg/m²/mm）須大於 0'); }
+      return;
+    }
     if (!(t.w >= 2 && t.w <= 300) || !(t.h >= 2 && t.h <= 300)) { errs.push('磁磚 ' + t.id + ' 尺寸須在 2～300 cm（目前 ' + sv(t.w) + '×' + sv(t.h) + '）'); }
     if (!(t.t >= 3 && t.t <= 30)) { errs.push('磁磚 ' + t.id + ' 厚度須在 3～30 mm（目前 ' + sv(t.t) + '）'); }
     if (!(t.perBox >= 1 && Math.floor(t.perBox) === t.perBox)) { errs.push('磁磚 ' + t.id + ' 每箱片數須為正整數'); }
   });
   if (!pj.tiles.some(function (t) { return t.id === pj.floorTileId; })) { errs.push('找不到地磚編號 ' + pj.floorTileId); }
   if (!pj.tiles.some(function (t) { return t.id === pj.wallTileId; })) { errs.push('找不到壁磚編號 ' + pj.wallTileId); }
+  [['地面用磚', pj.floorTileId], ['牆面用磚', pj.wallTileId]].forEach(function (q) {
+    var tt = pj.tiles.filter(function (x) { return x.id === q[1]; })[0];
+    if (tt && tt.kind === 'area') { errs.push(q[0] + ' ' + q[1] + ' 是整面施作的面材（如抿石子），主要鋪面請選磁磚；面材請放在「特殊區域」'); }
+  });
+  var zs = {};
+  pj.zones.forEach(function (z) {
+    var lab = '特殊區域 ' + (z.id || '（無編號）');
+    if (!z.id) { errs.push('特殊區域有一列沒有編號'); }
+    if (zs[z.id]) { errs.push('特殊區域編號重複：' + z.id); }
+    zs[z.id] = 1;
+    if (['floor', 'N', 'E', 'S', 'W'].indexOf(z.surface) < 0) { errs.push(lab + '：施作面必須是地面或北／東／南／西牆'); return; }
+    if (!fin(z.a0) || !fin(z.b0) || !fin(z.a1) || !fin(z.b1)) { errs.push(lab + '：位置有欄位未填或不是數字'); return; }
+    if (!(z.a1 > z.a0) || !(z.b1 > z.b0)) { errs.push(lab + '：終點必須大於起點'); }
+    if (!pj.tiles.some(function (t) { return t.id === z.tileId; })) { errs.push(lab + '：找不到材料編號 ' + z.tileId); }
+    if (!fin(z.drop) || z.drop < 0 || z.drop > 10) { errs.push(lab + '：降板高度須在 0～10 cm'); }
+    if (z.surface !== 'floor' && pj.wallTiled && !pj.wallTiled[z.surface]) { errs.push(lab + '：' + WALL_ZH[z.surface] + '牆沒有勾選貼磚'); }
+  });
+  pj.zones.forEach(function (z, i) {
+    pj.zones.forEach(function (y, j) {
+      if (j <= i || y.surface !== z.surface) { return; }
+      if (fin(z.a0) && fin(y.a0) && interRect([z.a0, z.b0, z.a1, z.b1], [y.a0, y.b0, y.a1, y.b1])) { errs.push('特殊區域 ' + z.id + ' 與 ' + y.id + ' 重疊'); }
+    });
+  });
   var d = pj.drain;
   if (d) {
     if (!fin(d.x) || !fin(d.y)) { errs.push('落水孔位置未填或不是數字'); }
@@ -331,7 +361,7 @@ function normalize(raw) {
   WALLS.forEach(function (w) { pj.wallTiled[w] = pj.wallTiled[w] !== false; });
   pj.tiles = (pj.tiles || base.tiles).map(function (t) {
     return { id: String(t.id || ''), name: String(t.name || t.id || ''), w: num(t.w, NaN), h: num(t.h, NaN), t: num(t.t, NaN),
-             perBox: num(t.perBox, 1), use: t.use || 'both' };
+             perBox: num(t.perBox, 1), use: t.use || 'both', kind: t.kind === 'area' ? 'area' : 'tile', cover: num(t.cover, 1.6) };
   });
   pj.floorTileId = pj.floorTileId || (pj.tiles[0] && pj.tiles[0].id) || ''; pj.wallTileId = pj.wallTileId || (pj.tiles[0] && pj.tiles[0].id) || '';
   pj.floorMethod = pj.floorMethod || 'auto'; pj.floorStart = pj.floorStart || 'auto';
@@ -340,6 +370,11 @@ function normalize(raw) {
   pj.bagKg = num(pj.bagKg, 20); pj.trimLossPct = num(pj.trimLossPct, 5);
   var d = pj.drain || base.drain;
   pj.drain = { x: num(d.x, NaN), y: num(d.y, NaN), size: num(d.size, 10), slope: num(d.slope, 1), mode: d.mode === 'oneway' ? 'oneway' : 'point', dir: d.dir || 'N' };
+  pj.zones = (pj.zones || []).map(function (z) {
+    return { id: String(z.id || ''), label: String(z.label || z.id || '特殊區域'), surface: z.surface || 'floor',
+             a0: num(z.a0, NaN), b0: num(z.b0, NaN), a1: num(z.a1, NaN), b1: num(z.b1, NaN), tileId: String(z.tileId || ''),
+             method: z.method || 'auto', drop: num(z.drop, 0), trim: (z.trim === true || z.trim === 'yes') ? 'yes' : 'no' };
+  });
   pj.floorHeightLimit = num(pj.floorHeightLimit, 0);
   pj.floorHoles = (pj.floorHoles || []).map(function (h) {
     return { id: String(h.id || ''), label: String(h.label || '地面開孔'), x: num(h.x, NaN), y: num(h.y, NaN), size: num(h.size, 10) };
@@ -579,7 +614,7 @@ function slopeInfo(pj, sf, tile) {
 /* ---------------------------------------------------------------- 總計算 */
 function ceilDiv(a, b) { return Math.ceil(a / b - 1e-9); }
 
-function pickOrOverride(pj, tile, sf, kind) {
+function pickOrOverride(pj, tile, sf, kind, sel) {
   var isFloor = kind === 'floor';
   var methods = methodsFor(tile, kind);
   var origFn, candKeys, bias = {};
@@ -587,20 +622,92 @@ function pickOrOverride(pj, tile, sf, kind) {
     origFn = function (key, dims, m) { return floorOrigin(pj, sf, key, dims, m); };
     candKeys = Object.keys(FLOOR_STARTS);
     // 有洩水坡度的點收水：落水孔十字縫對正才能把四個斜面對稱切割，寧可多用幾片也優先採用
-    if (pj.drain.slope > 0 && pj.drain.mode === 'point') { bias.drainJoint = -12; bias.drain = -6; }
+    var drainIn = sel ? sel.drainBias : sf.rects.some(function (r) { return pj.drain.x > r[0] && pj.drain.x < r[2] && pj.drain.y > r[1] && pj.drain.y < r[3]; });
+    if (!drainIn) { bias = {}; }
+    else if (pj.drain.slope > 0 && pj.drain.mode === 'point') { bias.drainJoint = -12; bias.drain = -6; }
     else { bias.drainJoint = -1; bias.drain = -0.5; }
   } else {
     origFn = function (key, dims, m) { return wallOrigin(sf, key, dims, m); };
     candKeys = Object.keys(WALL_STARTS);
   }
   var table = searchLayouts(sf, tile, methods, candKeys, origFn, bias);
-  var methodSel = isFloor ? pj.floorMethod : pj.wallMethod, startSel = isFloor ? pj.floorStart : pj.wallStart;
+  var methodSel = sel ? sel.method : (isFloor ? pj.floorMethod : pj.wallMethod), startSel = sel ? sel.start : (isFloor ? pj.floorStart : pj.wallStart);
   var chosenMethod = methodSel === 'auto' || methods.indexOf(methodSel) < 0 ? table[0].method : methodSel;
   var row = table.filter(function (r) { return r.method === chosenMethod; })[0];
   var startKey = (startSel === 'auto' || candKeys.indexOf(startSel) < 0) ? row.start : startSel;
   var chosen = buildChosen(sf, tile, chosenMethod, startKey, origFn);
   if (!chosen.origin) { chosen = buildChosen(sf, tile, chosenMethod, row.start, origFn); }
   return { table: table, chosen: chosen, methods: methods };
+}
+
+/* ---------------------------------------------------------------- 特殊區域（材質變換、降板、分界收邊） */
+function subtractRect(rects, z) {
+  var out = [];
+  rects.forEach(function (r) {
+    var i = interRect(r, z);
+    if (!i) { out.push(r); return; }
+    if (i[1] > r[1]) { out.push([r[0], r[1], r[2], i[1]]); }
+    if (i[3] < r[3]) { out.push([r[0], i[3], r[2], r[3]]); }
+    if (i[0] > r[0]) { out.push([r[0], i[1], i[0], i[3]]); }
+    if (i[2] < r[2]) { out.push([i[2], i[1], r[2], i[3]]); }
+  });
+  return out;
+}
+function netAreaOf(rects, holes) {
+  var a = 0;
+  rects.forEach(function (r) { a += rectArea(r); });
+  holes.forEach(function (h) { rects.forEach(function (r) { var i = interRect(h, r); if (i) { a -= rectArea(i); } }); });
+  return a;
+}
+/* 沿區域四邊中，不貼在貼磚淨區邊界上的邊（＝與主鋪面交界的邊）；回傳 [{x1,y1,x2,y2,len}] */
+function interiorEdges(zr, net) {
+  var out = [], eps = 0.01;
+  if (Math.abs(zr[1] - net[1]) > eps) { out.push({ x1: zr[0], y1: zr[1], x2: zr[2], y2: zr[1], len: zr[2] - zr[0] }); }
+  if (Math.abs(zr[3] - net[3]) > eps) { out.push({ x1: zr[0], y1: zr[3], x2: zr[2], y2: zr[3], len: zr[2] - zr[0] }); }
+  if (Math.abs(zr[0] - net[0]) > eps) { out.push({ x1: zr[0], y1: zr[1], x2: zr[0], y2: zr[3], len: zr[3] - zr[1] }); }
+  if (Math.abs(zr[2] - net[2]) > eps) { out.push({ x1: zr[2], y1: zr[1], x2: zr[2], y2: zr[3], len: zr[3] - zr[1] }); }
+  return out;
+}
+function evalZone(pj, z, sf, kind, zr, mainTile) {
+  var tile = tileById(pj, z.tileId), kgPerM2 = ADH * 10 * pj.adhesiveKgPerM2PerMm;
+  var info = { zone: z, tile: tile, kind: kind, surface: z.surface, rect: zr, area: netAreaOf([zr], sf.holes) / 1e4 };
+  if (tile.kind === 'area') {
+    info.areaOnly = true;
+    info.kg = info.area * tile.t * tile.cover;
+    info.bags = ceilDiv(info.kg, tile.perBox);
+    info.pieces = 0; info.adhesiveKg = 0;
+  } else {
+    var zsf = { wall: sf.wall, len: sf.len, rects: [zr], holes: sf.holes, net: zr, openRects: sf.openRects || [], fixtureRects: sf.fixtureRects || [], deduct: [0, 0] };
+    var hasDrain = kind === 'floor' && pj.drain.x > zr[0] && pj.drain.x < zr[2] && pj.drain.y > zr[1] && pj.drain.y < zr[3];
+    var pk = pickOrOverride(pj, tile, zsf, kind, { method: z.method, start: 'auto', drainBias: hasDrain });
+    var ev = pk.chosen.ev;
+    info.chosen = pk.chosen; info.compare = pk.table; info.methods = pk.methods; info.surface2 = zsf;
+    info.pieces = ev.pieces; info.usedArea = ev.used / 1e4;
+    info.waste = ev.used > 0 ? Math.max(0, (ev.pieces * tile.w * tile.h - ev.used) / ev.used) : 0;
+    info.purchase = Math.ceil(ev.pieces * (1 + pj.breakagePct / 100) - 1e-9);
+    info.boxes = ceilDiv(info.purchase, tile.perBox);
+    info.adhesiveKg = info.area * kgPerM2;
+  }
+  var edges = interiorEdges(zr, sf.net);
+  info.trimEdges = z.trim === 'yes' ? edges : [];
+  info.trimLen = info.trimEdges.reduce(function (s, q) { return s + q.len; }, 0);
+  info.boundaryLen = edges.reduce(function (s, q) { return s + q.len; }, 0);
+  if (kind === 'floor') { info.drop = z.drop; }
+  else { info.step = (tile.t - mainTile.t) / 10; }          // >0：比主牆磚厚，凸出牆面
+  return info;
+}
+/* 把區域從主鋪面扣掉，回傳每個區域的評估；sf.rects 被改成扣完後的主鋪面 */
+function applyZones(pj, sf, kind, wall, mainTile, errors) {
+  var list = [];
+  pj.zones.forEach(function (z) {
+    if ((kind === 'floor') !== (z.surface === 'floor') || (kind === 'wall' && z.surface !== wall)) { return; }
+    var zr = interRect([z.a0, z.b0, z.a1, z.b1], sf.net);
+    if (!zr) { errors.push('特殊區域 ' + z.id + ' 完全在貼磚範圍之外（地面請填 x,y；牆面請填 沿牆 u、離樓板高 z）'); return; }
+    list.push({ z: z, zr: zr });
+  });
+  if (errors.length) { return []; }
+  list.forEach(function (q) { sf.rects = subtractRect(sf.rects, q.zr); });
+  return list.map(function (q) { return evalZone(pj, q.z, sf, kind, q.zr, mainTile); });
 }
 
 function computeAll(raw) {
@@ -615,9 +722,13 @@ function computeAllInner(raw) {
   var out = { ok: true, errors: [], warnings: v.warnings.slice(), project: pj, floorTile: ft, wallTile: wt, joint: JOINT, adhesiveT: ADH };
 
   /* 地面 */
-  var fs = floorSurface(pj), fp = pickOrOverride(pj, ft, fs, 'floor');
-  var fArea = (rectArea(fs.rects[0]) + fs.rects.slice(1).reduce(function (s, r) { return s + rectArea(r); }, 0)) - pj.drain.size * pj.drain.size - pj.floorHoles.reduce(function (s, h) { return s + h.size * h.size; }, 0);
-  var floor = { surface: fs, tile: ft, netArea: fArea / 1e4, chosen: fp.chosen, compare: fp.table, methods: fp.methods };
+  var fs = floorSurface(pj), zerr = [];
+  fs.fullRects = fs.rects.slice();
+  var floorZones = applyZones(pj, fs, 'floor', null, ft, zerr);
+  if (zerr.length) { return { ok: false, errors: zerr, warnings: v.warnings, project: pj }; }
+  var fp = pickOrOverride(pj, ft, fs, 'floor');
+  var fArea = netAreaOf(fs.rects, fs.holes);
+  var floor = { surface: fs, tile: ft, netArea: fArea / 1e4, chosen: fp.chosen, compare: fp.table, methods: fp.methods, zones: floorZones };
   floor.slope = slopeInfo(pj, fs, ft);
   out.floor = floor;
   out.wallBase = {};
@@ -628,9 +739,12 @@ function computeAllInner(raw) {
   var wallPieces = 0, wallArea = 0;
   WALLS.forEach(function (w) {
     if (!pj.wallTiled[w]) { return; }
-    var sf = wallSurface(pj, w), wp = pickOrOverride(pj, wt, sf, 'wall');
-    var gross = rectArea(sf.net), holeA = sf.holes.reduce(function (s, r) { return s + rectArea(r); }, 0);
-    var info = { surface: sf, netArea: (gross - holeA) / 1e4, chosen: wp.chosen, compare: wp.table, methods: wp.methods };
+    var sf = wallSurface(pj, w), werr = [];
+    sf.fullRects = sf.rects.slice();
+    var wallZones = applyZones(pj, sf, 'wall', w, wt, werr);
+    if (werr.length) { zerr = zerr.concat(werr); return; }
+    var wp = pickOrOverride(pj, wt, sf, 'wall');
+    var info = { surface: sf, netArea: netAreaOf(sf.rects, sf.holes) / 1e4, chosen: wp.chosen, compare: wp.table, methods: wp.methods, zones: wallZones };
     // 開孔磚片（給排水孔）
     info.fixtureTiles = 0;
     sf.fixtureRects.forEach(function (q) {
@@ -645,6 +759,12 @@ function computeAllInner(raw) {
     out.walls[w] = info;
     wallPieces += wp.chosen.ev.pieces; wallArea += info.netArea;
   });
+
+  if (zerr.length) { return { ok: false, errors: zerr, warnings: v.warnings, project: pj }; }
+  /* 特殊區域彙整 */
+  var zoneList = floor.zones.slice();
+  Object.keys(out.walls).forEach(function (w) { zoneList = zoneList.concat(out.walls[w].zones); });
+  out.zones = zoneList;
 
   /* 各貼法整體比較（地、牆各自最佳起點） */
   function pur(pieces) { return Math.ceil(pieces * (1 + pj.breakagePct / 100) - 1e-9); }
@@ -667,6 +787,7 @@ function computeAllInner(raw) {
   /* 黏著劑（牆、地都用 0.5cm 厚） */
   var kgPerM2 = ADH * 10 * pj.adhesiveKgPerM2PerMm;
   var adhFloorKg = floor.netArea * kgPerM2, adhWallKg = wallArea * kgPerM2;
+  zoneList.forEach(function (zi) { if (zi.kind === 'floor') { adhFloorKg += zi.adhesiveKg; } else { adhWallKg += zi.adhesiveKg; } });
   out.adhesive = { thickCm: ADH, kgPerM2: kgPerM2, floorKg: adhFloorKg, wallKg: adhWallKg, totalKg: adhFloorKg + adhWallKg,
                    bags: Math.ceil((adhFloorKg + adhWallKg) / pj.bagKg - 1e-9), bagKg: pj.bagKg };
 
@@ -683,6 +804,7 @@ function computeAllInner(raw) {
       var n = out.walls[w].surface.net; items.push({ label: WALL_ZH[w] + '牆磚頂端收邊', len: n[2] - n[0] });
     });
   }
+  zoneList.forEach(function (zi) { if (zi.trimLen > 0) { items.push({ label: (zi.kind === 'floor' ? '地面' : WALL_ZH[zi.surface]) + '特殊區域 ' + zi.zone.id + '（' + zi.zone.label + '）分界收邊', len: zi.trimLen }); } });
   items.forEach(function (i) { total += i.len; });
   var withLoss = total * (1 + pj.trimLossPct / 100);
   out.trim = { items: items, totalCm: total, withLossCm: withLoss, pieceLen: pj.trim.pieceLen, pieces: Math.ceil(withLoss / pj.trim.pieceLen - 1e-9), label: pj.trim.label };
@@ -709,6 +831,12 @@ function addWarnings(pj, out) {
     w.push('⚠ 超過完成面高度限制：最高點離結構樓板 ' + sl.maxLevel.toFixed(2) + ' cm（磚＋黏著劑 ' + sl.ef.toFixed(1) + ' ＋ 洩水高差 ' + sl.maxFall.toFixed(2) + '），限制 ' + sl.limit +
            ' cm，超出 ' + (-sl.headroom).toFixed(2) + ' cm。' + (sl.maxSlopeForLimit != null && sl.maxSlopeForLimit > 0 ? '在此限制下坡度最多約 ' + sl.maxSlopeForLimit.toFixed(2) + '%。' : '磚加黏著劑本身已超過限制，請改薄磚或提高限制。'));
   }
+  (out.zones || []).forEach(function (zi) {
+    if (zi.chosen && zi.chosen.ev.slivers > 0) { w.push('特殊區域 ' + zi.zone.id + '（' + zi.zone.label + '）有 ' + zi.chosen.ev.slivers + ' 片細條切磚，建議換貼法或調整區域尺寸。'); }
+    if (zi.kind === 'floor' && zi.drop > 0 && zi.trimLen === 0 && zi.boundaryLen > 0) { w.push('特殊區域 ' + zi.zone.id + ' 降板 ' + zi.drop + ' cm，與主地面有高低差但未設分界收邊，請確認是否要加收邊條或做斜口。'); }
+    if (zi.kind === 'wall' && Math.abs(zi.step) > 0.3 && zi.trimLen === 0 && zi.boundaryLen > 0) { w.push('特殊區域 ' + zi.zone.id + ' 材料厚度與主牆磚相差 ' + zi.step.toFixed(1) + ' cm，交界會有高低差，請確認是否要加收邊條。'); }
+    if (zi.kind === 'floor' && zi.drop > 0 && f.slope.limit > 0) { /* 降板只會降低完成面，不影響高度限制檢查 */ }
+  });
   var fev = f.chosen.ev;
   if (fev.slivers > 0) { w.push('地面有 ' + fev.slivers + ' 片「細條切磚」（切邊 < ' + fev.sliverMin.toFixed(1) + ' cm），容易斷裂、也不好看，建議換起始點或貼法。'); }
   Object.keys(out.walls).forEach(function (k) {
@@ -741,7 +869,7 @@ var api = {
   JOINT: JOINT, ADH: ADH, WALLS: WALLS, WALL_ZH: WALL_ZH, FLOOR_STARTS: FLOOR_STARTS, WALL_STARTS: WALL_STARTS, METHOD_NAMES: METHOD_NAMES,
   polyArea: polyArea, clipRect: clipRect, genTiles: genTiles, tileDims: tileDims, evalTiles: evalTiles, methodsFor: methodsFor,
   defaultProject: defaultProject, normalize: normalize, validate: validate, floorSurface: floorSurface, wallSurface: wallSurface,
-  slopeInfo: slopeInfo, fallAt: fallAt, floorLevel: floorLevel, wallBaseSlope: wallBaseSlope, computeAll: computeAll, layoutFor: layoutFor, bboxOf: bboxOf, rectArea: rectArea, interRect: interRect
+  slopeInfo: slopeInfo, subtractRect: subtractRect, netAreaOf: netAreaOf, interiorEdges: interiorEdges, fallAt: fallAt, floorLevel: floorLevel, wallBaseSlope: wallBaseSlope, computeAll: computeAll, layoutFor: layoutFor, bboxOf: bboxOf, rectArea: rectArea, interRect: interRect
 };
 if (typeof module !== 'undefined' && module.exports) { module.exports = api; } else { root.TileEngine = api; }
 })(typeof window !== 'undefined' ? window : this);

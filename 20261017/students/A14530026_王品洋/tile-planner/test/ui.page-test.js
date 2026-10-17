@@ -64,6 +64,20 @@
   document.querySelector('[data-wall3d="N"]').checked = false; document.querySelector('[data-wall3d="N"]').dispatchEvent(new Event('change', { bubbles: true }));
   ok('可取消顯示北牆', true);
 
+  // 特殊區域
+  window.__tile.setState(JSON.parse(JSON.stringify(window.__tile.state))); await wait(400);
+  const tilesBefore = window.__tile.state.tiles.length;
+  document.querySelector('[data-add="tiles"]').click(); await wait(300);
+  set('tiles.' + tilesBefore + '.id', 'MZ'); set('tiles.' + tilesBefore + '.name', '馬賽克'); set('tiles.' + tilesBefore + '.w', '30'); set('tiles.' + tilesBefore + '.h', '30'); set('tiles.' + tilesBefore + '.t', '6'); set('tiles.' + tilesBefore + '.perBox', '10'); await wait(300);
+  document.querySelector('[data-add="zones"]').click(); await wait(400);
+  ok('新增特殊區域一列', window.__tile.state.zones.length === 1);
+  set('zones.0.tileId', 'MZ'); set('zones.0.surface', 'W'); set('zones.0.a0', '0'); set('zones.0.b0', '100'); set('zones.0.a1', '100'); set('zones.0.b1', '130'); set('zones.0.trim', 'yes'); await wait(600);
+  ok('區域算出來：狀態列顯示特殊區域、建議書有區域表', !document.querySelector('.errbox') && /特殊區域 1 處/.test(st()) && /三、特殊區域/.test($('report').innerText), st());
+  ok('區域顯示在立面圖（紫色分界線）', /#7b3fa0/.test($('report').innerHTML));
+  set('zones.0.a0', '100'); set('zones.0.a1', '50'); await wait(500);
+  ok('區域終點小於起點 → 顯示錯誤', !!document.querySelector('.errbox'));
+  document.querySelector('[data-del="zones"][data-i="0"]').click(); await wait(500);
+  ok('刪除區域 → 錯誤消失', !document.querySelector('.errbox'));
   // 專案存讀
   const json = JSON.stringify(window.__tile.state);
   window.__tile.setState(JSON.parse(json)); await wait(500);

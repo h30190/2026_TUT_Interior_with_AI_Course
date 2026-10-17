@@ -367,5 +367,92 @@ t('完成面高度限制：未超過→通過；超過→警告並算出此限�
 });
 
 
+
+console.log('\n④ 特殊區域（材質變換、降板、分界收邊）');
+
+function withMats(p) {
+  p.tiles.push({ id: 'M1', name: '大理石 60×60', w: 60, h: 60, t: 20, perBox: 3, use: 'both' },
+               { id: 'A1', name: '抿石子', kind: 'area', w: 0, h: 0, t: 10, perBox: 25, cover: 1.6, use: 'both' });
+  return p;
+}
+
+t('扣除矩形：面積守恆（原面積＝剩餘各塊＋被扣掉的交集）', () => {
+  const r = [0, 0, 100, 80], z = [30, 20, 70, 50];
+  const rest = E.subtractRect([r], z), a = rest.reduce((s, q) => s + E.rectArea(q), 0);
+  near(a, 100 * 80 - 40 * 30, 1e-9);
+  rest.forEach((q, i) => rest.forEach((o, j) => { if (j > i) { assert.ok(!E.interRect(q, o), '剩餘塊互相重疊'); } }));
+  assert.deepStrictEqual(E.subtractRect([r], [200, 200, 300, 300]), [r]);
+});
+
+t('地面區域：60×60 大理石區剛好 1 片整磚；主地面淨面積＋區域面積＝原淨面積；主地面片數減少', () => {
+  const p = withMats(E.defaultProject()), base = E.computeAll(p), n0 = base.floor.surface.net[0];
+  p.zones = [{ id: 'Z1', label: '大理石', surface: 'floor', a0: n0, b0: n0, a1: n0 + 60, b1: n0 + 60, tileId: 'M1', method: 'stack-h', drop: 1, trim: 'yes' }];
+  const r = E.computeAll(p), z = r.zones[0];
+  assert.ok(r.ok, JSON.stringify(r.errors));
+  assert.deepStrictEqual([z.pieces, z.chosen.ev.full], [1, 1]);
+  near(z.area, 0.36, 1e-9);
+  near(r.floor.netArea + z.area, base.floor.netArea, 1e-6);
+  assert.ok(r.floor.pieces < base.floor.pieces);
+});
+
+t('整面材（抿石子）：用量＝面積×厚度 mm×係數；袋數進位；不算片數', () => {
+  const p = withMats(E.defaultProject());
+  p.zones = [{ id: 'Z2', label: '抿石子', surface: 'N', a0: 20, b0: 0, a1: 100, b1: 50, tileId: 'A1', method: 'auto', drop: 0, trim: 'no' }];
+  const r = E.computeAll(p), z = r.zones[0];
+  assert.ok(r.ok, JSON.stringify(r.errors));
+  near(z.area, 0.4, 1e-9); near(z.kg, 0.4 * 10 * 1.6, 1e-9);
+  assert.strictEqual(z.bags, 1); assert.strictEqual(z.pieces, 0);
+});
+
+t('分界收邊：只算與主鋪面交界的邊（貼在淨區邊界上的邊不算）；降板、厚度差有記錄', () => {
+  const p = withMats(E.defaultProject()), n0 = E.computeAll(p).floor.surface.net[0];
+  p.zones = [{ id: 'Z1', label: 'a', surface: 'floor', a0: n0, b0: n0, a1: n0 + 60, b1: n0 + 60, tileId: 'M1', method: 'auto', drop: 1, trim: 'yes' }];
+  let r = E.computeAll(p);
+  near(r.zones[0].trimLen, 120, 1e-9);
+  assert.strictEqual(r.zones[0].drop, 1);
+  assert.ok(r.trim.items.some(i => /Z1/.test(i.label) && Math.abs(i.len - 120) < 1e-9));
+  p.zones[0].trim = 'no';
+  r = E.computeAll(p);
+  assert.strictEqual(r.zones[0].trimLen, 0);
+  assert.ok(r.warnings.some(w => /降板/.test(w)), '降板但沒收邊應提醒');
+  p.zones = [{ id: 'Z3', label: 'b', surface: 'E', a0: 0, b0: 0, a1: 60, b1: 60, tileId: 'M1', method: 'auto', drop: 0, trim: 'yes' }];
+  r = E.computeAll(p);
+  near(r.zones[0].step, (20 - 8.5) / 10, 1e-9);
+});
+
+t('牆面區域從主牆面扣掉：牆面淨面積守恆（區域把牆切成上下兩塊也行）', () => {
+  const p = withMats(E.defaultProject()), b = E.computeAll(p);
+  p.zones = [{ id: 'Z4', label: '腰帶', surface: 'W', a0: 0, b0: 100, a1: 240, b1: 130, tileId: 'M1', method: 'stack-h', drop: 0, trim: 'yes' }];
+  const r = E.computeAll(p);
+  assert.ok(r.ok, JSON.stringify(r.errors));
+  near(r.walls.W.netArea + r.zones[0].area, b.walls.W.netArea, 1e-6);
+});
+
+t('區域壞值：重疊、材料不存在、終點小於起點、完全在貼磚範圍外、降板負值、位置空白、整面材當主鋪面，都要被擋下', () => {
+  const mk = () => { const p = withMats(E.defaultProject()); p.zones = [{ id: 'Z1', label: 'a', surface: 'floor', a0: 10, b0: 10, a1: 70, b1: 70, tileId: 'M1', method: 'auto', drop: 0, trim: 'no' }]; return p; };
+  let p = mk(); p.zones.push({ id: 'Z2', label: 'b', surface: 'floor', a0: 50, b0: 50, a1: 90, b1: 90, tileId: 'M1', method: 'auto', drop: 0, trim: 'no' });
+  assert.ok(!E.computeAll(p).ok, '重疊');
+  p = mk(); p.zones[0].tileId = 'NOPE'; assert.ok(!E.computeAll(p).ok, '材料不存在');
+  p = mk(); p.zones[0].a1 = 5; assert.ok(!E.computeAll(p).ok, '終點小於起點');
+  p = mk(); p.zones[0].a0 = 500; p.zones[0].a1 = 600; assert.ok(!E.computeAll(p).ok, '在範圍外');
+  p = mk(); p.zones[0].drop = -1; assert.ok(!E.computeAll(p).ok, '降板負值');
+  p = mk(); p.zones[0].a0 = NaN; assert.ok(!E.computeAll(p).ok, '位置空白');
+  p = mk(); p.floorTileId = 'A1'; assert.ok(!E.computeAll(p).ok, '整面材當主地磚');
+  assert.ok(E.computeAll(mk()).ok);
+});
+
+t('隨機區域 200 組：不丟例外、不出現 NaN、主面＋區域面積守恆', () => {
+  const b = E.computeAll(withMats(E.defaultProject()));
+  for (let i = 0; i < 200; i++) {
+    const p = withMats(E.defaultProject());
+    const x0 = ri(2, 120), y0 = ri(2, 170), w = ri(8, 50), h = ri(8, 60);
+    p.zones = [{ id: 'Z1', label: 'r', surface: 'floor', a0: x0, b0: y0, a1: x0 + w, b1: y0 + h, tileId: ['M1', 'A1', 'F1'][ri(0, 2)], method: 'auto', drop: ri(0, 2), trim: ri(0, 1) ? 'yes' : 'no' }];
+    const r = E.computeAll(p);
+    if (!r.ok) { continue; }
+    assert.ok(!/NaN|Infinity/.test(JSON.stringify(r.zones.map(z => [z.area, z.pieces, z.kg, z.trimLen]))), '出現 NaN');
+    near(r.floor.netArea + r.zones[0].area, b.floor.netArea, 1e-6);
+  }
+});
+
 console.log('\n結果：' + pass + ' 項通過，' + fail + ' 項失敗');
 process.exit(fail ? 1 : 0);

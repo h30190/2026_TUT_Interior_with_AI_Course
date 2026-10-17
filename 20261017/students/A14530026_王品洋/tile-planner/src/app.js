@@ -47,7 +47,7 @@ function listTable(key, cols, addLabel) {
 
 /* ---------------------------------------------------------------- 表單 */
 function tileOptions(use) {
-  return S.tiles.filter(function (t) { return t.use === use || t.use === 'both'; }).map(function (t) { return [t.id, t.id + '　' + t.name]; });
+  return S.tiles.filter(function (t) { return (t.use === use || t.use === 'both') && t.kind !== 'area'; }).map(function (t) { return [t.id, t.id + '　' + t.name]; });
 }
 
 function methodOptions(tileId) {
@@ -92,9 +92,18 @@ function renderForm() {
     { h: '位置', k: 'offset', t: 'num' }, { h: '高度', k: 'height', t: 'num' }, { h: '孔徑', k: 'dia', t: 'num' }], '新增給排水點') + '</details>';
 
   h += '<details open><summary>⑤ 材質表：磁磚</summary>' + listTable('tiles', [
-    { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'name', t: 'str' }, { h: '寬 cm', k: 'w', t: 'num' }, { h: '高 cm', k: 'h', t: 'num' },
-    { h: '厚 mm', k: 't', t: 'num' }, { h: '每箱片', k: 'perBox', t: 'num' }, { h: '貼的位置', k: 'use', t: 'select', o: [['floor', '地'], ['wall', '牆'], ['both', '地＋牆']] }], '新增磁磚') +
+    { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'name', t: 'str' }, { h: '類型', k: 'kind', t: 'select', o: [['tile', '磁磚／石材片'], ['area', '整面施作（抿石子等）']] }, { h: '寬 cm', k: 'w', t: 'num' }, { h: '高 cm', k: 'h', t: 'num' },
+    { h: '厚 mm', k: 't', t: 'num' }, { h: '每箱片／每袋 kg', k: 'perBox', t: 'num' }, { h: '用量 kg/m²/mm（整面）', k: 'cover', t: 'num' }, { h: '貼的位置', k: 'use', t: 'select', o: [['floor', '地'], ['wall', '牆'], ['both', '地＋牆']] }], '新增磁磚') +
     '<div class="grid2">' + inp('地面用磚', 'floorTileId', { type: 'select', options: tileOptions('floor') }) + inp('牆面用磚', 'wallTileId', { type: 'select', options: tileOptions('wall') }) + '</div></details>';
+
+  h += '<details open><summary>⑧ 特殊區域（材質變換、降板、分界收邊）</summary>' +
+    '<p class="hint">牆面局部換材（大理石、抿石子、馬賽克…）或地面特殊區。<b>地面</b>：填 x、y（西北角為原點，粗胚面）；<b>牆面</b>：填 沿牆 u（北南牆自西端、東西牆自北端）與離樓板高 z。起點填小的、終點填大的。材料請先在⑤新增（馬賽克、大理石片＝「磁磚／石材片」；抿石子＝「整面施作」）。降板僅地面有效。</p>' +
+    listTable('zones', [
+      { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'label', t: 'str' }, { h: '施作面', k: 'surface', t: 'select', o: [['floor', '地面'], ['N', '北牆'], ['E', '東牆'], ['S', '南牆'], ['W', '西牆']] },
+      { h: '起 x／u', k: 'a0', t: 'num' }, { h: '起 y／z', k: 'b0', t: 'num' }, { h: '終 x／u', k: 'a1', t: 'num' }, { h: '終 y／z', k: 'b1', t: 'num' },
+      { h: '材料', k: 'tileId', t: 'select', o: S.tiles.map(function (t) { return [t.id, t.id + '　' + t.name]; }) },
+      { h: '貼法', k: 'method', t: 'select', o: [['auto', '自動']].concat(Object.keys(E.METHOD_NAMES).map(function (k) { return [k, E.METHOD_NAMES[k]]; })) },
+      { h: '降板 cm', k: 'drop', t: 'num' }, { h: '分界收邊', k: 'trim', t: 'select', o: [['no', '否'], ['yes', '是']] }], '新增特殊區域') + '</details>';
 
   h += '<details><summary>⑥ 收邊條與門檻</summary><div class="grid2">' +
     inp('收邊條名稱', 'trim.label', { type: 'text' }) + inp('收邊條單支長度 cm', 'trim.pieceLen') +
@@ -139,6 +148,7 @@ document.addEventListener('click', function (e) {
     var k = t.getAttribute('data-add'), a = getPath(S, k);
     var n = a.length + 1;
     if (k === 'openings') { a.push({ id: 'O' + n, type: 'window', wall: 'N', offset: 10, width: 50, height: 50, sill: 100 }); }
+    else if (k === 'zones') { a.push({ id: 'Z' + n, label: '特殊區域', surface: 'floor', a0: 0, b0: 0, a1: 30, b1: 30, tileId: (S.tiles[0] && S.tiles[0].id) || '', method: 'auto', drop: 0, trim: 'no' }); }
     else if (k === 'floorHoles') { a.push({ id: 'H' + n, label: '地面開孔', x: 30, y: 30, size: 10 }); }
     else if (k === 'fixtures') { a.push({ id: 'X' + n, kind: 'supply', wall: 'W', offset: 50, height: 100, dia: 2.5 }); }
     else if (k === 'tiles') { a.push({ id: 'T' + n, name: '新磁磚', w: 30, h: 60, t: 9, perBox: 6, use: 'both' }); }
@@ -186,7 +196,7 @@ function recalc() {
   var slot = $('slot3d');
   if (slot) { slot.appendChild(v3); v3.classList.remove('hide'); }
   if (viewer) { viewer.setResult(res); syncSec(); }
-  $('status').textContent = '已計算（' + Math.round(performance.now() - t0) + ' ms）｜地面 ' + res.floor.pieces + ' 片、牆面 ' + res.wallTotal.pieces + ' 片';
+  $('status').textContent = '已計算（' + Math.round(performance.now() - t0) + ' ms）｜地面 ' + res.floor.pieces + ' 片、牆面 ' + res.wallTotal.pieces + ' 片' + ((res.zones && res.zones.length) ? '、特殊區域 ' + res.zones.length + ' 處' : '');
 }
 
 /* ---------------------------------------------------------------- 匯出入 */

@@ -43,6 +43,31 @@ function startMark(X, Y, ox, oy, box, label, vert) {
   return s;
 }
 
+/* ---------------------------------------------------------------- 特殊區域（平面圖、立面圖共用；X、Y 為座標轉換） */
+var ZC = '#7b3fa0';
+function zoneSVG(zi, X, Y) {
+  var r = zi.rect, z = zi.zone, s = '';
+  var x1 = Math.min(X(r[0]), X(r[2])), x2 = Math.max(X(r[0]), X(r[2])), y1 = Math.min(Y(r[1]), Y(r[3])), y2 = Math.max(Y(r[1]), Y(r[3]));
+  if (zi.areaOnly) {
+    s += '<rect x="' + x1.toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + (x2 - x1).toFixed(1) + '" height="' + (y2 - y1).toFixed(1) + '" fill="#d9cdb0"/>';
+    for (var k = 0; k < 60; k++) {          // 抿石子的點狀質感（固定亂數，重畫不會閃）
+      var px = x1 + ((k * 37) % 97) / 97 * (x2 - x1), py = y1 + ((k * 61) % 89) / 89 * (y2 - y1);
+      s += '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="1.3" fill="' + (k % 3 ? '#a89a7c' : '#efe7d2') + '"/>';
+    }
+  } else {
+    zi.chosen.ev.polys.forEach(function (p) {
+      p.clipped.forEach(function (c) { s += '<polygon points="' + pts(c, X, Y) + '" fill="' + C[p.kind] + '" stroke="' + C.line + '" stroke-width="0.5"/>'; });
+    });
+  }
+  s += '<rect x="' + x1.toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + (x2 - x1).toFixed(1) + '" height="' + (y2 - y1).toFixed(1) + '" fill="none" stroke="' + ZC + '" stroke-width="2.2" stroke-dasharray="7 4"/>';
+  zi.trimEdges.forEach(function (q) { s += '<line x1="' + X(q.x1).toFixed(1) + '" y1="' + Y(q.y1).toFixed(1) + '" x2="' + X(q.x2).toFixed(1) + '" y2="' + Y(q.y2).toFixed(1) + '" stroke="' + C.trim + '" stroke-width="4.5"/>'; });
+  var lab = z.id + ' ' + z.label + (zi.kind === 'floor' && zi.drop > 0 ? '（降 ' + zi.drop + ' cm）' : '');
+  var cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, wlab = Math.min(lab.length * 12 + 10, Math.max(60, x2 - x1));
+  s += '<rect x="' + (cx - wlab / 2).toFixed(1) + '" y="' + (cy - 11).toFixed(1) + '" width="' + wlab.toFixed(1) + '" height="17" rx="3" fill="#fff" fill-opacity="0.88" stroke="' + ZC + '" stroke-width="0.8"/>';
+  s += text(cx, cy + 2, lab, { size: 11, fill: ZC, bold: true, anchor: 'middle' });
+  return s;
+}
+
 /* ---------------------------------------------------------------- 平面圖 */
 function planSVG(res, opts) {
   opts = opts || {};
@@ -59,6 +84,7 @@ function planSVG(res, opts) {
       s += '<polygon points="' + pts(c, X, Y) + '" fill="' + C[p.kind] + '" stroke="' + C.line + '" stroke-width="0.5"/>';
     });
   });
+  (fl.zones || []).forEach(function (zi) { s += zoneSVG(zi, X, Y); });
   // 洩水等高線與角隅高差
   var dr0 = pj.drain, n = sf.net;
   if (dr0.slope > 0) {
@@ -168,6 +194,7 @@ function wallSVG(res, w, opts) {
   ev.polys.forEach(function (p) {
     p.clipped.forEach(function (c) { s += '<polygon points="' + polyPts(c) + '" fill="' + C[p.kind] + '" stroke="' + C.line + '" stroke-width="0.5"/>'; });
   });
+  (wi.zones || []).forEach(function (zi) { s += zoneSVG(zi, X, Y); });
   // 貼磚淨範圍
   s += rectEl(sf.net, 'none', '#b08968', 1, '4 3');
   // 洞口（蓋在磚上）
@@ -356,6 +383,33 @@ Viewer3D.prototype.draw = function () {
       poly(c.map(function (q) { return [q[0], q[1], zf(q[0], q[1])]; }), shadeColor(C[p.kind], tint), '#8f8a7c', 0.5);
     });
   });
+  // 特殊區域（地面）：降板、分界收邊
+  (res.floor.zones || []).forEach(function (zi) {
+    var r = zi.rect, dz = kk * (zi.drop || 0), G = 8, gi, gj;
+    function zz(x, y) { return zf(x, y) - dz; }
+    if (zi.areaOnly) {
+      for (gi = 0; gi < G; gi++) { for (gj = 0; gj < G; gj++) {
+        var xa = r[0] + (r[2] - r[0]) * gi / G, xb = r[0] + (r[2] - r[0]) * (gi + 1) / G, ya = r[1] + (r[3] - r[1]) * gj / G, yb = r[1] + (r[3] - r[1]) * (gj + 1) / G;
+        poly([[xa, ya, zz(xa, ya)], [xb, ya, zz(xb, ya)], [xb, yb, zz(xb, yb)], [xa, yb, zz(xa, yb)]], '#d9cdb0', null);
+      } }
+    } else {
+      zi.chosen.ev.polys.forEach(function (p) {
+        p.clipped.forEach(function (c) { poly(c.map(function (q) { return [q[0], q[1], zz(q[0], q[1])]; }), shadeColor(C[p.kind], 0.93), '#8f8a7c', 0.5); });
+      });
+    }
+    var eds = [[r[0], r[1], r[2], r[1], '-y'], [r[0], r[3], r[2], r[3], '+y'], [r[0], r[1], r[0], r[3], '-x'], [r[2], r[1], r[2], r[3], '+x']];
+    eds.forEach(function (q) {
+      var onB = Math.abs((q[4] === '-y' ? r[1] - res.floor.surface.net[1] : q[4] === '+y' ? r[3] - res.floor.surface.net[3] : q[4] === '-x' ? r[0] - res.floor.surface.net[0] : r[2] - res.floor.surface.net[2])) < 0.01;
+      if (onB) { return; }
+      var NS = 10, top = [], bot = [], ii;
+      for (ii = 0; ii <= NS; ii++) { var px = q[0] + (q[2] - q[0]) * ii / NS, py = q[1] + (q[3] - q[1]) * ii / NS; top.push([px, py, zf(px, py)]); bot.push([px, py, zz(px, py)]); }
+      if (dz > 0) { poly(top.concat(bot.slice().reverse()), '#b9b2a2', '#555', 0.8); }
+      if (zi.trimEdges.length) {
+        ctx.beginPath(); bot.forEach(function (b3, i3) { var pp = P(b3); if (i3) { ctx.lineTo(pp[0], pp[1]); } else { ctx.moveTo(pp[0], pp[1]); } });
+        ctx.strokeStyle = '#2f9e6b'; ctx.lineWidth = 3.5; ctx.stroke();
+      }
+    });
+  });
   var d = pj.drain, h = d.size / 2;
   poly([[d.x - h, d.y - h], [d.x + h, d.y - h], [d.x + h, d.y + h], [d.x - h, d.y + h]].map(function (q) { return [q[0], q[1], zf(q[0], q[1]) + 0.1]; }), '#ffffff', '#1d6fa5', 1.5);
   // 牆（只畫面向鏡頭的內面，由遠到近）
@@ -425,6 +479,25 @@ Viewer3D.prototype.draw = function () {
         var col = p.kind === 'full' ? '#efe9dd' : (p.kind === 'cut' ? '#f2c58a' : '#e9a3a3');
         if (shade < 1) { col = shadeColor(col, shade); }
         poly(c.map(function (q) { return dw.map(q[0], q[1]); }), col, '#8f8a7c', 0.5);
+      });
+    });
+    (wi.zones || []).forEach(function (zi) {
+      var st = zi.step || 0, r = zi.rect;
+      function mz(u, z) { var p = dw.map(u, z); return [p[0] + dw.n[0] * st, p[1] + dw.n[1] * st, p[2]]; }
+      var polysZ = zi.areaOnly ? [{ kind: 'area', clipped: [[[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]]] }] : zi.chosen.ev.polys;
+      polysZ.forEach(function (p) {
+        p.clipped.forEach(function (c0) {
+          var c = (baseLine && pj.drain.slope > 0) ? clipAbove(c0, baseLine) : c0;
+          if (c.length < 3) { return; }
+          var col = p.kind === 'area' ? '#d9cdb0' : (p.kind === 'full' ? '#efe9dd' : (p.kind === 'cut' ? '#f2c58a' : '#e9a3a3'));
+          if (shade < 1) { col = shadeColor(col, shade); }
+          poly(c.map(function (q) { return mz(q[0], q[1]); }), col, p.kind === 'area' ? null : '#8f8a7c', 0.5);
+        });
+      });
+      poly([mz(r[0], r[1]), mz(r[2], r[1]), mz(r[2], r[3]), mz(r[0], r[3])], null, '#7b3fa0', 1.8);
+      zi.trimEdges.forEach(function (q) {
+        var a1 = P(mz(q.x1, q.y1)), a2 = P(mz(q.x2, q.y2));
+        ctx.beginPath(); ctx.moveTo(a1[0], a1[1]); ctx.lineTo(a2[0], a2[1]); ctx.strokeStyle = '#2f9e6b'; ctx.lineWidth = 3.5; ctx.stroke();
       });
     });
     sf.openRects.forEach(function (q) {
