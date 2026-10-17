@@ -35,7 +35,9 @@ function 跑(參數) {
   }).trim();
 }
 
-if (!訊息) {
+/* 只有空白的訊息也要擋（#18）：原本只擋空字串，"   " 會先 git add、
+   再被 git commit 拒絕，檔案殘留在暫存區 */
+if (!訊息 || !訊息.trim()) {
   console.error('要給 commit 訊息，例：node scripts/交件.js "20260919 完成油漆計算機"');
   process.exit(1);
 }
@@ -57,13 +59,22 @@ console.log('');
 
 /* ── 第 2 步：commit ── */
 let 有新commit = false;
-if (r.變更.length) {
+if (r.未提交.length) {
   console.log('第 2 步　commit');
+  /* 只 add 實際存在的資料夾（#17）：任何一個 pathspec 不存在，git add 會整批失敗。
+     新同學、還沒上到的課都沒有那個日期的資料夾，原本一定會踩到。 */
   const 我的資料夾 = 設定.上課日期資料夾.map(function (d) {
     return d + '/students/' + 設定.學號姓名;
-  });
-  跑(['add', '--'].concat(我的資料夾));
-  跑(['commit', '-m', 訊息]);
+  }).filter(function (p) { return fs.existsSync(require('path').join(設定.repo, p)); });
+  跑(['add', '-A', '--'].concat(我的資料夾));
+  try {
+    跑(['commit', '-m', 訊息]);
+  } catch (e) {
+    /* commit 失敗就把剛剛 add 的撤回，不留半套狀態 */
+    try { 跑(['reset', '-q', '--'].concat(我的資料夾)); } catch (e2) { /* 撤不回也要報原本的錯 */ }
+    console.log('  commit 失敗，已撤回暫存：' + ((e.stderr || e.message) + '').trim().split('\n')[0]);
+    process.exit(1);
+  }
   有新commit = true;
   if (!試跑) console.log('  ' + 跑(['log', '--oneline', '-1']));
   console.log('');

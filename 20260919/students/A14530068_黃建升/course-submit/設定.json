@@ -11,6 +11,6 @@
   "大檔案副檔名": [".rvt", ".rfa", ".rte", ".rft", ".skp", ".dwg", ".dxf", ".3dm",
                    ".max", ".blend", ".ifc", ".mp4", ".mov", ".avi", ".mkv",
                    ".psd", ".ai", ".indd", ".tif", ".tiff"],
-  "機密檔樣式": [".env", ".key", ".pem", "secrets.json", "credentials"],
+  "總量上限MB": 20,
   "單檔上限MB": 5
 }
