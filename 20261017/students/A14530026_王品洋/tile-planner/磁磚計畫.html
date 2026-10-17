@@ -1997,15 +1997,6 @@ function renderForm() {
     { h: '厚 mm', k: 't', t: 'num' }, { h: '每箱片／每袋 kg', k: 'perBox', t: 'num' }, { h: '用量 kg/m²/mm（整面）', k: 'cover', t: 'num' }, { h: '貼的位置', k: 'use', t: 'select', o: [['floor', '地'], ['wall', '牆'], ['both', '地＋牆']] }], '新增磁磚') +
     '<div class="grid2">' + inp('地面用磚', 'floorTileId', { type: 'select', options: tileOptions('floor') }) + inp('牆面用磚', 'wallTileId', { type: 'select', options: tileOptions('wall') }) + '</div></details>';
 
-  h += '<details open><summary>⑧ 特殊區域（材質變換、降板、分界收邊）</summary>' +
-    '<p class="hint">牆面局部換材（大理石、抿石子、馬賽克…）或地面特殊區。<b>地面</b>：填 x、y（西北角為原點，粗胚面）；<b>牆面</b>：填 沿牆 u（北南牆自西端、東西牆自北端）與離樓板高 z。起點填小的、終點填大的。材料請先在⑤新增（馬賽克、大理石片＝「磁磚／石材片」；抿石子＝「整面施作」）。降板僅地面有效。</p>' +
-    listTable('zones', [
-      { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'label', t: 'str' }, { h: '施作面', k: 'surface', t: 'select', o: [['floor', '地面'], ['N', '北牆'], ['E', '東牆'], ['S', '南牆'], ['W', '西牆']] },
-      { h: '起 x／u', k: 'a0', t: 'num' }, { h: '起 y／z', k: 'b0', t: 'num' }, { h: '終 x／u', k: 'a1', t: 'num' }, { h: '終 y／z', k: 'b1', t: 'num' },
-      { h: '材料', k: 'tileId', t: 'select', o: S.tiles.map(function (t) { return [t.id, t.id + '　' + t.name]; }) },
-      { h: '貼法', k: 'method', t: 'select', o: [['auto', '自動']].concat(Object.keys(E.METHOD_NAMES).map(function (k) { return [k, E.METHOD_NAMES[k]]; })) },
-      { h: '降板 cm', k: 'drop', t: 'num' }, { h: '分界收邊', k: 'trim', t: 'select', o: [['no', '否'], ['yes', '是']] }], '新增特殊區域') + '</details>';
-
   h += '<details><summary>⑥ 收邊條與門檻</summary><div class="grid2">' +
     inp('收邊條名稱', 'trim.label', { type: 'text' }) + inp('收邊條單支長度 cm', 'trim.pieceLen') +
     '</div><div class="row">' + inp('門洞口收邊', 'trim.jambDoor', { type: 'bool' }) + inp('窗洞口收邊', 'trim.jambWindow', { type: 'bool' }) + inp('牆磚頂端收邊（未貼到天花板時）', 'trim.topEdge', { type: 'bool' }) + '</div>' +
@@ -2019,6 +2010,14 @@ function renderForm() {
     inp('破損預留 %', 'breakagePct', { step: '0.5' }) + inp('黏著劑耗量 kg/m²/mm', 'adhesiveKgPerM2PerMm', { step: '0.1' }) +
     inp('黏著劑每包 kg', 'bagKg') + inp('收邊條損耗 %', 'trimLossPct', { step: '0.5' }) +
     '<label class="f"><span>磁磚縫（固定）</span><input value="0.2 cm" readonly></label><label class="f"><span>黏著劑厚（固定）</span><input value="0.5 cm" readonly></label></div></details>';
+  h += '<details open><summary>⑧ 特殊區域（材質變換、降板、分界收邊）</summary>' +
+    '<p class="hint">牆面局部換材（大理石、抿石子、馬賽克…）或地面特殊區。<b>地面</b>：填 x、y（西北角為原點，粗胚面）；<b>牆面</b>：填 沿牆 u（北南牆自西端、東西牆自北端）與離樓板高 z。起點填小的、終點填大的。材料請先在⑤新增（馬賽克、大理石片＝「磁磚／石材片」；抿石子＝「整面施作」）。降板僅地面有效。</p>' +
+    listTable('zones', [
+      { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'label', t: 'str' }, { h: '施作面', k: 'surface', t: 'select', o: [['floor', '地面'], ['N', '北牆'], ['E', '東牆'], ['S', '南牆'], ['W', '西牆']] },
+      { h: '起 x／u', k: 'a0', t: 'num' }, { h: '起 y／z', k: 'b0', t: 'num' }, { h: '終 x／u', k: 'a1', t: 'num' }, { h: '終 y／z', k: 'b1', t: 'num' },
+      { h: '材料', k: 'tileId', t: 'select', o: S.tiles.map(function (t) { return [t.id, t.id + '　' + t.name]; }) },
+      { h: '貼法', k: 'method', t: 'select', o: [['auto', '自動']].concat(Object.keys(E.METHOD_NAMES).map(function (k) { return [k, E.METHOD_NAMES[k]]; })) },
+      { h: '降板 cm', k: 'drop', t: 'num' }, { h: '分界收邊', k: 'trim', t: 'select', o: [['no', '否'], ['yes', '是']] }], '新增特殊區域') + '</details>';
   $('form').innerHTML = h;
 }
 
