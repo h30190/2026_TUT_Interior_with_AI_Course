@@ -1,0 +1,93 @@
+:root{
+  --bg:#f6f4ef; --panel:#ffffff; --ink:#2b2b2b; --muted:#7a756c;
+  --line:#e4ded4; --accent:#8a7f6d; --tile:#efe9df; --cut:#f2b48c; --danger:#e04545;
+  --highlight:#3a76b5; --guide:#1a7a33;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);padding:24px}
+h1{font-size:20px;font-weight:600;letter-spacing:.5px;margin-bottom:4px}
+.sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+.layout{display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;position:relative}
+.card h2{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--accent)}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+input,select{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;font-size:13px;background:#fbfaf7}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.presets button{flex:1 1 100%;padding:9px;border:1px solid var(--line);border-radius:6px;background:#fbfaf7;cursor:pointer;font-size:12px;text-align:left}
+.presets button:hover{border-color:var(--accent)}
+.faceblk{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:#fbfaf7}
+.faceblk .fname{font-size:13px;font-weight:600;color:var(--ink)}
+.faceblk .fdim{font-size:11px;color:var(--muted);margin-left:6px}
+.syncbtn{width:100%;padding:10px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;cursor:pointer;font-size:13px}
+.syncbtn:hover{filter:brightness(1.08)}
+.syncnote{font-size:11px;color:var(--muted);margin-top:6px}
+.opblk{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:#fbfaf7}
+.opblk .fname{font-size:13px;font-weight:600;color:var(--ink)}
+.openable{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.openable input{width:auto;padding:0}
+.opblk.disabled{opacity:.45}
+.opblk.disabled input,.opblk.disabled select{pointer-events:none}
+.view{display:flex;gap:8px;margin-bottom:10px}
+.view button{flex:1;padding:10px;border:1px solid var(--line);border-radius:6px;background:#fbfaf7;cursor:pointer;font-size:13px}
+.view button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{padding:8px 14px;border:1px solid var(--line);border-radius:6px;background:#fbfaf7;cursor:pointer;font-size:12.5px}
+.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right}
+th{background:#f1ede5;color:var(--accent);text-align:right}
+td:first-child,th:first-child{text-align:left}
+tr.total td{background:#f1ede5;font-weight:700;border-top:2px solid var(--accent)}
+td.danger{color:var(--danger);font-weight:600}
+canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:default}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:10px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+.warn{margin-top:12px;padding:10px 12px;border-radius:8px;background:#fdecec;border:1px solid #f3c2c2;color:#a03030;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.concl{margin-top:14px;padding:12px 14px;border-radius:8px;background:#f1ede5;font-size:13px;line-height:1.7}
+.note{font-size:11px;color:var(--muted);margin-top:10px}
+
+/* ✨ 智慧消滅小料按鈕 */
+.autofix-btn{padding:6px 14px;border:none;border-radius:6px;background:linear-gradient(135deg,#d22,#e05a30);color:#fff;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(221,34,34,0.3);transition:all .15s}
+.autofix-btn:hover{filter:brightness(1.15);transform:translateY(-1px)}
+
+/* 🔍 X 光磁磚透視卡 (HUD Tooltip) */
+.tile-inspector{position:absolute;pointer-events:none;background:rgba(30,30,30,0.92);color:#fff;padding:8px 12px;border-radius:6px;font-size:11.5px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,0.25);z-index:99;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.15)}
+.tile-inspector .title{font-weight:700;color:#ffda79;margin-bottom:2px}
+.tile-inspector .danger{color:#ff6b6b;font-weight:700}
+
+/* 📐 CAD 放樣座標與鎖點工具列 */
+.cad-toolbar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#24292e;color:#fff;border-radius:8px;margin-bottom:10px;flex-wrap:wrap}
+.cad-group{display:flex;align-items:center;gap:6px}
+.cad-group label{font-size:11.5px;color:#abb2bf;margin:0;white-space:nowrap}
+.cad-group select,.cad-group input{padding:5px 8px;font-size:12px;background:#181a1f;color:#61afef;border:1px solid #3e4451;border-radius:4px;width:auto}
+.cad-group input{width:70px;text-align:right}
+.cad-btn{padding:5px 12px;background:#98c379;color:#181a1f;border:none;border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s}
+.cad-btn:hover{filter:brightness(1.15)}
+.cad-actions{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.cad-action-btn{padding:5px 10px;background:#2c313a;color:#dcdfe4;border:1px solid #4b5263;border-radius:4px;font-size:11.5px;cursor:pointer;transition:all .15s}
+.cad-action-btn:hover{background:#3e4451;color:#fff;border-color:#61afef}
+.cad-action-btn.active{background:#007acc;color:#fff;border-color:#007acc}
+.cad-action-btn.locked{background:#2e7d32;color:#fff;border-color:#2e7d32;font-weight:700}
+
+/* 📍 五面橫向排磚控制網格 (移至畫布正下方) */
+.face-cfgs-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+@media (max-width:1400px){.face-cfgs-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}}
+.faceblk{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fbfaf7;display:flex;flex-direction:column}
+.faceblk.locked-joint{border-color:#2e7d32;box-shadow:0 0 0 1px #2e7d32;background:#f4fbf5}
+.faceblk-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.joint-badge{font-size:10px;padding:2px 5px;background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9;border-radius:4px;font-weight:600}
+
+/* 🔒 鎖定／解鎖四面對縫切換按鈕 */
+.lock-toggle-btn{padding:6px 14px;border:1px solid #3e4451;border-radius:6px;background:#fbfaf7;color:var(--ink);font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .2s}
+.lock-toggle-btn:hover{border-color:#007acc;color:#007acc}
+.lock-toggle-btn.locked{background:#2e7d32;color:#ffffff;border-color:#2e7d32;box-shadow:0 2px 6px rgba(46,125,50,0.25)}
+
+/* ⚠️ 柱子與門窗衝突警示橫幅 */
+.clash-alert{margin-bottom:12px;padding:10px 16px;background:linear-gradient(135deg,#fee2e2,#fecaca);border:1.5px solid #ef4444;border-radius:8px;color:#991b1b;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(239,68,68,0.2);animation:pulse-border 2s infinite}
+@keyframes pulse-border{0%,100%{border-color:#ef4444;box-shadow:0 0 0 0 rgba(239,68,68,0.4)}50%{border-color:#b91c1c;box-shadow:0 0 0 4px rgba(239,68,68,0.2)}}
+
+
+
