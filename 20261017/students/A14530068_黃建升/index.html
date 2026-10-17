@@ -29,6 +29,12 @@
   .syncbtn{width:100%;padding:10px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;cursor:pointer;font-size:13px}
   .syncbtn:hover{filter:brightness(1.08)}
   .syncnote{font-size:11px;color:var(--muted);margin-top:6px}
+  .opblk{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:#fbfaf7}
+  .opblk .fname{font-size:13px;font-weight:600;color:var(--ink)}
+  .openable{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .openable input{width:auto;padding:0}
+  .opblk.disabled{opacity:.45}
+  .opblk.disabled input,.opblk.disabled select{pointer-events:none}
   .view{display:flex;gap:8px;margin-bottom:10px}
   .view button{flex:1;padding:10px;border:1px solid var(--line);border-radius:6px;background:#fbfaf7;cursor:pointer;font-size:13px}
   .view button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -86,6 +92,44 @@
       <button id="syncWalls" class="syncbtn">一鍵同步四面牆（A→B/C/D）</button>
       <div class="syncnote">將 A 立面的方向／工法／起磚基準套用給 B、C、D 三面牆（地坪不受影響）。</div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>門窗開口設定</h2>
+      <div class="opblk" id="doorBlk">
+        <label class="openable"><input type="checkbox" id="door_on" checked> 啟用【開門 Door】</label>
+        <div class="row2">
+          <div><label>所在面別</label>
+            <select id="door_face"><option value="A">A立面</option><option value="B">B立面</option><option value="C">C立面</option><option value="D" selected>D立面</option></select></div>
+          <div><label>離地高度 Y (cm)</label><input id="door_y" type="number" value="0" disabled title="門固定離地 0 cm"></div>
+        </div>
+        <div class="row2">
+          <div><label>寬度 W_op (cm)</label><input id="door_w" type="number" value="90"></div>
+          <div><label>高度 H_op (cm)</label><input id="door_h" type="number" value="210"></div>
+        </div>
+        <div class="row2">
+          <div><label>距左牆 X (cm)</label><input id="door_x" type="number" value="20"></div>
+        </div>
+      </div>
+      <div class="opblk" id="winBlk">
+        <label class="openable"><input type="checkbox" id="win_on" checked> 啟用【開窗 Window】</label>
+        <div class="row2">
+          <div><label>所在面別</label>
+            <select id="win_face"><option value="A">A立面</option><option value="B" selected>B立面</option><option value="C">C立面</option><option value="D">D立面</option></select></div>
+          <div><label>窗台離地 Y (cm)</label><input id="win_y" type="number" value="100"></div>
+        </div>
+        <div class="row2">
+          <div><label>寬度 W_op (cm)</label><input id="win_w" type="number" value="80"></div>
+          <div><label>高度 H_op (cm)</label><input id="win_h" type="number" value="100"></div>
+        </div>
+        <div class="row2">
+          <div><label>距左牆 X (cm)</label><input id="win_x" type="number" value="40"></div>
+        </div>
+      </div>
+      <div class="presets">
+        <button data-o="bathop">浴室情境：門 D面 80×200／窗 B面 60×60（離地140）</button>
+        <button data-o="livingop">客廳情境：門 A面 100×220／落地窗 C面 240×220（離地0）</button>
+      </div>
+    </div>
   </div>
 
   <div>
@@ -108,6 +152,7 @@
         <span><i class="sw" style="background:var(--cut)"></i>裁切修邊磚</span>
         <span><i class="sw" style="background:var(--danger)"></i>危險碎磚（&lt;1/4 磚或 &lt;5cm）</span>
         <span><i class="sw" style="background:#fff;border:1px dashed #2b2b2b"></i>壁地交接折線</span>
+        <span><i class="sw" style="background:#eae6df;border:2px double #2b2b2b"></i>門窗開口（不鋪磚）</span>
       </div>
       <div id="warn" class="warn" style="display:none"></div>
     </div>
@@ -117,12 +162,12 @@
       <table id="tbl">
         <thead><tr>
           <th>面別</th><th>尺寸(cm)</th><th>方向</th><th>工法</th><th>起磚</th>
-          <th>實鋪整磚</th><th>邊緣裁切</th><th>總叫料</th><th>損耗率%</th><th>碎磚警示</th>
+          <th>門窗扣除</th><th>實鋪整磚</th><th>邊緣裁切</th><th>總叫料</th><th>損耗率%</th><th>碎磚警示</th>
         </tr></thead>
         <tbody></tbody>
       </table>
       <div id="concl" class="concl"></div>
-      <div class="note">總叫料＝整磚＋裁切消耗（裁切磚不可回填復用）；損耗率＝(總叫料−理論片數)÷理論片數；理論片數＝淨面積÷單磚面積（向上取整）。碎磚警示＝面積&lt;1/4 磚或最短邊&lt;5cm 的裁切磚數量。</div>
+      <div class="note">總叫料＝整磚＋裁切消耗（裁切磚不可回填復用）；損耗率＝(總叫料−理論片數)÷理論片數；理論片數＝淨面積（已扣門窗）÷單磚面積（向上取整）。碎磚警示＝面積&lt;1/4 磚或最短邊&lt;5cm 的裁切磚數量（含門窗邊界裁切）。開口完全覆蓋之磚不計料。</div>
     </div>
   </div>
 </div>
@@ -134,6 +179,12 @@ const PRESETS = {
   living:{L:600,W:400,H:280,TL:120,TW:60},
   bedroom:{L:450,W:350,H:280,TL:15,TW:75},
   bath:{L:240,W:180,H:240,TL:30,TW:60}
+};
+const OPEN_PRESETS = {
+  bathop:  {door_on:true,  door_face:'D', door_w:80,  door_h:200, door_x:20, door_y:0,
+            win_on:true,   win_face:'B',  win_w:60,   win_h:60,   win_x:40,  win_y:140},
+  livingop:{door_on:true,  door_face:'A', door_w:100, door_h:220, door_x:20, door_y:0,
+            win_on:true,   win_face:'C',  win_w:240,  win_h:220,  win_x:40,  win_y:0}
 };
 const FACE_KEYS = ['floor','A','B','C','D'];
 const FACE_NAMES = {floor:'地坪', A:'A立面', B:'B立面', C:'C立面', D:'D立面'};
@@ -152,6 +203,35 @@ let face = 'floor';
 function num(id, dft){
   const v = parseFloat($(id).value);
   return (Number.isFinite(v) && v > 0) ? v : dft;
+}
+
+function num0(id, dft){
+  const v = parseFloat($(id).value);
+  return (Number.isFinite(v) && v >= 0) ? v : dft;
+}
+
+// 門窗開口：依面別整理，並夾到牆面範圍內
+function openings(p){
+  const byFace = {A:[], B:[], C:[], D:[]};
+  const list = [];
+  if($('door_on').checked){
+    list.push({kind:'door', face:$('door_face').value, w:num('door_w',90), h:num('door_h',210),
+      x:num0('door_x',20), y:0});
+  }
+  if($('win_on').checked){
+    list.push({kind:'window', face:$('win_face').value, w:num('win_w',80), h:num('win_h',100),
+      x:num0('win_x',40), y:num0('win_y',100)});
+  }
+  for(const o of list){
+    const fw = (o.face==='A'||o.face==='C') ? p.L : p.W;
+    const fh = p.H;
+    o.x = Math.max(0, Math.min(o.x, fw));
+    o.y = Math.max(0, Math.min(o.y, fh));
+    o.w = Math.max(0, Math.min(o.w, fw - o.x));
+    o.h = Math.max(0, Math.min(o.h, fh - o.y));
+    if(o.w>EPS && o.h>EPS){ o.area = o.w*o.h; byFace[o.face].push(o); }
+  }
+  return byFace;
 }
 
 function params(){
@@ -175,8 +255,9 @@ function rowOffset(r, pitchL, mode){
   return 0;
 }
 
-// 單面排磚：面寬 fw × 面高 fh；dir 'H' 磚長邊沿面寬、'V' 磚長邊沿面高
-function layout(p, fw, fh, cfg){
+// 單面排磚：面寬 fw × 面高 fh；dir 'H' 磚長邊沿面寬、'V' 磚長邊沿面高；ops＝該面門窗開口
+function layout(p, fw, fh, cfg, ops){
+  ops = ops || [];
   const tL = cfg.dir==='H' ? p.TL : p.TW;
   const tW = cfg.dir==='H' ? p.TW : p.TL;
   const pitchL = tL + p.joint, pitchW = tW + p.joint;
@@ -194,20 +275,32 @@ function layout(p, fw, fh, cfg){
       if(y1 <= EPS || y0 >= fh - EPS) continue;
       const cutL = (x0 < -EPS || x1 > fw + EPS);
       const cutW = (y0 < -EPS || y1 > fh + EPS);
-      const wL = Math.min(x1,fw)-Math.max(x0,0);
-      const wW = Math.min(y1,fh)-Math.max(y0,0);
-      const full = !cutL && !cutW;
+      let wL = Math.min(x1,fw)-Math.max(x0,0);
+      let wW = Math.min(y1,fh)-Math.max(y0,0);
+      let cutOp = false, covered = false;
+      for(const o of ops){
+        const ix = Math.min(x1, o.x+o.w) - Math.max(x0, o.x);
+        const iy = Math.min(y1, o.y+o.h) - Math.max(y0, o.y);
+        if(ix > EPS && iy > EPS){
+          cutOp = true;
+          wL -= ix; wW -= iy;
+          if(wL <= EPS || wW <= EPS){ covered = true; break; }
+        }
+      }
+      if(covered) continue;
+      const full = !cutL && !cutW && !cutOp;
       const minDim = Math.min(wL,wW);
       const frac = (wL*wW)/(tL*tW);
       const danger = !full && (frac < 0.25 || minDim < 5);
       tiles.push({x0,y0,wL,wW,full,danger});
     }
   }
-  const net = Math.ceil((fw*fh)/(p.TL*p.TW));
+  const opArea = ops.reduce((a,o)=>a+o.area,0);
+  const net = Math.ceil(Math.max(0, fw*fh - opArea)/(p.TL*p.TW));
   const full = tiles.filter(t=>t.full).length;
   const cut = tiles.filter(t=>!t.full).length;
   const danger = tiles.filter(t=>t.danger).length;
-  return {tiles, net, full, cut, total:full+cut, danger};
+  return {tiles, net, full, cut, total:full+cut, danger, opArea};
 }
 
 // 五面尺寸：地坪 L×W；A/C 牆 L×H、B/D 牆 W×H
@@ -224,25 +317,30 @@ function faces(p){
 function fmt(n){ return Number.isFinite(n) ? n.toLocaleString('en-US') : '—'; }
 
 function computeAll(p){
+  const ops = openings(p);
   return faces(p).map(f=>{
     const cfg = cfgOf(f.key);
-    const r = layout(p, f.fw, f.fh, cfg);
-    return {key:f.key, name:f.name, fw:f.fw, fh:f.fh, cfg, r};
+    const r = layout(p, f.fw, f.fh, cfg, ops[f.key]||[]);
+    return {key:f.key, name:f.name, fw:f.fw, fh:f.fh, cfg, r, ops:ops[f.key]||[]};
   });
 }
 
 function renderTable(rows, p){
   const tb = document.querySelector('#tbl tbody');
   tb.innerHTML = '';
-  let net=0, full=0, cut=0, danger=0;
+  let net=0, full=0, cut=0, danger=0, opArea=0;
   for(const s of rows){
-    net+=s.r.net; full+=s.r.full; cut+=s.r.cut; danger+=s.r.danger;
+    net+=s.r.net; full+=s.r.full; cut+=s.r.cut; danger+=s.r.danger; opArea+=s.r.opArea;
     const loss = s.r.net>0 ? ((s.r.total - s.r.net)/s.r.net*100) : 0;
+    const opTxt = s.ops.length>0
+      ? s.ops.map(o=>(o.kind==='door'?'門':'窗')+' '+o.w+'×'+o.h).join('<br>')
+      : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${s.name}</td><td>${s.fw}×${s.fh}</td>
       <td>${s.cfg.dir==='H'?'橫貼':'直貼'}</td>
       <td>${MODE_NAMES[s.cfg.mode]}</td>
       <td>${ALIGN_NAMES[s.cfg.align]}</td>
+      <td>${opTxt}</td>
       <td>${fmt(s.r.full)}</td><td>${fmt(s.r.cut)}</td><td>${fmt(s.r.total)}</td>
       <td>${loss.toFixed(1)}</td>
       <td class="${s.r.danger>0?'danger':''}">${s.r.danger>0?('⚠ '+s.r.danger+' 片'):'—'}</td>`;
@@ -254,19 +352,26 @@ function renderTable(rows, p){
   const tr = document.createElement('tr');
   tr.className = 'total';
   tr.innerHTML = `<td>全室五面總計</td><td>—</td><td>—</td><td>—</td><td>—</td>
+    <td>${opArea>0?(opArea/10000).toFixed(2)+' m²':'—'}</td>
     <td>${fmt(full)}</td><td>${fmt(cut)}</td><td>${fmt(total)}</td>
     <td>${loss.toFixed(1)}</td>
     <td class="${danger>0?'danger':''}">${danger>0?('⚠ '+danger+' 片'):'—'}</td>`;
   tb.appendChild(tr);
-  return {net, full, cut, total, danger, loss, amt};
+  return {net, full, cut, total, danger, loss, amt, opArea};
 }
 
 function renderConcl(p, tot){
-  const worst = computeAll(p).filter(s=>s.r.danger>0)
+  const rows = computeAll(p);
+  const worst = rows.filter(s=>s.r.danger>0)
     .sort((a,b)=>b.r.danger-a.r.danger);
+  const opNames = rows.filter(s=>s.ops.length>0)
+    .flatMap(s=>s.ops.map(o=>`${s.name}${o.kind==='door'?'門':'窗'} ${o.w}×${o.h}`));
   let txt = `【全室五面】總叫料 ${fmt(tot.total)} 片（整磚 ${fmt(tot.full)}＋裁切 ${fmt(tot.cut)}），`
     + `總損耗率 ${tot.loss.toFixed(1)}%。`
     + (tot.amt!==null ? ` 總工程金額 ${fmt(tot.amt)} 元（單價 ${fmt(p.price)} 元/片）。` : '');
+  if(tot.opArea>0){
+    txt += ` 已扣除門窗開口 ${opNames.join('、')}（共 ${(tot.opArea/10000).toFixed(2)} m²，不鋪磚）。`;
+  }
   if(tot.danger>0){
     const names = worst.map(s=>`${s.name} ${s.r.danger} 片`).join('、');
     txt += ` ⚠️ 全室共 ${tot.danger} 片危險碎磚（${names}），建議該面改用中軸對齊或調整工法步距。`;
@@ -286,10 +391,72 @@ function drawTiles(ctx, ox, oy, sc, tiles){
   }
 }
 
-function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r){
+// 施工圖開口樣式：挖空淺灰＋深色雙線外框＋門扇弧線／四分格窗框
+function drawOpenings(ctx, ox, oy, sc, ops){
+  for(const o of ops){
+    const px = ox + o.x*sc, py = oy + (o.y+o.h)*sc;
+    const pw = o.w*sc, ph = o.h*sc;
+    ctx.fillStyle = '#eae6df';
+    ctx.fillRect(px, py, pw, ph);
+    ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 2;
+    ctx.strokeRect(px, py, pw, ph);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px+3, py+3, pw-6, ph-6);
+    if(o.kind==='door'){
+      ctx.save();
+      ctx.strokeStyle = '#8a7f6d'; ctx.lineWidth = 1;
+      ctx.setLineDash([4,3]);
+      ctx.beginPath();
+      ctx.arc(px, py, Math.min(pw,ph), -Math.PI/2, 0);
+      ctx.stroke();
+      ctx.restore();
+      if(pw>46 && ph>18){
+        ctx.fillStyle='#5a544b'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('🚪 門 '+o.w+'×'+o.h, px+pw/2, py+ph-8);
+      }
+    } else {
+      ctx.strokeStyle = '#8a7f6d'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px+pw/2, py); ctx.lineTo(px+pw/2, py+ph);
+      ctx.moveTo(px, py+ph/2); ctx.lineTo(px+pw, py+ph/2);
+      ctx.stroke();
+      if(pw>46 && ph>18){
+        ctx.fillStyle='#5a544b'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('🪟 窗 '+o.w+'×'+o.h, px+pw/2, py+ph-8);
+      }
+    }
+  }
+}
+
+// 單面特寫：開口定位尺寸線（距左牆 X、開口寬、離地高度）
+function drawOpeningDims(ctx, ox, oy, sc, ops){
+  ctx.strokeStyle='#8a7f6d'; ctx.fillStyle='#8a7f6d'; ctx.lineWidth=1;
+  ctx.font='11px sans-serif';
+  for(const o of ops){
+    const px = ox + o.x*sc, px1 = ox + (o.x+o.w)*sc;
+    const py = oy + (o.y+o.h)*sc, py0 = oy + o.y*sc;
+    const dimY = oy + (o.y+o.h)*sc + 14;
+    ctx.beginPath(); ctx.moveTo(px,dimY); ctx.lineTo(px1,dimY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px,dimY-4); ctx.lineTo(px,dimY+4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px1,dimY-4); ctx.lineTo(px1,dimY+4); ctx.stroke();
+    ctx.textAlign='center';
+    ctx.fillText('寬 '+o.w, (px+px1)/2, dimY+13);
+    ctx.textAlign='left';
+    ctx.fillText('X='+o.x, ox+2, dimY+26);
+    const dimX = ox + (o.x+o.w)*sc + 10;
+    ctx.beginPath(); ctx.moveTo(dimX,py); ctx.lineTo(dimX,py0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(dimX-4,py); ctx.lineTo(dimX+4,py); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(dimX-4,py0); ctx.lineTo(dimX+4,py0); ctx.stroke();
+    ctx.fillText('高 '+o.h, dimX+6, (py+py0)/2+4);
+    ctx.fillText('離地 '+o.y, dimX+6, (py+py0)/2+18);
+  }
+}
+
+function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops){
   ctx.fillStyle='#fff'; ctx.fillRect(ox,oy,fw*sc,fh*sc);
   ctx.lineWidth=0.5; ctx.strokeStyle='#b9b2a6';
   drawTiles(ctx, ox, oy, sc, r.tiles);
+  if(ops && ops.length) drawOpenings(ctx, ox, oy, sc, ops);
   ctx.strokeStyle='#2b2b2b'; ctx.lineWidth=1.5; ctx.strokeRect(ox,oy,fw*sc,fh*sc);
   ctx.fillStyle='#2b2b2b'; ctx.font='bold 12px sans-serif'; ctx.textAlign='left';
   const dirTxt = cfg.dir==='H'?'橫':'直';
@@ -315,7 +482,7 @@ function drawUnfold(p, rows){
   };
   for(const k of FACE_KEYS){
     const b = boxes[k], row = byKey[k];
-    drawFaceBox(ctx, b.ox, b.oy, b.fw, b.fh, s, row.name, p, row.cfg, row.r);
+    drawFaceBox(ctx, b.ox, b.oy, b.fw, b.fh, s, row.name, p, row.cfg, row.r, row.ops);
   }
   // 壁地交接虛線折線
   ctx.save();
@@ -354,7 +521,8 @@ function drawSingle(p, rows){
   const pad = 80;
   const sc = Math.min((cv.width-2*pad)/fw, (cv.height-2*pad)/fh);
   const ox = (cv.width - fw*sc)/2, oy = (cv.height - fh*sc)/2;
-  drawFaceBox(ctx, ox, oy, fw, fh, sc, row.name, p, row.cfg, row.r);
+  drawFaceBox(ctx, ox, oy, fw, fh, sc, row.name, p, row.cfg, row.r, row.ops);
+  if(row.ops.length) drawOpeningDims(ctx, ox, oy, sc, row.ops);
   // 外圍尺寸標註線
   ctx.strokeStyle='#8a7f6d'; ctx.lineWidth=1; ctx.fillStyle='#8a7f6d';
   ctx.font='12px sans-serif'; ctx.textAlign='center';
@@ -416,6 +584,10 @@ function refresh(){
 })();
 
 // EVENT BINDINGS
+function syncOpBlocks(){
+  $('doorBlk').classList.toggle('disabled', !$('door_on').checked);
+  $('winBlk').classList.toggle('disabled', !$('win_on').checked);
+}
 document.querySelectorAll('.presets button').forEach(b=>{
   b.addEventListener('click',()=>{
     const pr = PRESETS[b.dataset.p];
@@ -425,6 +597,20 @@ document.querySelectorAll('.presets button').forEach(b=>{
 });
 ['L','W','H','TL','TW','joint','price'].forEach(id=>$(id).addEventListener('input',refresh));
 FACE_KEYS.forEach(k=>['_dir','_mode','_align'].forEach(s=>$(k+s).addEventListener('change',refresh)));
+['door_on','win_on'].forEach(id=>$(id).addEventListener('change',()=>{syncOpBlocks(); refresh();}));
+['door_face','door_w','door_h','door_x','door_y','win_face','win_w','win_h','win_x','win_y']
+  .forEach(id=>$(id).addEventListener('input',refresh));
+document.querySelectorAll('.presets button[data-o]').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const op = OPEN_PRESETS[b.dataset.o];
+    for(const k in op){
+      if(k.endsWith('_on')) $(k).checked = op[k];
+      else $(k).value = op[k];
+    }
+    syncOpBlocks();
+    refresh();
+  });
+});
 
 $('syncWalls').addEventListener('click',()=>{
   ['B','C','D'].forEach(k=>{
@@ -455,6 +641,7 @@ document.querySelectorAll('#faceTabs button').forEach(b=>{
     refresh();
   });
 });
+syncOpBlocks();
 refresh();
 </script>
 </body>
