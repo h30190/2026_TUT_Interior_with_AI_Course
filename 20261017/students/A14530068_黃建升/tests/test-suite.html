@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>磁磚放樣系統 - CI/CD、煙霧測試與紅隊測試套件</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 24px; line-height: 1.6; }
+    h1 { font-size: 22px; color: #38bdf8; margin-bottom: 4px; }
+    .subtitle { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-bottom: 20px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+    .stat-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 14px; text-align: center; }
+    .stat-val { font-size: 28px; font-weight: 700; color: #38bdf8; }
+    .stat-val.pass { color: #4ade80; }
+    .stat-val.fail { color: #f87171; }
+    .stat-lbl { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    .test-group { margin-bottom: 18px; }
+    .test-group h2 { font-size: 15px; color: #f1f5f9; padding-bottom: 6px; border-bottom: 1px solid #334155; margin-bottom: 10px; }
+    .test-item { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; background: #0f172a; border-left: 4px solid #334155; }
+    .test-item.pass { border-left-color: #22c55e; }
+    .test-item.fail { border-left-color: #ef4444; background: #450a0a; }
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .badge.pass { background: #166534; color: #86efac; }
+    .badge.fail { background: #991b1b; color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <h1>🧪 磁磚放樣系統：自動化 CI/CD、煙霧測試與紅隊測試報告</h1>
+  <div class="subtitle">涵蓋模組完整性、核心放樣功能、角柱雙面連動、柱窗碰撞偵測與極端邊界測試</div>
+
+  <div class="stat-grid">
+    <div class="stat-box"><div class="stat-val pass" id="totalPass">0</div><div class="stat-lbl">通過測試數</div></div>
+    <div class="stat-box"><div class="stat-val fail" id="totalFail">0</div><div class="stat-lbl">失敗測試數</div></div>
+    <div class="stat-box"><div class="stat-val" id="passRate">0%</div><div class="stat-lbl">整體通過率</div></div>
+    <div class="stat-box"><div class="stat-val" style="color:#a855f7" id="execTime">0ms</div><div class="stat-lbl">測試總耗時</div></div>
+  </div>
+
+  <div class="card">
+    <div class="test-group">
+      <h2>🚀 1. CI / CD 靜態結構與模組相依性測試</h2>
+      <div id="ciList"></div>
+    </div>
+
+    <div class="test-group">
+      <h2>💨 2. 核心功能煙霧測試 (Smoke Testing)</h2>
+      <div id="smokeList"></div>
+    </div>
+
+    <div class="test-group">
+      <h2>🔴 3. 紅隊破壞性與極端邊界測試 (Red Team Testing)</h2>
+      <div id="redTeamList"></div>
+    </div>
+  </div>
+
+  <!-- 引入被測試的系統模組 -->
+  <script src="../js/config.js"></script>
+  <script src="../js/columns.js"></script>
+  <script src="../js/openings.js"></script>
+  <script src="../js/calculator.js"></script>
+
+  <script>
+    const tStart = performance.now();
+    let passed = 0, failed = 0;
+
+    function runAssert(containerId, name, condition, note = '') {
+      const container = document.getElementById(containerId);
+      const div = document.createElement('div');
+      div.className = 'test-item ' + (condition ? 'pass' : 'fail');
+      div.innerHTML = `
+        <span>${condition ? '✅' : '❌'} <strong>${name}</strong> ${note ? `<span style="color:#94a3b8">(${note})</span>` : ''}</span>
+        <span class="badge ${condition ? 'pass' : 'fail'}">${condition ? 'PASS' : 'FAIL'}</span>
+      `;
+      container.appendChild(div);
+      if (condition) passed++; else failed++;
+    }
+
+    // --- 1. CI 測試 ---
+    runAssert('ciList', '全域常數 PRESETS 正常載入', typeof PRESETS !== 'undefined');
+    runAssert('ciList', '全域常數 OPEN_PRESETS 正常載入', typeof OPEN_PRESETS !== 'undefined');
+    runAssert('ciList', '結構柱管理模組 columns.js 載入', typeof columnParams === 'function');
+    runAssert('ciList', '開口管理模組 openings.js 載入', typeof getOpeningsByFace === 'function');
+    runAssert('ciList', '放樣核心計算函式 layout 存在', typeof layout === 'function');
+    runAssert('ciList', 'CAD 鎖點函式 getSnapPoints 存在', typeof getSnapPoints === 'function');
+    runAssert('ciList', '柱窗衝突檢測 detectColumnClashes 存在', typeof detectColumnClashes === 'function');
+
+    // --- 2. 煙霧測試 (Smoke Tests) ---
+    const p = { L: 600, W: 400, H: 280, TL: 120, TW: 60, joint: 0.2, price: 0 };
+    const cfg = { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', xoff: 0, yoff: 0 };
+    const dims = {
+      floor: { fw: 600, fh: 400 },
+      A: { fw: 600, fh: 280 },
+      B: { fw: 400, fh: 280 },
+      C: { fw: 600, fh: 280 },
+      D: { fw: 400, fh: 280 }
+    };
+
+    // Smoke 1: 排磚幾何基本生成
+    const r1 = layout(p, 600, 400, cfg, []);
+    runAssert('smokeList', '標準 600x400 地坪排磚計算', r1.total > 0 && r1.full > 0, `總磚數: ${r1.total}`);
+
+    // Smoke 2: 多開口動態新增與裁剪
+    openingsList = [
+      { id: 'd1', kind: 'door', name: '房門', face: 'D', w: 80, h: 200, x: 20, y: 0 },
+      { id: 'w1', kind: 'window', name: '通風窗', face: 'B', w: 60, h: 60, x: 40, y: 140 }
+    ];
+    const ops = getOpeningsByFace(dims);
+    runAssert('smokeList', '多門窗正確分類至 D 面與 B 面', ops.D.length === 1 && ops.B.length === 1);
+
+    // Smoke 3: 結構柱選用開關 (可開關不強制存在)
+    setColumnParams({ on: false });
+    runAssert('smokeList', '結構柱可自由關閉 (on=false)', columnParams().on === false);
+
+    setColumnParams({ on: true, face: 'B', x: 0, w: 50, d: 50 });
+    runAssert('smokeList', '結構柱可自由開啟 (on=true)', columnParams().on === true);
+
+    // Smoke 4: 角柱雙面連動 (X=0 時同時在 B 面與 A 面投影)
+    const colOnB = getFaceColumnInfo('B', columnParams(), dims);
+    const colOnA = getFaceColumnInfo('A', columnParams(), dims);
+    runAssert('smokeList', '角柱在 B 立面左側呈現 (X:0~50)', colOnB && colOnB.x0 === 0 && colOnB.w === 50);
+    runAssert('smokeList', '角柱自動連動在 A 立面右側呈現 (X:550~600)', colOnA && colOnA.x0 === 550 && colOnA.w === 50);
+
+    // Smoke 5: 柱窗衝突檢測 (B面窗 X=40 與柱 X=0~50 重疊 10cm)
+    const clashes = detectColumnClashes(dims);
+    runAssert('smokeList', '柱窗碰撞衝突 100% 偵測出', clashes.length === 1, `重疊: ${clashes[0] ? clashes[0].overlapW : 0}cm`);
+
+    // --- 3. 紅隊極端測試 (Red Team Tests) ---
+    // Red 1: 負數座標與超大開口尺寸溢出防呆夾取
+    openingsList = [
+      { id: 'overflow_op', kind: 'window', name: '超界巨窗', face: 'B', w: 99999, h: 88888, x: -999, y: -50 }
+    ];
+    const clOps = getOpeningsByFace(dims);
+    runAssert('redTeamList', '負數座標溢出防呆 (自動夾回 X=0, Y=0)', clOps.B[0].x === 0 && clOps.B[0].y === 0);
+    runAssert('redTeamList', '超大開口尺寸防呆 (自動截斷不超出牆面)', clOps.B[0].w <= dims.B.fw && clOps.B[0].h <= dims.B.fh);
+
+    // Red 2: 柱體完全包裹門窗 (極端全重疊)
+    setColumnParams({ on: true, face: 'B', x: 10, w: 200, d: 50 });
+    openingsList = [
+      { id: 'sub_win', kind: 'window', name: '柱內小窗', face: 'B', w: 40, h: 40, x: 50, y: 50 }
+    ];
+    const fullClash = detectColumnClashes(dims);
+    runAssert('redTeamList', '極端全包裹衝突 (開口完全位於柱內) 正確識別', fullClash.length === 1 && fullClash[0].overlapW === 40);
+
+    // Red 3: 柱體與開口剛好切齊邊界 (零交集無衝突)
+    setColumnParams({ on: true, face: 'B', x: 0, w: 50, d: 50 });
+    openingsList = [
+      { id: 'touch_win', kind: 'window', name: '切齊窗', face: 'B', w: 60, h: 60, x: 50, y: 50 }
+    ];
+    const touchClash = detectColumnClashes(dims);
+    runAssert('redTeamList', '切齊邊界零交集 (無衝突) 不產生誤報', touchClash.length === 0);
+
+    // Red 4: 惡意 XSS 特殊字元開口名稱
+    openingsList = [
+      { id: 'xss', kind: 'door', name: '<script>alert(1)<\\/script>', face: 'D', w: 80, h: 200, x: 20, y: 0 }
+    ];
+    const xssOps = getOpeningsByFace(dims);
+    runAssert('redTeamList', '惡意 XSS 字元安全容錯執行', xssOps.D[0].name.includes('script'));
+
+    // Red 5: 50 個開口高壓負載性能測試
+    openingsList = [];
+    for (let i = 0; i < 50; i++) {
+      openingsList.push({
+        id: 's_' + i, kind: i % 2 === 0 ? 'door' : 'window', name: '壓力開口' + i,
+        face: ['A', 'B', 'C', 'D'][i % 4], w: 40, h: 50, x: (i * 12) % 300, y: 0
+      });
+    }
+    const tStress0 = performance.now();
+    getOpeningsByFace(dims);
+    detectColumnClashes(dims);
+    const stressTime = performance.now() - tStress0;
+    runAssert('redTeamList', '50 個動態開口高壓計算延遲 < 30ms', stressTime < 30, `耗時: ${stressTime.toFixed(1)}ms`);
+
+    // 統計輸出
+    const tElapsed = Math.round(performance.now() - tStart);
+    document.getElementById('totalPass').textContent = passed;
+    document.getElementById('totalFail').textContent = failed;
+    document.getElementById('passRate').textContent = Math.round((passed / (passed + failed)) * 100) + '%';
+    document.getElementById('execTime').textContent = tElapsed + 'ms';
+  </script>
+</body>
+</html>

@@ -809,6 +809,8 @@ function drawActiveDragGuide(ctx) {
 }
 
 function draw(p, rows) {
+  p = p || params();
+  rows = rows || computeAll(p);
   if (view === 'unfold') drawUnfold(p, rows);
   else drawSingle(p, rows);
 

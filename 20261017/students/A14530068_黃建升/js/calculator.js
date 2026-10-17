@@ -1,16 +1,5 @@
 // 磁磚排磚放樣幾何核心、開口扣除與算料演算法
-const $ = id => document.getElementById(id);
-const EPS = 1e-6;
-
-function num(id, dft) {
-  const v = parseFloat($(id).value);
-  return (Number.isFinite(v) && v > 0) ? v : dft;
-}
-
-function num0(id, dft) {
-  const v = parseFloat($(id).value);
-  return (Number.isFinite(v) && v >= 0) ? v : dft;
-}
+// 基礎工具函式（$、EPS、num、num0）已於 config.js 全域宣告提供
 
 // 門窗開口：直接透過 openings 模組取得，支援任意多個門窗扣除
 function openings(dims) {
@@ -72,20 +61,24 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
       let wL = Math.min(x1, xMax) - Math.max(x0, xMin);
       let wW = Math.min(y1, fh) - Math.max(y0, 0);
 
-      // 開口遮蔽扣除
-      let covered = false;
+      // 開口遮蔽扣除：部分覆蓋者扣掉重疊面積，完全覆蓋者不計料
+      let covered = false, cutOp = false;
+      let wA = wL * wW;
       for (const o of ops) {
-        if (x0 >= o.x - EPS && x1 <= o.x + o.w + EPS &&
-            y0 >= o.y - EPS && y1 <= o.y + o.h + EPS) {
-          covered = true;
-          break;
+        const ix = Math.min(x1, o.x + o.w) - Math.max(x0, o.x);
+        const iy = Math.min(y1, o.y + o.h) - Math.max(y0, o.y);
+        if (ix > EPS && iy > EPS) {
+          cutOp = true;
+          wA -= ix * iy;
+          if (wA <= EPS) { covered = true; break; }
         }
       }
       if (covered) continue;
 
-      const full = !cutL && !cutW;
+      const full = !cutL && !cutW && !cutOp;
       const minDim = Math.min(wL, wW);
-      const danger = !full && (minDim < 5);
+      const frac = wA / (tL * tW);
+      const danger = !full && (frac < 0.25 || minDim < 5);
       tiles.push({ x0: Math.max(x0, xMin), y0, wL, wW, full, danger, tL, tW });
     }
   }
@@ -237,18 +230,6 @@ function calcJointAlignment(p, dims, faceKey) {
   let bestX = targetJoint % pitchL;
   if (bestX < 0) bestX += pitchL;
   return Math.round(bestX * 10) / 10;
-}
-
-// 取得結構柱設定參數
-function columnParams() {
-  const on = $('col_on') ? $('col_on').checked : false;
-  const face = $('col_face') ? $('col_face').value : 'B';
-  const x = num0('col_x', 120);
-  const w = num('col_w', 50);
-  const d = num('col_d', 50);
-  const mode = $('col_mode') ? $('col_mode').value : 'linked';
-  const xoffRight = num0('col_xoff_right', 0);
-  return { on, face, x, w, d, mode, xoffRight };
 }
 
 // 五面實測尺寸：各面獨立輸入（num 防呆回退到總體 L/W/H 推導值）

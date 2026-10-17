@@ -1,4 +1,21 @@
-// 專案配置、常數與預設資料
+// 專案配置、常數與全域工具函式
+const $ = id => (typeof document !== 'undefined' ? document.getElementById(id) : null);
+const EPS = 1e-6;
+
+function num(id, dft) {
+  const el = $(id);
+  if (!el) return dft;
+  const v = parseFloat(el.value);
+  return (Number.isFinite(v) && v > 0) ? v : dft;
+}
+
+function num0(id, dft) {
+  const el = $(id);
+  if (!el) return dft;
+  const v = parseFloat(el.value);
+  return (Number.isFinite(v) && v >= 0) ? v : dft;
+}
+
 const PRESETS = {
   living: { L: 600, W: 400, H: 280, TL: 120, TW: 60 },
   bedroom: { L: 450, W: 350, H: 280, TL: 15, TW: 75 },
