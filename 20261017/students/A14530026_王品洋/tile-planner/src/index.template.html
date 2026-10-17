@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>磁磚計畫產生器</title>
+<style id="appstyle">/*STYLE*/</style>
+</head>
+<body>
+<header class="top">
+  <h1>磁磚計畫產生器</h1>
+  <button id="btnSample">載入範例</button>
+  <button id="btnSave">存專案 JSON</button>
+  <label class="btn">載入 JSON<input type="file" id="fileLoad" accept=".json,application/json" hidden></label>
+  <button id="btnHtml" class="pri">下載建議書（HTML）</button>
+  <button id="btnPng">下載 3D 圖</button>
+  <button id="btnPrint">列印／存成 PDF</button>
+  <span id="status"></span>
+</header>
+<div class="layout">
+  <div id="form"></div>
+  <div>
+    <div id="errors"></div>
+    <div id="report"></div>
+  </div>
+</div>
+<div id="v3box" class="hide">
+  <div class="v3ctl"><b>顯示牆面：</b>
+    <label><input type="checkbox" data-wall3d="N" checked> 北</label><label><input type="checkbox" data-wall3d="E" checked> 東</label>
+    <label><input type="checkbox" data-wall3d="S" checked> 南</label><label><input type="checkbox" data-wall3d="W" checked> 西</label>
+    <label style="margin-left:12px"><input type="checkbox" data-xray> 牆體透視（半透明看牆內管線，預設關閉）</label>
+    <span class="hint">面向鏡頭的牆會自動隱藏，方便看室內；拖曳旋轉、滾輪縮放。</span></div>
+  <canvas id="cv3d" width="900" height="600"></canvas>
+  <div class="v3sec"><b>洩水剖面線：</b>
+    <label><input type="radio" name="secAxis" value="x" checked> 縱剖（北→南）</label>
+    <label><input type="radio" name="secAxis" value="y"> 橫剖（西→東）</label>
+    <input type="range" id="secPos" min="0" max="100" step="0.5" value="0" style="width:240px"> <b id="secVal"></b>
+    <button type="button" id="secDrain">對準落水孔</button>
+    <label style="margin-left:10px">3D 地面高程放大 ×<input type="number" id="secK" min="1" max="50" step="1" value="10" style="width:64px"></label> <span id="kMsg" class="hint" style="color:#c0392b"></span>
+    <span class="hint">也可按住 Shift 在 3D 畫面左右拖曳來移動剖面線。</span></div>
+  <div id="secProf" class="figbox"></div>
+</div>
+<script>/*ENGINE*/</script>
+<script>/*DRAW*/</script>
+<script>/*REPORT*/</script>
+<script>/*APP*/</script>
+</body>
+</html>
