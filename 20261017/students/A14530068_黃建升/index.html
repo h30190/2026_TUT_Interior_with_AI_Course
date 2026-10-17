@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>磁磚放樣施工圖系統（Tile Setting-Out Drawing）</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<h1>磁磚放樣施工圖系統（Tile Setting-Out Drawing）</h1>
+<div class="sub">上排 A/B/C/D 立面展開＋下排地坪平面索引｜畫布直接拖曳放樣紅線與門窗｜X光磁磚透視＋✨智慧消滅小料</div>
+
+<div class="layout">
+  <div>
+    <div class="card">
+      <h2>空間與磁磚</h2>
+      <div class="row2">
+        <div><label>空間長度 L (cm)</label><input id="L" type="number" value="600"></div>
+        <div><label>空間寬度 W (cm)</label><input id="W" type="number" value="400"></div>
+      </div>
+      <div class="row2">
+        <div><label>空間高度 H (cm)</label><input id="H" type="number" value="280"></div>
+        <div><label>磚縫寬度 (mm)</label><input id="joint" type="number" value="2" min="1.5" max="5" step="0.5"></div>
+      </div>
+      <div class="row2">
+        <div><label>磁磚長度 T_L (cm)</label><input id="TL" type="number" value="120"></div>
+        <div><label>磁磚寬度 T_W (cm)</label><input id="TW" type="number" value="60"></div>
+      </div>
+      <div class="row2">
+        <div><label>磁磚單價 (元/片)</label><input id="price" type="number" value="0"></div>
+      </div>
+      <div class="presets">
+        <button data-p="living">客廳大板磚（600×400×280，磚 120×60）</button>
+        <button data-p="bedroom">主臥木紋磚（450×350×280，磚 15×75）</button>
+        <button data-p="bath">浴室壁磚（240×180×240，磚 30×60）</button>
+        <button data-p="demo">施工圖案例：190×210×289（磚 30×60，A=171/B=207/C=172/D=210）</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">門窗開口放樣（多門多窗）</h2>
+        <div style="display:flex;gap:6px">
+          <button id="btnAddDoor" type="button" style="padding:4px 8px;font-size:11px;background:#2b5a8c;color:#fff;border:none;border-radius:4px;cursor:pointer">➕ 新增開門</button>
+          <button id="btnAddWin" type="button" style="padding:4px 8px;font-size:11px;background:#15803d;color:#fff;border:none;border-radius:4px;cursor:pointer">➕ 新增開窗</button>
+        </div>
+      </div>
+      <!-- 動態門窗卡片列表容器 -->
+      <div id="openingsContainer"></div>
+      <div class="presets" style="margin-top:8px">
+        <button type="button" data-o="bathop">浴室：1門 80×200 / 1高窗 60×60（無柱）</button>
+        <button type="button" data-o="livingop">客廳：1玄關門 100×220 / 1落地窗 240×220 / 側窗 100×120（含柱）</button>
+        <button type="button" data-o="bedroomop">臥室：1進門 90×210 / 1套房門 75×200 / 雙推窗 140×140</button>
+      </div>
+    </div>
+
+    <!-- 🏛️ 平面結構柱設定與立面放樣連動卡片 -->
+    <div class="card" style="margin-top:16px">
+      <h2>平面結構柱設定（立面同步連動）</h2>
+      <div class="opblk" id="colBlk">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span class="fname">🏛️ 結構柱紅線</span>
+          <label class="openable"><input type="checkbox" id="col_on"> 啟用柱子放樣</label>
+        </div>
+        <div class="row2">
+          <div><label>依附牆面</label><select id="col_face">
+            <option value="B" selected>B立面（正對）</option>
+            <option value="A">A立面（左側）</option>
+            <option value="C">C立面（右側）</option>
+            <option value="D">D立面（門側）</option>
+          </select></div>
+          <div><label>平面柱位 X (cm)</label><input id="col_x" type="number" value="120"></div>
+        </div>
+        <div class="row2" style="margin-top:6px">
+          <div><label>柱寬 W (cm)</label><input id="col_w" type="number" value="50"></div>
+          <div><label>柱深 D (cm)</label><input id="col_d" type="number" value="50"></div>
+        </div>
+        <div class="row2" style="margin-top:6px">
+          <div><label>左右起磚模式</label><select id="col_mode">
+            <option value="linked">🔗 左右連動起磚</option>
+            <option value="independent">⚡ 左右獨立起磚</option>
+          </select></div>
+          <div id="colXoffRightBlk" style="display:none"><label>柱右起磚 X2 (cm)</label><input id="col_xoff_right" type="number" value="0"></div>
+        </div>
+        <div class="syncnote" style="margin-top:6px">
+          💡 <strong>平面與立面雙向連動</strong>：可在平面圖或立面上直接按住滑鼠拖曳柱子；立面以紅線標記柱線，切換「獨立起磚」可分開設定柱左右起磚點。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>放樣工作區（支援滑鼠直接拖曳放樣線與門窗）</h2>
+      <!-- ⚠️ 柱子與門窗幾何衝突警示橫幅 -->
+      <div id="clashAlertContainer" style="display:none"></div>
+      <div class="view">
+        <button id="viewUnfold" class="on">📐 施工圖全景（立面排開＋地坪平面）</button>
+        <button id="viewSingle">🔍 單面特寫放大</button>
+      </div>
+      <div class="tabs" id="faceTabs" style="display:none">
+        <button data-f="floor" class="on">地坪 L×W</button>
+        <button data-f="A">A立面 L×H</button>
+        <button data-f="B">B立面 W×H</button>
+        <button data-f="C">C立面 L×H</button>
+        <button data-f="D">D立面 W×H</button>
+      </div>
+
+      <!-- 📐 CAD 級精確座標放樣與物件鎖點工具列 -->
+      <div class="cad-toolbar">
+        <div class="cad-group">
+          <label>面別</label>
+          <select id="cadFace">
+            <option value="B" selected>B立面</option>
+            <option value="A">A立面</option>
+            <option value="C">C立面</option>
+            <option value="D">D立面</option>
+            <option value="floor">地坪平面</option>
+          </select>
+        </div>
+        <div class="cad-group">
+          <label>起磚 X</label>
+          <input id="cadX" type="number" step="0.5" value="0">
+          <span style="font-size:11px;color:#888">cm</span>
+        </div>
+        <div class="cad-group">
+          <label>起磚 Y</label>
+          <input id="cadY" type="number" step="0.5" value="0">
+          <span style="font-size:11px;color:#888">cm</span>
+        </div>
+        <button id="cadApplyBtn" class="cad-btn">🎯 套用座標</button>
+        <div class="cad-actions">
+          <button id="cadLockJointsBtn" class="cad-action-btn" title="切換鎖定／解鎖四面對縫">🔒 鎖定四面對縫</button>
+          <button id="cadToggleColBtn" class="cad-action-btn" title="快速開啟／關閉結構柱分界紅線">🏛️ 柱子紅線</button>
+          <button id="cadAlignFloorBtn" class="cad-action-btn" title="將當前壁磚垂直縫精確對齊地坪磚縫">🔗 當前面對縫</button>
+          <button id="cadSnapDoorBtn" class="cad-action-btn" title="將起磚線吸附至門框左緣">🧲 吸附門框</button>
+          <button id="cadSnapWinBtn" class="cad-action-btn" title="將起磚高度吸附至窗台高度">🧲 吸附窗台</button>
+          <button id="cadSnapCenterBtn" class="cad-action-btn" title="水平置中對稱起磚">⚖️ 居中對稱</button>
+        </div>
+      </div>
+
+      <canvas id="cv" width="1240" height="760"></canvas>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--tile)"></i>整磚</span>
+        <span><i class="sw" style="background:var(--cut)"></i>裁切修邊磚</span>
+        <span><i class="sw" style="background:var(--danger)"></i>危險小料（最短邊 &lt; 5cm）</span>
+        <span><i class="sw" style="background:#fff;border:1px dashed #2b2b2b"></i>壁地交接折線</span>
+        <span><i class="sw" style="background:#eaf2fa;border:2px solid #3a76b5"></i>門窗開口（不鋪磚，可拖曳）</span>
+        <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>🎯 紅色起磚靶心（可拖曳）</span>
+      </div>
+      <div id="warn" class="warn" style="display:none">
+        <span id="warnMsg"></span>
+        <button id="btnAutoFix" class="autofix-btn" style="display:none">✨ 智慧消滅小料</button>
+      </div>
+    </div>
+
+    <!-- 📍 五面排磚控制面板（移至畫布正下方，五面橫向對齊） -->
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <h2>五面獨立排磚控制面板（地坪平面與四面立面）</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="btnLockJointsPanel" class="lock-toggle-btn">🔒 鎖定四面對縫（壁磚自動跟隨地磚）</button>
+          <button id="syncWalls" class="syncbtn" style="width:auto;padding:6px 14px">一鍵同步四面牆（A→B/C/D）</button>
+        </div>
+      </div>
+      <div id="faceCfgs" class="face-cfgs-grid"></div>
+      <div class="syncnote" style="margin-top:10px">
+        💡 提示：鎖定四面對縫時，A、B、C、D 四面牆的垂直起磚線將自動隨地磚縫連動；點擊「解鎖」即可獨立自由調整各面起磚點。
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>五面明細與全室加總算料表</h2>
+      <table id="tbl">
+        <thead><tr>
+          <th>面別</th><th>實測尺寸(cm)</th><th>方向</th><th>工法</th><th>水平起磚</th><th>垂直起磚</th>
+          <th>門窗扣除</th><th>實鋪整磚</th><th>邊緣裁切</th><th>總叫料</th><th>損耗率%</th><th>碎磚警示</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="concl" class="concl"></div>
+      <div class="note">總叫料＝整磚＋裁切消耗（裁切磚不可回填復用）；損耗率＝(總叫料−理論片數)÷理論片數；理論片數＝淨面積（已扣門窗）÷單磚面積（向上取整）。碎磚警示＝裁切後最短邊長 &lt; 5cm 之危險小料數量（只要最短邊 ≥ 5cm 即視為安全可施工，面積不用顧慮）。開口完全覆蓋之磚不計料。</div>
+    </div>
+  </div>
+</div>
+
+<!-- 🔍 X 光磁磚透視檢查器浮動視窗 -->
+<div id="tileInspector" class="tile-inspector" style="display:none"></div>
+
+<!-- 模組化載入（獨立拆分，便於檢修維護） -->
+<script src="js/config.js"></script>
+<script src="js/columns.js"></script>
+<script src="js/openings.js"></script>
+<script src="js/calculator.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
