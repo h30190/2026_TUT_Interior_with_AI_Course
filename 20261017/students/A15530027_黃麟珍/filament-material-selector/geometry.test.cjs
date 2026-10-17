@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');const {parse}=require('./geometry.js');const buffer=s=>new TextEncoder().encode(s).buffer;
+const sample=fs.readFileSync(path.join(__dirname,'sample-block.obj'),'utf8'),mesh=parse(buffer(sample),'obj');assert(mesh.closed);assert.equal(mesh.components,1);assert.deepEqual(mesh.size,[200,100,50]);assert(Math.abs(mesh.volume-1000000)<1e-6);assert.equal(mesh.area,70000);
+const translated=sample.replace(/^v (\S+) (\S+) (\S+)$/gm,(_,x,y,z)=>`v ${Number(x)+10000000} ${Number(y)+20000000} ${Number(z)+30000000}`);assert.equal(parse(buffer(translated),'obj').volume,mesh.volume);
+const open=parse(buffer(sample.replace('f 1 3 2','')),'obj');assert.equal(open.closed,false);assert.equal(open.volume,null);
+assert.equal(parse(buffer(sample.replace('f 1 3 2','f 1 2 3')),'obj').closed,false);
+const duplicate=sample+'\nf 1 3 2';assert.equal(parse(buffer(duplicate),'obj').closed,false);
+const binary=new ArrayBuffer(84+50*mesh.triangles.length),view=new DataView(binary);view.setUint32(80,mesh.triangles.length,true);mesh.triangles.forEach((t,i)=>t.flat().forEach((n,j)=>view.setFloat32(84+50*i+12+j*4,n,true)));assert.equal(parse(binary,'stl').volume,mesh.volume);
+const ascii='solid test\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 10 0 0\nvertex 0 10 0\nendloop\nendfacet\nendsolid test';assert.equal(parse(buffer(ascii),'stl').area,50);assert.equal(parse(buffer(ascii),'stl').volume,null);
+assert.throws(()=>parse(buffer('invalid'),'stl'));assert.throws(()=>parse(buffer('v 0 0 0\nf 1 2 3'),'obj'));
+console.log('PASS: analytic box area/volume, translated-coordinate stability, open/reversed/non-manifold rejection, binary/ASCII STL and malformed input.');
