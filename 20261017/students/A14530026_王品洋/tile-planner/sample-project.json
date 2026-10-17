@@ -1,0 +1,134 @@
+{
+  "name": "範例浴室",
+  "room": {
+    "L": 180,
+    "D": 240,
+    "H": 270
+  },
+  "wallTop": 240,
+  "sequence": "wallFirst",
+  "corner": "butt",
+  "wallTiled": {
+    "N": true,
+    "E": true,
+    "S": true,
+    "W": true
+  },
+  "tiles": [
+    {
+      "id": "F1",
+      "name": "地磚 30×30 止滑",
+      "w": 30,
+      "h": 30,
+      "t": 9,
+      "perBox": 11,
+      "use": "floor"
+    },
+    {
+      "id": "F2",
+      "name": "地磚 30×60",
+      "w": 30,
+      "h": 60,
+      "t": 9,
+      "perBox": 6,
+      "use": "floor"
+    },
+    {
+      "id": "W1",
+      "name": "壁磚 30×60",
+      "w": 30,
+      "h": 60,
+      "t": 8.5,
+      "perBox": 6,
+      "use": "wall"
+    },
+    {
+      "id": "W2",
+      "name": "壁磚 25×40",
+      "w": 25,
+      "h": 40,
+      "t": 8,
+      "perBox": 12,
+      "use": "wall"
+    }
+  ],
+  "floorTileId": "F1",
+  "wallTileId": "W1",
+  "floorMethod": "auto",
+  "floorStart": "auto",
+  "wallMethod": "auto",
+  "wallStart": "auto",
+  "breakagePct": 3,
+  "adhesiveKgPerM2PerMm": 1.6,
+  "bagKg": 20,
+  "trimLossPct": 5,
+  "drain": {
+    "x": 60,
+    "y": 130,
+    "size": 10,
+    "slope": 1,
+    "mode": "point",
+    "dir": "N"
+  },
+  "openings": [
+    {
+      "id": "D1",
+      "type": "door",
+      "wall": "S",
+      "offset": 50,
+      "width": 80,
+      "height": 200,
+      "sill": 0
+    },
+    {
+      "id": "WN1",
+      "type": "window",
+      "wall": "N",
+      "offset": 60,
+      "width": 60,
+      "height": 60,
+      "sill": 150
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "P1",
+      "kind": "supply",
+      "wall": "W",
+      "offset": 120,
+      "height": 100,
+      "dia": 2.5
+    },
+    {
+      "id": "P2",
+      "kind": "supply",
+      "wall": "W",
+      "offset": 140,
+      "height": 100,
+      "dia": 2.5
+    },
+    {
+      "id": "P3",
+      "kind": "drain",
+      "wall": "E",
+      "offset": 60,
+      "height": 30,
+      "dia": 5
+    }
+  ],
+  "trim": {
+    "pieceLen": 250,
+    "outerCorners": [],
+    "jambDoor": true,
+    "jambWindow": true,
+    "topEdge": true,
+    "label": "陽角收邊條（PVC L 型）"
+  },
+  "threshold": {
+    "label": "人造石門檻",
+    "width": 15,
+    "thick": 2,
+    "riseAbove": 1,
+    "material": "人造石"
+  }
+}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>磁磚計畫產生器</title>
+<style id="appstyle">/*STYLE*/</style>
+</head>
+<body>
+<header class="top">
+  <h1>磁磚計畫產生器</h1>
+  <button id="btnSample">載入範例</button>
+  <button id="btnSave">存專案 JSON</button>
+  <label class="btn">載入 JSON<input type="file" id="fileLoad" accept=".json,application/json" hidden></label>
+  <button id="btnHtml" class="pri">下載建議書（HTML）</button>
+  <button id="btnPng">下載 3D 圖</button>
+  <button id="btnPrint">列印／存成 PDF</button>
+  <span id="status"></span>
+</header>
+<div class="layout">
+  <div id="form"></div>
+  <div>
+    <div id="errors"></div>
+    <div id="report"></div>
+  </div>
+</div>
+<div id="v3box" class="hide">
+  <div class="v3ctl"><b>顯示牆面：</b>
+    <label><input type="checkbox" data-wall3d="N" checked> 北</label><label><input type="checkbox" data-wall3d="E" checked> 東</label>
+    <label><input type="checkbox" data-wall3d="S" checked> 南</label><label><input type="checkbox" data-wall3d="W" checked> 西</label>
+    <span class="hint">面向鏡頭的牆會自動隱藏，方便看室內；拖曳旋轉、滾輪縮放。</span></div>
+  <canvas id="cv3d" width="900" height="600"></canvas>
+</div>
+<script>/*ENGINE*/</script>
+<script>/*DRAW*/</script>
+<script>/*REPORT*/</script>
+<script>/*APP*/</script>
+</body>
+</html>

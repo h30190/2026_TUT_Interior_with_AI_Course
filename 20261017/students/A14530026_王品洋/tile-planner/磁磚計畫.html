@@ -1,0 +1,1553 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>磁磚計畫產生器</title>
+<style id="appstyle">:root{--bg:#f6f5f1;--card:#fff;--ink:#1e2430;--mute:#6a7280;--line:#e3e1da;--accent:#2f6f9f;--good:#2f9e6b;--goodbg:#e4f4ec;--bad:#d64545;--badbg:#fbe9e9;--warn:#b26a00;--warnbg:#fff4dd}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;--ink:#e8ebf0;--mute:#98a1b0;--line:#2c323c;--accent:#7fb0e6;--good:#4cc38a;--goodbg:#173026;--bad:#ff7070;--badbg:#3a1f1f;--warn:#f0b35a;--warnbg:#3a2f14}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft JhengHei","Noto Sans TC","PingFang TC",system-ui,sans-serif;line-height:1.55;font-size:14px}
+header.top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+header.top h1{font-size:18px;margin:0 12px 0 0}
+header.top button,.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+header.top button:hover{border-color:var(--accent)}header.top .pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+#status{margin-left:auto;color:var(--mute);font-size:13px}
+.layout{display:grid;grid-template-columns:minmax(360px,440px) 1fr;gap:16px;padding:16px;max-width:1700px;margin:0 auto}
+@media (max-width:1000px){.layout{grid-template-columns:1fr}}
+#form{max-height:calc(100vh - 80px);overflow:auto;position:sticky;top:64px;align-self:start;padding-right:4px}
+@media (max-width:1000px){#form{position:static;max-height:none}}
+details{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:0}
+summary{cursor:pointer;padding:10px 12px;font-weight:700}
+details>div,details>p,details>.tw,details>button{margin:0 12px 10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label.f{display:flex;flex-direction:column;font-size:12px;color:var(--mute);gap:2px}
+label.f.chk{flex-direction:row;align-items:center;gap:6px;color:var(--ink)}
+input[type=number],input[type=text],input:not([type]),select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+input[readonly]{opacity:.7}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.hint{color:var(--mute);font-size:12px}
+.tw{overflow:auto}
+table.in{border-collapse:collapse;width:100%;font-size:12px}
+table.in th{color:var(--mute);font-weight:600;text-align:left;padding:2px 3px;white-space:nowrap}
+table.in td{padding:2px 3px}
+table.in input,table.in select{padding:4px 5px;min-width:52px}
+button.add{margin-top:2px;border:1px dashed var(--line);background:transparent;color:var(--accent);border-radius:6px;padding:4px 10px;cursor:pointer}
+button.x{border:none;background:transparent;color:var(--bad);cursor:pointer;font-size:14px}
+.errbox{background:var(--badbg);color:var(--bad);border:1px solid var(--bad);border-radius:10px;padding:10px 14px;margin-bottom:12px}
+.errbox ul{margin:6px 0 0 18px;padding:0}
+.sec{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:16px}
+.sec h2{margin:0 0 8px;font-size:20px;border-bottom:2px solid var(--accent);padding-bottom:4px}
+.sec h3{margin:18px 0 6px;font-size:15px}
+.sec.small{font-size:12.5px;color:var(--mute)}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:4px 0}
+table th,table td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+table th{background:var(--bg);font-weight:600}
+table.cmp td:first-child{width:130px;text-align:center}
+.tag{display:inline-block;font-size:11px;padding:0 8px;border-radius:99px;background:var(--bg);border:1px solid var(--line)}
+.tag.good{background:var(--goodbg);color:var(--good);border-color:var(--good)}.tag.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+.figbox{margin:8px 0;text-align:center}.figbox svg.fig{max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+.figbox.small svg{max-width:440px}
+.thumb{max-width:110px;height:auto;border:1px solid var(--line)}
+.start{background:var(--warnbg);border-left:4px solid #d62828;padding:8px 12px;margin:4px 0}
+.note{color:var(--mute);font-size:12.5px}
+ul.warn li{color:var(--warn);margin:4px 0}ul.deduct{font-size:13px;color:var(--mute)}
+.wallblock{border-top:1px dashed var(--line);margin-top:14px}
+#v3box canvas{width:100%;max-width:900px;height:auto;aspect-ratio:3/2;border:1px solid var(--line);border-radius:8px;cursor:grab;background:#f6f5f1;display:block}
+.hide{display:none}.v3ctl{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 0;font-size:13px}
+@media print{
+  header.top,#form,#errors,.v3ctl{display:none!important}.layout{display:block;padding:0}.sec{break-inside:avoid-page;border:none;padding:0;margin-bottom:10px}
+  .figbox svg.fig{border:none}body{background:#fff}
+}
+body.standalone .doc{max-width:960px;margin:0 auto;padding:16px}body.standalone h1{font-size:22px}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>磁磚計畫產生器</h1>
+  <button id="btnSample">載入範例</button>
+  <button id="btnSave">存專案 JSON</button>
+  <label class="btn">載入 JSON<input type="file" id="fileLoad" accept=".json,application/json" hidden></label>
+  <button id="btnHtml" class="pri">下載建議書（HTML）</button>
+  <button id="btnPng">下載 3D 圖</button>
+  <button id="btnPrint">列印／存成 PDF</button>
+  <span id="status"></span>
+</header>
+<div class="layout">
+  <div id="form"></div>
+  <div>
+    <div id="errors"></div>
+    <div id="report"></div>
+  </div>
+</div>
+<div id="v3box" class="hide">
+  <div class="v3ctl"><b>顯示牆面：</b>
+    <label><input type="checkbox" data-wall3d="N" checked> 北</label><label><input type="checkbox" data-wall3d="E" checked> 東</label>
+    <label><input type="checkbox" data-wall3d="S" checked> 南</label><label><input type="checkbox" data-wall3d="W" checked> 西</label>
+    <span class="hint">面向鏡頭的牆會自動隱藏，方便看室內；拖曳旋轉、滾輪縮放。</span></div>
+  <canvas id="cv3d" width="900" height="600"></canvas>
+</div>
+<script>/* 磁磚計畫計算核心：純函式，不碰 DOM，Node 與瀏覽器都能跑。
+   單位一律 cm（面積輸出 m²）。座標：房間西北角（粗胚面）為原點，x 往東、y 往南；
+   牆面座標 u 沿牆（北南牆從西端、東西牆從北端量起）、z 從結構樓板往上。
+   固定規則（業主指定）：磁磚縫 0.2cm、黏著劑厚 0.5cm。 */
+'use strict';
+(function (root) {
+
+var JOINT = 0.2;        // cm，磁磚縫（固定）
+var ADH = 0.5;          // cm，黏著劑厚度（固定）
+var EPS = 1e-6;
+var WALLS = ['N', 'E', 'S', 'W'];
+var WALL_ZH = { N: '北牆', E: '東牆', S: '南牆', W: '西牆' };
+
+/* ---------------------------------------------------------------- 幾何 */
+function polyArea(p) {
+  var s = 0, i, a, b;
+  for (i = 0; i < p.length; i++) { a = p[i]; b = p[(i + 1) % p.length]; s += a[0] * b[1] - b[0] * a[1]; }
+  return Math.abs(s) / 2;
+}
+
+function clipHalf(poly, axis, val, keepGE) {
+  var out = [], n = poly.length, i, a, b, ain, bin, t;
+  for (i = 0; i < n; i++) {
+    a = poly[i]; b = poly[(i + 1) % n];
+    ain = keepGE ? a[axis] >= val - 1e-12 : a[axis] <= val + 1e-12;
+    bin = keepGE ? b[axis] >= val - 1e-12 : b[axis] <= val + 1e-12;
+    if (ain) { out.push(a); }
+    if (ain !== bin) {
+      t = (val - a[axis]) / (b[axis] - a[axis]);
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+  }
+  return out;
+}
+
+/* 凸多邊形 ∩ 軸向矩形 r=[x0,y0,x1,y1] */
+function clipRect(poly, r) {
+  var p = clipHalf(poly, 0, r[0], true);
+  if (p.length) { p = clipHalf(p, 0, r[2], false); }
+  if (p.length) { p = clipHalf(p, 1, r[1], true); }
+  if (p.length) { p = clipHalf(p, 1, r[3], false); }
+  return p;
+}
+
+function bboxOf(rects) {
+  var b = [Infinity, Infinity, -Infinity, -Infinity];
+  rects.forEach(function (r) {
+    b[0] = Math.min(b[0], r[0]); b[1] = Math.min(b[1], r[1]);
+    b[2] = Math.max(b[2], r[2]); b[3] = Math.max(b[3], r[3]);
+  });
+  return b;
+}
+
+function rectArea(r) { return Math.max(0, r[2] - r[0]) * Math.max(0, r[3] - r[1]); }
+function interRect(a, b) {
+  var r = [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])];
+  return (r[2] > r[0] && r[3] > r[1]) ? r : null;
+}
+
+/* ---------------------------------------------------------------- 排磚圖樣產生 */
+/* 水平座標系：磚寬 tw 沿 x。pattern: stack／run2／run3 */
+function genAxis(box, tw, th, pattern, ox, oy, j) {
+  var px = tw + j, py = th + j, out = [], k, r, c, off, rmin, rmax, cmin, cmax, x, y;
+  k = pattern === 'run2' ? 2 : (pattern === 'run3' ? 3 : 1);
+  rmin = Math.floor((box[1] - oy) / py) - 1; rmax = Math.ceil((box[3] - oy) / py) + 1;
+  for (r = rmin; r <= rmax; r++) {
+    off = k > 1 ? (((r % k) + k) % k) * px / k : 0;
+    cmin = Math.floor((box[0] - ox - off) / px) - 1; cmax = Math.ceil((box[2] - ox - off) / px) + 1;
+    for (c = cmin; c <= cmax; c++) {
+      x = ox + off + c * px; y = oy + r * py;
+      if (x > box[2] || x + tw < box[0] || y > box[3] || y + th < box[1]) { continue; }
+      out.push([[x, y], [x + tw, y], [x + tw, y + th], [x, y + th]]);
+    }
+  }
+  return out;
+}
+
+function swapPoly(p) { return p.map(function (q) { return [q[1], q[0]]; }); }
+
+/* 人字拼（90°）：磚長 ≈ m 倍磚寬（m≥2）。H 磚放在 (i-j) mod 2m == 0，V 磚放在 (i-j) mod 2m == 2m-1 */
+function genHerring(box, L, S, ox, oy, j) {
+  var s = S + j, m = Math.max(2, Math.round((L + j) / s)), len = m * s - j, out = [], i, k, imin, imax, jmin, jmax, d, x, y;
+  imin = Math.floor((box[0] - ox) / s) - m - 1; imax = Math.ceil((box[2] - ox) / s) + 1;
+  jmin = Math.floor((box[1] - oy) / s) - m - 1; jmax = Math.ceil((box[3] - oy) / s) + 1;
+  for (i = imin; i <= imax; i++) {
+    for (k = jmin; k <= jmax; k++) {
+      d = (((i - k) % (2 * m)) + 2 * m) % (2 * m);
+      x = ox + i * s; y = oy + k * s;
+      if (d === 0) {
+        if (x > box[2] || x + len < box[0] || y > box[3] || y + S < box[1]) { continue; }
+        out.push([[x, y], [x + len, y], [x + len, y + S], [x, y + S]]);
+      } else if (d === 2 * m - 1) {
+        if (x > box[2] || x + S < box[0] || y > box[3] || y + len < box[1]) { continue; }
+        out.push([[x, y], [x + S, y], [x + S, y + len], [x, y + len]]);
+      }
+    }
+  }
+  return out;
+}
+
+function genDiag(box, tw, th, ox, oy, j) {
+  var ca = Math.SQRT1_2, sa = Math.SQRT1_2, px = tw + j, py = th + j, us = [], vs = [], out = [];
+  var corners = [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]];
+  corners.forEach(function (p) {
+    var dx = p[0] - ox, dy = p[1] - oy;
+    us.push(dx * ca + dy * sa); vs.push(-dx * sa + dy * ca);
+  });
+  var cmin = Math.floor(Math.min.apply(null, us) / px) - 1, cmax = Math.ceil(Math.max.apply(null, us) / px) + 1;
+  var rmin = Math.floor(Math.min.apply(null, vs) / py) - 1, rmax = Math.ceil(Math.max.apply(null, vs) / py) + 1;
+  var c, r, loc, u0, v0;
+  function w(u, v) { return [ox + u * ca - v * sa, oy + u * sa + v * ca]; }
+  for (c = cmin; c <= cmax; c++) {
+    for (r = rmin; r <= rmax; r++) {
+      u0 = c * px; v0 = r * py;
+      loc = [w(u0, v0), w(u0 + tw, v0), w(u0 + tw, v0 + th), w(u0, v0 + th)];
+      var xs = loc.map(function (q) { return q[0]; }), ys = loc.map(function (q) { return q[1]; });
+      if (Math.min.apply(null, xs) > box[2] || Math.max.apply(null, xs) < box[0] ||
+          Math.min.apply(null, ys) > box[3] || Math.max.apply(null, ys) < box[1]) { continue; }
+      out.push(loc);
+    }
+  }
+  return out;
+}
+
+/* method：'stack-h'｜'stack-v'｜'run2-h'｜'run2-v'｜'run3-h'｜'run3-v'｜'diag'｜'herring-h'｜'herring-v'
+   h＝磚長邊沿水平（x）方向，v＝長邊沿垂直（y）方向 */
+function genTiles(box, tile, method, origin, j) {
+  var parts = method.split('-'), pattern = parts[0], orient = parts[1] || 'h';
+  var L = Math.max(tile.w, tile.h), S = Math.min(tile.w, tile.h), polys;
+  if (pattern === 'diag') { return genDiag(box, tile.w, tile.h, origin[0], origin[1], j); }
+  if (pattern === 'herring') {
+    if (orient === 'v') {
+      return genHerring([box[1], box[0], box[3], box[2]], L, S, origin[1], origin[0], j).map(swapPoly);
+    }
+    return genHerring(box, L, S, origin[0], origin[1], j);
+  }
+  if (orient === 'v') {
+    polys = genAxis([box[1], box[0], box[3], box[2]], L, S, pattern, origin[1], origin[0], j);
+    return polys.map(swapPoly);
+  }
+  return genAxis(box, L, S, pattern, origin[0], origin[1], j);
+}
+
+/* 這個貼法下，磚的「寬（x）× 高（y）」尺寸（供計算起始點位移） */
+function tileDims(tile, method) {
+  var parts = method.split('-'), pattern = parts[0], orient = parts[1] || 'h';
+  var L = Math.max(tile.w, tile.h), S = Math.min(tile.w, tile.h);
+  if (pattern === 'diag') { return [tile.w, tile.h]; }
+  if (pattern === 'herring') {
+    var m = Math.max(2, Math.round((L + JOINT) / (S + JOINT))), len = m * (S + JOINT) - JOINT;
+    return orient === 'v' ? [S, len] : [len, S];
+  }
+  return orient === 'v' ? [S, L] : [L, S];
+}
+
+/* ---------------------------------------------------------------- 排磚評估 */
+/* regionRects：貼磚區（彼此不重疊的矩形）；holes：開孔矩形（落水孔、門窗、給水孔）
+   回傳片數、整磚、切磚、開孔磚、最小切邊、細條切磚數、損耗，keepPolys 時附上畫圖用多邊形 */
+function evalTiles(tiles, regionRects, holes, tile, keepPolys) {
+  var tileArea = tile.w * tile.h, S = Math.min(tile.w, tile.h);
+  var sliverMin = Math.max(4, 0.2 * S);
+  var res = { pieces: 0, full: 0, cut: 0, holeCut: 0, slivers: 0, minCut: Infinity, used: 0, polys: [] };
+  tiles.forEach(function (t) {
+    var inRegion = 0, clippedAll = [], i, c, holeA = 0, a;
+    regionRects.forEach(function (r) {
+      c = clipRect(t, r);
+      if (c.length >= 3) { a = polyArea(c); if (a > 1e-4) { inRegion += a; clippedAll.push(c); } }
+    });
+    if (inRegion < 0.05) { return; }
+    holes.forEach(function (h) {
+      var hc = clipRect(t, h);
+      if (hc.length >= 3) { holeA += polyArea(hc); }
+    });
+    var usable = inRegion - holeA;
+    if (usable < 0.05) { return; }           // 整片落在開孔內，不需要這片磚
+    var isFull = (tileArea - usable) < 1e-6 * tileArea && holeA < 1e-9;
+    var kind = isFull ? 'full' : (holeA > 1e-9 ? 'hole' : 'cut');
+    res.pieces++; res.used += usable;
+    if (kind === 'full') { res.full++; }
+    else if (kind === 'hole') { res.holeCut++; }
+    else {
+      res.cut++;
+      // 最小切邊：取貼磚區內那一塊的外框短邊
+      var xs = [], ys = [];
+      clippedAll.forEach(function (p) { p.forEach(function (q) { xs.push(q[0]); ys.push(q[1]); }); });
+      var wd = Math.max.apply(null, xs) - Math.min.apply(null, xs), ht = Math.max.apply(null, ys) - Math.min.apply(null, ys);
+      var md = Math.min(wd, ht);
+      if (md < res.minCut) { res.minCut = md; }
+      if (md < sliverMin - 1e-9) { res.slivers++; }
+    }
+    if (keepPolys) { res.polys.push({ pts: t, clipped: clippedAll, kind: kind }); }
+  });
+  if (res.minCut === Infinity) { res.minCut = null; }
+  res.tileArea = tileArea;
+  res.sliverMin = sliverMin;
+  return res;
+}
+
+/* ---------------------------------------------------------------- 專案正規化／驗證 */
+/* 沒給（undefined／null）才用預設值；給了但不是數字（例如表單空白）→ NaN，交給 validate 報錯，不可默默換成預設值 */
+function num(v, d) { if (v === undefined || v === null) { return d; } var x = parseFloat(v); return isFinite(x) ? x : NaN; }
+function fin(v) { return typeof v === 'number' && isFinite(v); }
+function sv(v) { return fin(v) ? v : '未填'; }     // 訊息用：空白欄位顯示「未填」而不是 NaN
+/* 深層複製，保留 NaN（JSON 複製會把 NaN 變成 null，空白欄位就會被預設值吃掉） */
+function clone(o) {
+  if (Array.isArray(o)) { return o.map(clone); }
+  if (o && typeof o === 'object') { var c = {}; Object.keys(o).forEach(function (k) { c[k] = clone(o[k]); }); return c; }
+  return o;
+}
+
+function defaultProject() {
+  return {
+    name: '範例浴室',
+    room: { L: 180, D: 240, H: 270 },
+    wallTop: 240,
+    sequence: 'wallFirst',      // wallFirst＝先貼牆後貼地；floorFirst＝先貼地後貼牆
+    corner: 'butt',             // butt＝長牆通到底、短牆被夾住；both＝每面牆兩端都扣
+    wallTiled: { N: true, E: true, S: true, W: true },
+    tiles: [
+      { id: 'F1', name: '地磚 30×30 止滑', w: 30, h: 30, t: 9, perBox: 11, use: 'floor' },
+      { id: 'F2', name: '地磚 30×60', w: 30, h: 60, t: 9, perBox: 6, use: 'floor' },
+      { id: 'W1', name: '壁磚 30×60', w: 30, h: 60, t: 8.5, perBox: 6, use: 'wall' },
+      { id: 'W2', name: '壁磚 25×40', w: 25, h: 40, t: 8, perBox: 12, use: 'wall' }
+    ],
+    floorTileId: 'F1', wallTileId: 'W1',
+    floorMethod: 'auto', floorStart: 'auto', wallMethod: 'auto', wallStart: 'auto',
+    breakagePct: 3, adhesiveKgPerM2PerMm: 1.6, bagKg: 20, trimLossPct: 5,
+    drain: { x: 60, y: 130, size: 10, slope: 1, mode: 'point', dir: 'N' },
+    openings: [
+      { id: 'D1', type: 'door', wall: 'S', offset: 50, width: 80, height: 200, sill: 0 },
+      { id: 'WN1', type: 'window', wall: 'N', offset: 60, width: 60, height: 60, sill: 150 }
+    ],
+    fixtures: [
+      { id: 'P1', kind: 'supply', wall: 'W', offset: 120, height: 100, dia: 2.5 },
+      { id: 'P2', kind: 'supply', wall: 'W', offset: 140, height: 100, dia: 2.5 },
+      { id: 'P3', kind: 'drain', wall: 'E', offset: 60, height: 30, dia: 5 }
+    ],
+    trim: { pieceLen: 250, outerCorners: [], jambDoor: true, jambWindow: true, topEdge: true, label: '陽角收邊條（PVC L 型）' },
+    threshold: { label: '人造石門檻', width: 15, thick: 2, riseAbove: 1, material: '人造石' }
+  };
+}
+
+function validate(pj) {
+  var errs = [], warns = [], R = pj.room, i;
+  if (!(R.L >= 50 && R.L <= 3000)) { errs.push('房間寬（東西向）須在 50～3000 cm，目前 ' + sv(R.L)); }
+  if (!(R.D >= 50 && R.D <= 3000)) { errs.push('房間深（南北向）須在 50～3000 cm，目前 ' + sv(R.D)); }
+  if (!(R.H >= 100 && R.H <= 600)) { errs.push('天花板高須在 100～600 cm，目前 ' + sv(R.H)); }
+  if (!(pj.wallTop > 0 && pj.wallTop <= R.H)) { errs.push('牆磚貼到高度須大於 0 且不超過天花板高 ' + R.H + '，目前 ' + sv(pj.wallTop)); }
+  [['牆磚貼到高度', pj.wallTop], ['破損預留', pj.breakagePct], ['黏著劑耗量', pj.adhesiveKgPerM2PerMm], ['收邊條損耗', pj.trimLossPct]].forEach(function (q) {
+    if (!fin(q[1])) { errs.push(q[0] + '未填或不是數字'); }
+  });
+  if (!pj.tiles.length) { errs.push('磁磚表是空的，至少要有一種磁磚'); }
+  var ids = {};
+  pj.tiles.forEach(function (t) {
+    if (!t.id) { errs.push('磁磚表有一列沒有編號'); }
+    if (ids[t.id]) { errs.push('磁磚編號重複：' + t.id); }
+    ids[t.id] = 1;
+    if (!(t.w >= 2 && t.w <= 300) || !(t.h >= 2 && t.h <= 300)) { errs.push('磁磚 ' + t.id + ' 尺寸須在 2～300 cm（目前 ' + sv(t.w) + '×' + sv(t.h) + '）'); }
+    if (!(t.t >= 3 && t.t <= 30)) { errs.push('磁磚 ' + t.id + ' 厚度須在 3～30 mm（目前 ' + sv(t.t) + '）'); }
+    if (!(t.perBox >= 1 && Math.floor(t.perBox) === t.perBox)) { errs.push('磁磚 ' + t.id + ' 每箱片數須為正整數'); }
+  });
+  if (!pj.tiles.some(function (t) { return t.id === pj.floorTileId; })) { errs.push('找不到地磚編號 ' + pj.floorTileId); }
+  if (!pj.tiles.some(function (t) { return t.id === pj.wallTileId; })) { errs.push('找不到壁磚編號 ' + pj.wallTileId); }
+  var d = pj.drain;
+  if (d) {
+    if (!fin(d.x) || !fin(d.y)) { errs.push('落水孔位置未填或不是數字'); }
+    else if (fin(R.L) && fin(R.D) && !(d.x > 0 && d.x < R.L && d.y > 0 && d.y < R.D)) { errs.push('落水孔位置 (' + d.x + ',' + d.y + ') 必須在房間 ' + R.L + '×' + R.D + ' 之內'); }
+    if (!(d.size >= 3 && d.size <= 40)) { errs.push('落水孔尺寸須在 3～40 cm（目前 ' + sv(d.size) + '）'); }
+    if (!(d.slope >= 0 && d.slope <= 5)) { errs.push('洩水坡度須在 0～5 %（目前 ' + sv(d.slope) + '）'); }
+  }
+  pj.openings.forEach(function (o) {
+    var len = (o.wall === 'N' || o.wall === 'S') ? R.L : R.D;
+    var lab = WALL_ZH[o.wall] + (o.type === 'door' ? '門 ' : '窗 ') + o.id;
+    if (WALLS.indexOf(o.wall) < 0) { errs.push(lab + '：牆別必須是 N／E／S／W'); return; }
+    if (!fin(o.offset) || !fin(o.width) || !fin(o.height) || !fin(o.sill)) { errs.push(lab + '：位置、寬、高、窗台高有欄位未填或不是數字'); return; }
+    if (!(o.width > 0) || !(o.height > 0)) { errs.push(lab + '：寬與高必須大於 0'); }
+    if (o.offset < 0 || o.offset + o.width > len + 1e-9) { errs.push(lab + '：offset＋寬（' + (o.offset + o.width) + '）超出牆長 ' + len); }
+    if (o.type === 'door' && o.sill !== 0) { warns.push(lab + '：門的窗台高視為 0'); }
+    if (o.sill < 0 || o.sill + o.height > R.H + 1e-9) { errs.push(lab + '：高度範圍（' + o.sill + '～' + (o.sill + o.height) + '）超出天花板高 ' + R.H); }
+  });
+  pj.fixtures.forEach(function (f) {
+    var len = (f.wall === 'N' || f.wall === 'S') ? R.L : R.D;
+    var lab = '給排水點 ' + f.id + '（' + WALL_ZH[f.wall] + '）';
+    if (WALLS.indexOf(f.wall) < 0) { errs.push(lab + '：牆別必須是 N／E／S／W'); return; }
+    if (!fin(f.offset) || !fin(f.height) || !fin(f.dia) || !(f.dia > 0)) { errs.push(lab + '：位置、高度、孔徑有欄位未填、不是數字或不大於 0'); return; }
+    if (f.offset - f.dia / 2 < 0 || f.offset + f.dia / 2 > len) { errs.push(lab + '：位置超出牆長 ' + len); }
+    if (f.height - f.dia / 2 < 0 || f.height + f.dia / 2 > R.H) { errs.push(lab + '：高度超出 0～' + R.H); }
+  });
+  // 洞口彼此不得重疊（同一面牆）
+  var byWall = {};
+  pj.openings.forEach(function (o) { if (fin(o.offset) && fin(o.width) && fin(o.height) && fin(o.sill)) { (byWall[o.wall] = byWall[o.wall] || []).push(o); } });
+  Object.keys(byWall).forEach(function (w) {
+    var a = byWall[w], x, y;
+    for (x = 0; x < a.length; x++) {
+      for (y = x + 1; y < a.length; y++) {
+        var ra = [a[x].offset, a[x].sill, a[x].offset + a[x].width, a[x].sill + a[x].height];
+        var rb = [a[y].offset, a[y].sill, a[y].offset + a[y].width, a[y].sill + a[y].height];
+        if (interRect(ra, rb)) { errs.push(WALL_ZH[w] + '：' + a[x].id + ' 與 ' + a[y].id + ' 重疊'); }
+      }
+    }
+  });
+  if (!(pj.trim.pieceLen > 0)) { errs.push('收邊條單支長度必須大於 0'); }
+  if (!(pj.bagKg > 0)) { errs.push('黏著劑每包重量必須大於 0'); }
+  if (pj.breakagePct < 0 || pj.breakagePct > 30) { errs.push('破損預留須在 0～30 %'); }
+  void i;
+  return { errors: errs, warnings: warns };
+}
+
+function normalize(raw) {
+  var base = defaultProject(), pj = clone(raw || base);
+  pj.room = { L: num(pj.room && pj.room.L, base.room.L), D: num(pj.room && pj.room.D, base.room.D), H: num(pj.room && pj.room.H, base.room.H) };
+  pj.wallTop = num(pj.wallTop, pj.room.H);
+  pj.sequence = pj.sequence === 'floorFirst' ? 'floorFirst' : 'wallFirst';
+  pj.corner = pj.corner === 'both' ? 'both' : 'butt';
+  pj.wallTiled = pj.wallTiled || base.wallTiled;
+  WALLS.forEach(function (w) { pj.wallTiled[w] = pj.wallTiled[w] !== false; });
+  pj.tiles = (pj.tiles || base.tiles).map(function (t) {
+    return { id: String(t.id || ''), name: String(t.name || t.id || ''), w: num(t.w, NaN), h: num(t.h, NaN), t: num(t.t, NaN),
+             perBox: num(t.perBox, 1), use: t.use || 'both' };
+  });
+  pj.floorTileId = pj.floorTileId || (pj.tiles[0] && pj.tiles[0].id) || ''; pj.wallTileId = pj.wallTileId || (pj.tiles[0] && pj.tiles[0].id) || '';
+  pj.floorMethod = pj.floorMethod || 'auto'; pj.floorStart = pj.floorStart || 'auto';
+  pj.wallMethod = pj.wallMethod || 'auto'; pj.wallStart = pj.wallStart || 'auto';
+  pj.breakagePct = num(pj.breakagePct, 3); pj.adhesiveKgPerM2PerMm = num(pj.adhesiveKgPerM2PerMm, 1.6);
+  pj.bagKg = num(pj.bagKg, 20); pj.trimLossPct = num(pj.trimLossPct, 5);
+  var d = pj.drain || base.drain;
+  pj.drain = { x: num(d.x, NaN), y: num(d.y, NaN), size: num(d.size, 10), slope: num(d.slope, 1), mode: d.mode === 'oneway' ? 'oneway' : 'point', dir: d.dir || 'N' };
+  pj.openings = (pj.openings || []).map(function (o) {
+    return { id: String(o.id || ''), type: o.type === 'window' ? 'window' : 'door', wall: o.wall, offset: num(o.offset, NaN),
+             width: num(o.width, NaN), height: num(o.height, NaN), sill: o.type === 'window' ? num(o.sill, 0) : 0 };
+  });
+  pj.fixtures = (pj.fixtures || []).map(function (f) {
+    return { id: String(f.id || ''), kind: f.kind === 'drain' ? 'drain' : 'supply', wall: f.wall, offset: num(f.offset, NaN), height: num(f.height, NaN), dia: num(f.dia, 2.5) };
+  });
+  var tr = pj.trim || base.trim;
+  pj.trim = { pieceLen: num(tr.pieceLen, 250), outerCorners: (tr.outerCorners || []).map(function (c) { return { label: String(c.label || '陽角'), len: num(c.len, 0), n: num(c.n, 1) }; }),
+              jambDoor: tr.jambDoor !== false, jambWindow: tr.jambWindow !== false, topEdge: tr.topEdge !== false, label: String(tr.label || '收邊條') };
+  var th = pj.threshold || base.threshold;
+  pj.threshold = { label: String(th.label || '門檻'), width: num(th.width, 15), thick: num(th.thick, 2), riseAbove: num(th.riseAbove, 1), material: String(th.material || '') };
+  return pj;
+}
+
+/* ---------------------------------------------------------------- 貼磚區（地面／各牆） */
+function tileById(pj, id) {
+  for (var i = 0; i < pj.tiles.length; i++) { if (pj.tiles[i].id === id) { return pj.tiles[i]; } }
+  return null;
+}
+
+function floorSurface(pj) {
+  var R = pj.room, ft = tileById(pj, pj.floorTileId), wt = tileById(pj, pj.wallTileId);
+  var ew = wt.t / 10 + ADH;        // 牆磚完成厚（磚＋黏著劑）
+  var rect, strips = [], hole, i;
+  var ins = { N: 0, S: 0, W: 0, E: 0 };
+  if (pj.sequence === 'wallFirst') { WALLS.forEach(function (w) { ins[w] = pj.wallTiled[w] ? ew : 0; }); }
+  rect = [ins.W, ins.N, R.L - ins.E, R.D - ins.S];
+  pj.openings.forEach(function (o) {
+    if (o.type !== 'door') { return; }
+    if (o.wall === 'N' && ins.N > 0) { strips.push([o.offset, 0, o.offset + o.width, ins.N]); }
+    if (o.wall === 'S' && ins.S > 0) { strips.push([o.offset, R.D - ins.S, o.offset + o.width, R.D]); }
+    if (o.wall === 'W' && ins.W > 0) { strips.push([0, o.offset, ins.W, o.offset + o.width]); }
+    if (o.wall === 'E' && ins.E > 0) { strips.push([R.L - ins.E, o.offset, R.L, o.offset + o.width]); }
+  });
+  var d = pj.drain;
+  hole = [d.x - d.size / 2, d.y - d.size / 2, d.x + d.size / 2, d.y + d.size / 2];
+  void ft; void i;
+  return { rects: [rect].concat(strips), holes: [hole], net: rect, ins: ins, ew: ew, ef: ft.t / 10 + ADH };
+}
+
+function wallSurface(pj, w) {
+  var R = pj.room, ft = tileById(pj, pj.floorTileId), wt = tileById(pj, pj.wallTileId);
+  var len = (w === 'N' || w === 'S') ? R.L : R.D;
+  var e = wt.t / 10 + ADH, ef = ft.t / 10 + ADH;
+  var adj = (w === 'N' || w === 'S') ? ['W', 'E'] : ['N', 'S'];     // 兩端相鄰的牆
+  var longPair = R.L >= R.D ? ['N', 'S'] : ['E', 'W'];
+  var through = longPair.indexOf(w) >= 0;
+  var u0 = 0, u1 = len, deduct = [0, 0];
+  if (pj.corner === 'both' || !through) {
+    if (pj.wallTiled[adj[0]]) { u0 = e; deduct[0] = e; }
+    if (pj.wallTiled[adj[1]]) { u1 = len - e; deduct[1] = e; }
+  }
+  var z0 = pj.sequence === 'floorFirst' ? ef : 0, z1 = pj.wallTop;
+  var rect = [u0, z0, u1, z1];
+  var holes = [], openRects = [];
+  pj.openings.forEach(function (o) {
+    if (o.wall !== w) { return; }
+    var r = interRect([o.offset, o.sill, o.offset + o.width, o.sill + o.height], rect);
+    openRects.push({ o: o, r: [o.offset, o.sill, o.offset + o.width, o.sill + o.height] });
+    if (r) { holes.push(r); }
+  });
+  var fx = [];
+  pj.fixtures.forEach(function (f) {
+    if (f.wall !== w) { return; }
+    var r = [f.offset - f.dia / 2, f.height - f.dia / 2, f.offset + f.dia / 2, f.height + f.dia / 2];
+    var rr = interRect(r, rect);
+    fx.push({ f: f, r: r });
+    if (rr) { holes.push(rr); }
+  });
+  return { wall: w, len: len, rects: [rect], holes: holes, net: rect, deduct: deduct, through: through,
+           openRects: openRects, fixtureRects: fx, e: e, ef: ef, z0: z0, z1: z1 };
+}
+
+/* ---------------------------------------------------------------- 起始磚（放樣）候選 */
+var FLOOR_STARTS = {
+  cornerNW: '西北角起貼', cornerNE: '東北角起貼', cornerSW: '西南角起貼', cornerSE: '東南角起貼',
+  center: '房間中心（磚中心對正）', centerJoint: '房間中心（十字縫對正）',
+  door: '門口對齊（門中線＋門檻線）', drain: '落水孔中心（磚中心對正）', drainJoint: '落水孔中心（十字縫對正）'
+};
+var WALL_STARTS = {
+  'L-B': '左下角起貼', 'R-B': '右下角起貼', 'C-B': '牆中心磚置中＋由下往上', 'CJ-B': '牆中心十字縫＋由下往上',
+  'L-T': '左上角起貼（由上往下）', 'R-T': '右上角起貼（由上往下）', 'C-T': '牆中心磚置中＋由上往下', 'CJ-T': '牆中心十字縫＋由上往下',
+  'win': '窗中心對正＋由下往上'
+};
+
+function floorOrigin(pj, sf, key, dims, method) {
+  var net = sf.net, tw = dims[0], th = dims[1], j = JOINT, R = pj.room, d = pj.drain;
+  var cx = (net[0] + net[2]) / 2, cy = (net[1] + net[3]) / 2, isDiag = method.indexOf('diag') === 0;
+  var door = null;
+  pj.openings.forEach(function (o) { if (!door && o.type === 'door') { door = o; } });
+  switch (key) {
+    case 'cornerNW': return [net[0], net[1]];
+    case 'cornerNE': return [isDiag ? net[2] : net[2] - tw, net[1]];
+    case 'cornerSW': return [net[0], isDiag ? net[3] : net[3] - th];
+    case 'cornerSE': return [isDiag ? net[2] : net[2] - tw, isDiag ? net[3] : net[3] - th];
+    case 'center': return isDiag ? [cx, cy] : [cx - tw / 2, cy - th / 2];
+    case 'centerJoint': return [cx + j / 2, cy + j / 2];
+    case 'drain': return isDiag ? [d.x, d.y] : [d.x - tw / 2, d.y - th / 2];
+    case 'drainJoint': return [d.x + j / 2, d.y + j / 2];
+    case 'door':
+      if (!door) { return null; }
+      if (door.wall === 'N') { return isDiag ? [door.offset + door.width / 2, 0] : [door.offset + door.width / 2 - tw / 2, 0]; }
+      if (door.wall === 'S') { return isDiag ? [door.offset + door.width / 2, R.D] : [door.offset + door.width / 2 - tw / 2, R.D - th]; }
+      if (door.wall === 'W') { return isDiag ? [0, door.offset + door.width / 2] : [0, door.offset + door.width / 2 - th / 2]; }
+      return isDiag ? [R.L, door.offset + door.width / 2] : [R.L - tw, door.offset + door.width / 2 - th / 2];
+  }
+  return null;
+}
+
+function wallOrigin(sf, key, dims, method) {
+  var n = sf.net, tw = dims[0], th = dims[1], j = JOINT, isDiag = method.indexOf('diag') === 0;
+  var cx = (n[0] + n[2]) / 2, parts = key.split('-'), h = parts[0], v = parts[1], ox, oy, win = null;
+  sf.openRects.forEach(function (q) { if (!win && q.o.type === 'window') { win = q.o; } });
+  if (key === 'win') {
+    if (!win) { return null; }
+    ox = isDiag ? win.offset + win.width / 2 : win.offset + win.width / 2 - tw / 2; oy = isDiag ? n[1] : n[1];
+    return [ox, oy];
+  }
+  if (h === 'L') { ox = n[0]; } else if (h === 'R') { ox = isDiag ? n[2] : n[2] - tw; }
+  else if (h === 'C') { ox = isDiag ? cx : cx - tw / 2; } else { ox = cx + j / 2; }
+  if (v === 'B') { oy = n[1]; } else { oy = isDiag ? n[3] : n[3] - th; }
+  return [ox, oy];
+}
+
+/* ---------------------------------------------------------------- 貼法清單與評分 */
+var METHOD_NAMES = {
+  'stack-h': '對縫正貼（橫貼）', 'stack-v': '對縫正貼（直貼）',
+  'run2-h': '1/2 交丁（橫貼）', 'run2-v': '1/2 交丁（直貼）',
+  'run3-h': '1/3 交丁（橫貼）', 'run3-v': '1/3 交丁（直貼）',
+  'diag': '45° 斜貼', 'herring-h': '人字拼（橫）', 'herring-v': '人字拼（直）'
+};
+
+function methodsFor(tile, kind) {
+  var L = Math.max(tile.w, tile.h), S = Math.min(tile.w, tile.h), square = Math.abs(L - S) < 1e-9, out = [];
+  out.push('stack-h'); if (!square) { out.push('stack-v'); }
+  out.push('run2-h'); out.push('run2-v');
+  if (!square) { out.push('run3-h'); out.push('run3-v'); }
+  if (square) { out.push('diag'); }
+  var ratio = (L + JOINT) / (S + JOINT);
+  if (!square && ratio >= 1.9 && Math.abs(ratio - Math.round(ratio)) / ratio < 0.03) { out.push('herring-h'); out.push('herring-v'); }
+  void kind;
+  return out;
+}
+
+function score(ev) { return ev.pieces + 3 * ev.slivers + 0.3 * ev.cut; }
+
+/* 在 candidates（起點鍵）× methods 中找最佳，回傳每個貼法的最佳起點與整體最佳 */
+function searchLayouts(sf, tile, methods, candKeys, originFn, bias) {
+  var box = bboxOf(sf.rects), table = [];
+  methods.forEach(function (m) {
+    var dims = tileDims(tile, m), best = null;
+    candKeys.forEach(function (key) {
+      var o = originFn(key, dims, m);
+      if (!o) { return; }
+      var tiles = genTiles(box, tile, m, o, JOINT);
+      var ev = evalTiles(tiles, sf.rects, sf.holes, tile, false);
+      var sc = score(ev) + ((bias && bias[key]) || 0);
+      if (!best || sc < best.score - 1e-9) { best = { method: m, start: key, origin: o, ev: ev, score: sc }; }
+    });
+    if (best) { table.push(best); }
+  });
+  table.sort(function (a, b) { return a.score - b.score; });
+  return table;
+}
+
+function buildChosen(sf, tile, method, startKey, originFn) {
+  var box = bboxOf(sf.rects), dims = tileDims(tile, method), o = originFn(startKey, dims, method);
+  if (!o) { return { method: method, start: startKey, origin: null, ev: null }; }
+  var tiles = genTiles(box, tile, method, o, JOINT);
+  var ev = evalTiles(tiles, sf.rects, sf.holes, tile, true);
+  return { method: method, start: startKey, origin: o, ev: ev };
+}
+
+/* ---------------------------------------------------------------- 洩水坡度 */
+function slopeInfo(pj, sf, tile) {
+  var d = pj.drain, s = d.slope / 100, net = sf.net, pts = [[net[0], net[1]], [net[2], net[1]], [net[2], net[3]], [net[0], net[3]]];
+  function height(x, y) {
+    if (d.mode === 'oneway') {
+      if (d.dir === 'N') { return s * Math.max(0, y - d.y); }
+      if (d.dir === 'S') { return s * Math.max(0, d.y - y); }
+      if (d.dir === 'W') { return s * Math.max(0, x - d.x); }
+      return s * Math.max(0, d.x - x);
+    }
+    return s * Math.hypot(x - d.x, y - d.y);
+  }
+  var maxFall = 0, i, j, N = 24, sum = 0, cnt = 0, hx, hy;
+  pts.forEach(function (p) { maxFall = Math.max(maxFall, height(p[0], p[1])); });
+  for (i = 0; i < N; i++) {
+    for (j = 0; j < N; j++) {
+      hx = net[0] + (i + 0.5) * (net[2] - net[0]) / N; hy = net[1] + (j + 0.5) * (net[3] - net[1]) / N;
+      sum += height(hx, hy); cnt++;
+    }
+  }
+  var avg = sum / cnt, area = rectArea(net);
+  var L = Math.max(tile.w, tile.h);
+  var diagLen = Math.hypot(tile.w, tile.h);
+  var lip = s * (d.mode === 'point' ? diagLen : L);       // 單片磚面內的高低差（cm）
+  var maxDiag = s > 0 ? 0.3 / s : Infinity;               // 單片磚高低差 ≤ 3mm 時，磚面最長距離（cm）
+  var maxSize = d.mode === 'point' ? Math.floor(maxDiag / Math.SQRT2) : Math.floor(maxDiag);  // 正方形磚邊長上限
+  var near = Math.round(Math.pow(Math.ceil(2 * L / Math.min(tile.w, tile.h)) + 1, 2));
+  return { slopePct: d.slope, mode: d.mode, maxFall: maxFall, avgFall: avg, bedVolumeM3: avg * area / 1e6, area: area,
+           lip: lip, lipOk: lip <= 0.3 + 1e-9, maxDiag: maxDiag, maxTileSide: maxSize, nearDrainTiles: near };
+}
+
+/* ---------------------------------------------------------------- 總計算 */
+function ceilDiv(a, b) { return Math.ceil(a / b - 1e-9); }
+
+function pickOrOverride(pj, tile, sf, kind) {
+  var isFloor = kind === 'floor';
+  var methods = methodsFor(tile, kind);
+  var origFn, candKeys, bias = {};
+  if (isFloor) {
+    origFn = function (key, dims, m) { return floorOrigin(pj, sf, key, dims, m); };
+    candKeys = Object.keys(FLOOR_STARTS);
+    // 有洩水坡度的點收水：落水孔十字縫對正才能把四個斜面對稱切割，寧可多用幾片也優先採用
+    if (pj.drain.slope > 0 && pj.drain.mode === 'point') { bias.drainJoint = -12; bias.drain = -6; }
+    else { bias.drainJoint = -1; bias.drain = -0.5; }
+  } else {
+    origFn = function (key, dims, m) { return wallOrigin(sf, key, dims, m); };
+    candKeys = Object.keys(WALL_STARTS);
+  }
+  var table = searchLayouts(sf, tile, methods, candKeys, origFn, bias);
+  var methodSel = isFloor ? pj.floorMethod : pj.wallMethod, startSel = isFloor ? pj.floorStart : pj.wallStart;
+  var chosenMethod = methodSel === 'auto' || methods.indexOf(methodSel) < 0 ? table[0].method : methodSel;
+  var row = table.filter(function (r) { return r.method === chosenMethod; })[0];
+  var startKey = (startSel === 'auto' || candKeys.indexOf(startSel) < 0) ? row.start : startSel;
+  var chosen = buildChosen(sf, tile, chosenMethod, startKey, origFn);
+  if (!chosen.origin) { chosen = buildChosen(sf, tile, chosenMethod, row.start, origFn); }
+  return { table: table, chosen: chosen, methods: methods };
+}
+
+function computeAll(raw) {
+  try { return computeAllInner(raw); }
+  catch (err) { return { ok: false, errors: ['計算發生例外：' + err.message + '（請檢查輸入）'], warnings: [], project: null }; }
+}
+
+function computeAllInner(raw) {
+  var pj = normalize(raw), v = validate(pj);
+  if (v.errors.length) { return { ok: false, errors: v.errors, warnings: v.warnings, project: pj }; }
+  var ft = tileById(pj, pj.floorTileId), wt = tileById(pj, pj.wallTileId);
+  var out = { ok: true, errors: [], warnings: v.warnings.slice(), project: pj, floorTile: ft, wallTile: wt, joint: JOINT, adhesiveT: ADH };
+
+  /* 地面 */
+  var fs = floorSurface(pj), fp = pickOrOverride(pj, ft, fs, 'floor');
+  var fArea = (rectArea(fs.rects[0]) + fs.rects.slice(1).reduce(function (s, r) { return s + rectArea(r); }, 0)) - pj.drain.size * pj.drain.size;
+  var floor = { surface: fs, tile: ft, netArea: fArea / 1e4, chosen: fp.chosen, compare: fp.table, methods: fp.methods };
+  floor.slope = slopeInfo(pj, fs, ft);
+  out.floor = floor;
+
+  /* 各牆 */
+  out.walls = {};
+  var wallPieces = 0, wallArea = 0;
+  WALLS.forEach(function (w) {
+    if (!pj.wallTiled[w]) { return; }
+    var sf = wallSurface(pj, w), wp = pickOrOverride(pj, wt, sf, 'wall');
+    var gross = rectArea(sf.net), holeA = sf.holes.reduce(function (s, r) { return s + rectArea(r); }, 0);
+    var info = { surface: sf, netArea: (gross - holeA) / 1e4, chosen: wp.chosen, compare: wp.table, methods: wp.methods };
+    // 開孔磚片（給排水孔）
+    info.fixtureTiles = 0;
+    sf.fixtureRects.forEach(function (q) {
+      var cnt = 0;
+      wp.chosen.ev.polys.forEach(function (p) {
+        var hit = false;
+        p.pts && (hit = clipRect(p.pts, q.r).length >= 3 && polyArea(clipRect(p.pts, q.r)) > 1e-6);
+        if (hit) { cnt++; }
+      });
+      info.fixtureTiles += cnt;
+    });
+    out.walls[w] = info;
+    wallPieces += wp.chosen.ev.pieces; wallArea += info.netArea;
+  });
+
+  /* 各貼法整體比較（地、牆各自最佳起點） */
+  function pur(pieces) { return Math.ceil(pieces * (1 + pj.breakagePct / 100) - 1e-9); }
+  var fv = floor.chosen.ev;
+  floor.pieces = fv.pieces; floor.purchase = pur(fv.pieces); floor.boxes = ceilDiv(floor.purchase, ft.perBox);
+  floor.usedArea = fv.used / 1e4;        // 實際被磚蓋住的面積（不含磚縫）
+  floor.waste = Math.max(0, (fv.pieces * ft.w * ft.h - fv.used) / fv.used);
+  floor.theory = Math.ceil(fv.used / (ft.w * ft.h) - 1e-9);
+  Object.keys(out.walls).forEach(function (w) {
+    var wi = out.walls[w], ev = wi.chosen.ev;
+    wi.pieces = ev.pieces; wi.usedArea = ev.used / 1e4; wi.waste = Math.max(0, (ev.pieces * wt.w * wt.h - ev.used) / ev.used);
+  });
+  var wPieces = wallPieces, wPurchase = pur(wPieces), wUsed = 0;
+  Object.keys(out.walls).forEach(function (k) { wUsed += out.walls[k].chosen.ev.used; });
+  var wallTotal = { netArea: wallArea, usedArea: wUsed / 1e4, pieces: wPieces, purchase: wPurchase, boxes: ceilDiv(wPurchase, wt.perBox),
+                    waste: wUsed > 0 ? Math.max(0, (wPieces * wt.w * wt.h - wUsed) / wUsed) : 0,
+                    theory: Math.ceil(wUsed / (wt.w * wt.h) - 1e-9) };
+  out.wallTotal = wallTotal;
+
+  /* 黏著劑（牆、地都用 0.5cm 厚） */
+  var kgPerM2 = ADH * 10 * pj.adhesiveKgPerM2PerMm;
+  var adhFloorKg = floor.netArea * kgPerM2, adhWallKg = wallArea * kgPerM2;
+  out.adhesive = { thickCm: ADH, kgPerM2: kgPerM2, floorKg: adhFloorKg, wallKg: adhWallKg, totalKg: adhFloorKg + adhWallKg,
+                   bags: Math.ceil((adhFloorKg + adhWallKg) / pj.bagKg - 1e-9), bagKg: pj.bagKg };
+
+  /* 收邊條 */
+  var items = [], total = 0;
+  pj.trim.outerCorners.forEach(function (c) { if (c.len * c.n > 0) { items.push({ label: c.label, len: c.len * c.n }); } });
+  pj.openings.forEach(function (o) {
+    if (!pj.wallTiled[o.wall]) { return; }
+    if (o.type === 'door' && pj.trim.jambDoor) { items.push({ label: WALL_ZH[o.wall] + '門 ' + o.id + ' 洞口（兩側＋頂）', len: 2 * Math.min(o.height, pj.wallTop) + o.width }); }
+    if (o.type === 'window' && pj.trim.jambWindow) { items.push({ label: WALL_ZH[o.wall] + '窗 ' + o.id + ' 洞口（四邊）', len: 2 * o.height + 2 * o.width }); }
+  });
+  if (pj.trim.topEdge && pj.wallTop < pj.room.H) {
+    Object.keys(out.walls).forEach(function (w) {
+      var n = out.walls[w].surface.net; items.push({ label: WALL_ZH[w] + '牆磚頂端收邊', len: n[2] - n[0] });
+    });
+  }
+  items.forEach(function (i) { total += i.len; });
+  var withLoss = total * (1 + pj.trimLossPct / 100);
+  out.trim = { items: items, totalCm: total, withLossCm: withLoss, pieceLen: pj.trim.pieceLen, pieces: Math.ceil(withLoss / pj.trim.pieceLen - 1e-9), label: pj.trim.label };
+
+  /* 門檻 */
+  var doors = pj.openings.filter(function (o) { return o.type === 'door'; });
+  out.threshold = { items: doors.map(function (o) { return { id: o.id, wall: o.wall, len: o.width }; }), spec: pj.threshold,
+                    count: doors.length, maxFloorRise: floor.slope.maxFall };
+
+  /* 警告 */
+  addWarnings(pj, out);
+  return out;
+}
+
+function addWarnings(pj, out) {
+  var w = out.warnings, f = out.floor, sl = f.slope;
+  if (pj.drain.slope > 0 && !sl.lipOk) {
+    w.push('洩水坡度 ' + pj.drain.slope + '% 下，地磚 ' + out.floorTile.w + '×' + out.floorTile.h + ' 單片面內高低差約 ' + (sl.lip * 10).toFixed(1) +
+           ' mm（建議 ≤ 3 mm）。磚太大貼不平順：建議單片對角線 ≤ ' + Math.floor(sl.maxDiag) + ' cm（正方形磚邊長 ≤ ' + sl.maxTileSide +
+           ' cm），或落水孔周圍改「對角切割四向收水」。');
+  }
+  if (pj.drain.slope === 0) { w.push('洩水坡度為 0：地面不會往落水孔排水，請確認。'); }
+  var fev = f.chosen.ev;
+  if (fev.slivers > 0) { w.push('地面有 ' + fev.slivers + ' 片「細條切磚」（切邊 < ' + fev.sliverMin.toFixed(1) + ' cm），容易斷裂、也不好看，建議換起始點或貼法。'); }
+  Object.keys(out.walls).forEach(function (k) {
+    var e = out.walls[k].chosen.ev;
+    if (e.slivers > 0) { w.push(WALL_ZH[k] + '有 ' + e.slivers + ' 片細條切磚（切邊 < ' + e.sliverMin.toFixed(1) + ' cm）。'); }
+  });
+  var d = pj.drain, net = f.surface.net;
+  if (d.x - d.size / 2 < net[0] || d.x + d.size / 2 > net[2] || d.y - d.size / 2 < net[1] || d.y + d.size / 2 > net[3]) {
+    w.push('落水孔有一部分落在貼磚淨區域之外（牆磚厚度已扣除），請確認位置。');
+  }
+  var thr = pj.threshold;
+  if (out.threshold.count > 0 && thr.riseAbove < 1) { w.push('門檻高出地磚面僅 ' + thr.riseAbove + ' cm，阻水效果有限（建議 ≥ 1 cm）。'); }
+  void pj;
+}
+
+/* 依指定貼法與起點重建排磚多邊形（比較表縮圖用） */
+function layoutFor(raw, kind, wallKey, method, startKey) {
+  var pj = normalize(raw), tile, sf, fn;
+  if (kind === 'floor') {
+    tile = tileById(pj, pj.floorTileId); sf = floorSurface(pj);
+    fn = function (key, dims, m) { return floorOrigin(pj, sf, key, dims, m); };
+  } else {
+    tile = tileById(pj, pj.wallTileId); sf = wallSurface(pj, wallKey);
+    fn = function (key, dims, m) { return wallOrigin(sf, key, dims, m); };
+  }
+  return buildChosen(sf, tile, method, startKey, fn);
+}
+
+var api = {
+  JOINT: JOINT, ADH: ADH, WALLS: WALLS, WALL_ZH: WALL_ZH, FLOOR_STARTS: FLOOR_STARTS, WALL_STARTS: WALL_STARTS, METHOD_NAMES: METHOD_NAMES,
+  polyArea: polyArea, clipRect: clipRect, genTiles: genTiles, tileDims: tileDims, evalTiles: evalTiles, methodsFor: methodsFor,
+  defaultProject: defaultProject, normalize: normalize, validate: validate, floorSurface: floorSurface, wallSurface: wallSurface,
+  slopeInfo: slopeInfo, computeAll: computeAll, layoutFor: layoutFor, bboxOf: bboxOf, rectArea: rectArea, interRect: interRect
+};
+if (typeof module !== 'undefined' && module.exports) { module.exports = api; } else { root.TileEngine = api; }
+})(typeof window !== 'undefined' ? window : this);
+</script>
+<script>/* 畫圖模組：平面圖、立面圖、斷面圖、縮圖（SVG 字串）＋ 3D 檢視器（canvas）。
+   只負責把 engine 算好的結果畫出來，不做任何算量。 */
+'use strict';
+(function (root) {
+var E = (typeof module !== 'undefined' && module.exports) ? require('./engine.js') : root.TileEngine;
+var C = { full: '#efe9dd', cut: '#f2c58a', hole: '#e9a3a3', line: '#8f8a7c', wall: '#3a3a3a', net: '#fbf9f4',
+          win: '#bfe3f5', door: '#ffffff', start: '#d62828', drain: '#1d6fa5', trim: '#2f9e6b', dim: '#555', sup: '#1d6fa5', dra: '#6b6b6b' };
+var FONT = 'font-family="Microsoft JhengHei, Noto Sans TC, PingFang TC, sans-serif"';
+
+function f1(x) { return (Math.round(x * 10) / 10).toString(); }
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function pts(poly, X, Y) { return poly.map(function (p) { return X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1); }).join(' '); }
+function text(x, y, s, o) {
+  o = o || {};
+  return '<text x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" font-size="' + (o.size || 12) + '" fill="' + (o.fill || '#222') + '" ' +
+    'text-anchor="' + (o.anchor || 'start') + '"' + (o.bold ? ' font-weight="bold"' : '') + (o.rot ? ' transform="rotate(' + o.rot + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')"' : '') + ' ' + FONT + '>' + esc(s) + '</text>';
+}
+function arrowDefs() {
+  return '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d6fa5"/></marker>' +
+         '<marker id="dh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker></defs>';
+}
+function dimLine(x1, y1, x2, y2, label, off, vertical) {
+  var s = '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#555" stroke-width="0.8" marker-start="url(#dh)" marker-end="url(#dh)"/>';
+  var mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  s += vertical ? text(mx + off, my, label, { size: 11, fill: '#444', anchor: 'middle', rot: -90 }) : text(mx, my + off, label, { size: 11, fill: '#444', anchor: 'middle' });
+  return s;
+}
+
+/* ---------------------------------------------------------------- 起始點標記 */
+function startMark(X, Y, ox, oy, box, label, vert) {
+  var s = '', sx = X(ox), sy = Y(oy), yTop = Math.min(Y(box[1]), Y(box[3])), yBot = Math.max(Y(box[1]), Y(box[3]));
+  s += '<line x1="' + X(box[0]) + '" y1="' + sy + '" x2="' + X(box[2]) + '" y2="' + sy + '" stroke="' + C.start + '" stroke-width="0.8" stroke-dasharray="6 4"/>';
+  s += '<line x1="' + sx + '" y1="' + yTop + '" x2="' + sx + '" y2="' + yBot + '" stroke="' + C.start + '" stroke-width="0.8" stroke-dasharray="6 4"/>';
+  s += '<circle cx="' + sx + '" cy="' + sy + '" r="6" fill="#fff" stroke="' + C.start + '" stroke-width="2"/>';
+  s += '<line x1="' + (sx - 9) + '" y1="' + sy + '" x2="' + (sx + 9) + '" y2="' + sy + '" stroke="' + C.start + '" stroke-width="2"/>';
+  s += '<line x1="' + sx + '" y1="' + (sy - 9) + '" x2="' + sx + '" y2="' + (sy + 9) + '" stroke="' + C.start + '" stroke-width="2"/>';
+  void vert;
+  var xMin = Math.min(X(box[0]), X(box[2])), xMax = Math.max(X(box[0]), X(box[2]));
+  var tx = Math.min(Math.max(sx + 10, xMin + 4), xMax - 170);
+  var ty = Math.min(Math.max(sy - 10, yTop + 14), yBot - 6);
+  s += '<rect x="' + (tx - 2) + '" y="' + (ty - 12) + '" width="' + Math.min(176, label.length * 12.5 + 8) + '" height="16" fill="#fff" fill-opacity="0.85"/>';
+  s += text(tx, ty, label, { size: 11, fill: C.start, bold: true });
+  return s;
+}
+
+/* ---------------------------------------------------------------- 平面圖 */
+function planSVG(res, opts) {
+  opts = opts || {};
+  var pj = res.project, R = pj.room, fl = res.floor, sf = fl.surface, ev = fl.chosen.ev, W = opts.width || 680, pad = 58;
+  var sc = (W - pad * 2) / R.L, H = R.D * sc + pad * 2 + 40;
+  var X = function (x) { return pad + x * sc; }, Y = function (y) { return pad + y * sc; };
+  var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H.toFixed(0) + '" class="fig" role="img" aria-label="平面磁磚計畫圖">' + arrowDefs();
+  s += '<rect width="100%" height="100%" fill="#fff"/>';
+  // 粗胚牆線與牆磚完成層
+  s += '<rect x="' + X(0) + '" y="' + Y(0) + '" width="' + (R.L * sc) + '" height="' + (R.D * sc) + '" fill="' + C.net + '" stroke="' + C.wall + '" stroke-width="4"/>';
+  // 磁磚
+  ev.polys.forEach(function (p) {
+    p.clipped.forEach(function (c) {
+      s += '<polygon points="' + pts(c, X, Y) + '" fill="' + C[p.kind] + '" stroke="' + C.line + '" stroke-width="0.5"/>';
+    });
+  });
+  // 牆磚完成層（淨區域外圈）
+  var n = sf.net;
+  s += '<rect x="' + X(n[0]) + '" y="' + Y(n[1]) + '" width="' + ((n[2] - n[0]) * sc) + '" height="' + ((n[3] - n[1]) * sc) + '" fill="none" stroke="#b08968" stroke-width="1" stroke-dasharray="4 3"/>';
+  // 落水孔
+  var d = pj.drain, ds = d.size * sc;
+  s += '<rect x="' + (X(d.x) - ds / 2) + '" y="' + (Y(d.y) - ds / 2) + '" width="' + ds + '" height="' + ds + '" fill="#fff" stroke="' + C.drain + '" stroke-width="1.5"/>';
+  s += '<line x1="' + (X(d.x) - ds / 2) + '" y1="' + (Y(d.y) - ds / 2) + '" x2="' + (X(d.x) + ds / 2) + '" y2="' + (Y(d.y) + ds / 2) + '" stroke="' + C.drain + '"/>';
+  s += '<line x1="' + (X(d.x) + ds / 2) + '" y1="' + (Y(d.y) - ds / 2) + '" x2="' + (X(d.x) - ds / 2) + '" y2="' + (Y(d.y) + ds / 2) + '" stroke="' + C.drain + '"/>';
+  // 洩水方向箭頭
+  if (d.slope > 0) {
+    if (d.mode === 'point') {
+      [[n[0] + 18, n[1] + 18], [n[2] - 18, n[1] + 18], [n[2] - 18, n[3] - 18], [n[0] + 18, n[3] - 18]].forEach(function (p) {
+        var dx = d.x - p[0], dy = d.y - p[1], len = Math.hypot(dx, dy) || 1, t = Math.min(0.55, 60 / len);
+        s += '<line x1="' + X(p[0]) + '" y1="' + Y(p[1]) + '" x2="' + X(p[0] + dx * t) + '" y2="' + Y(p[1] + dy * t) + '" stroke="' + C.drain + '" stroke-width="1.6" marker-end="url(#ah)"/>';
+      });
+    } else {
+      var vx = { E: 1, W: -1, N: 0, S: 0 }[d.dir], vy = { N: -1, S: 1, E: 0, W: 0 }[d.dir];
+      [0.25, 0.5, 0.75].forEach(function (k) {
+        var px = n[0] + (n[2] - n[0]) * k, py = n[1] + (n[3] - n[1]) * k;
+        s += '<line x1="' + X(px - vx * 25) + '" y1="' + Y(py - vy * 25) + '" x2="' + X(px + vx * 25) + '" y2="' + Y(py + vy * 25) + '" stroke="' + C.drain + '" stroke-width="1.6" marker-end="url(#ah)"/>';
+      });
+    }
+    s += text(X(d.x) + ds / 2 + 6, Y(d.y) + ds / 2 + 14, '落水孔 ' + d.size + 'cm ｜ 洩水 ' + d.slope + '%', { size: 11, fill: C.drain, bold: true });
+  }
+  // 門窗
+  pj.openings.forEach(function (o) {
+    var w = o.wall, a = o.offset, b = o.offset + o.width, col = o.type === 'door' ? '#c0392b' : '#3a8fc7', lab = (o.type === 'door' ? '門 ' : '窗 ') + o.id;
+    var x1, y1, x2, y2;
+    if (w === 'N') { x1 = X(a); x2 = X(b); y1 = y2 = Y(0); }
+    else if (w === 'S') { x1 = X(a); x2 = X(b); y1 = y2 = Y(R.D); }
+    else if (w === 'W') { y1 = Y(a); y2 = Y(b); x1 = x2 = X(0); }
+    else { y1 = Y(a); y2 = Y(b); x1 = x2 = X(R.L); }
+    s += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#fff" stroke-width="8"/>';
+    s += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + col + '" stroke-width="' + (o.type === 'door' ? 3 : 5) + '"/>';
+    var mx = (x1 + x2) / 2, my = (y1 + y2) / 2, ox = w === 'W' ? 6 : (w === 'E' ? -6 : 0), oy = w === 'N' ? 16 : (w === 'S' ? -8 : 0);
+    s += text(mx + ox, my + oy + (w === 'W' || w === 'E' ? 4 : 0), lab + '（' + o.width + 'cm）', { size: 10.5, fill: col, anchor: w === 'W' ? 'start' : (w === 'E' ? 'end' : 'middle'), bold: true });
+    if (o.type === 'door') {   // 門檻
+      var tw = Math.max(5, pj.threshold.width * sc);
+      if (w === 'N' || w === 'S') { s += '<rect x="' + Math.min(x1, x2) + '" y="' + (w === 'N' ? Y(0) - 1 : Y(R.D) - tw + 1) + '" width="' + Math.abs(x2 - x1) + '" height="' + tw + '" fill="#a89f91" fill-opacity="0.9" stroke="#555" stroke-width="0.6"/>'; }
+      else { s += '<rect x="' + (w === 'W' ? X(0) - 1 : X(R.L) - tw + 1) + '" y="' + Math.min(y1, y2) + '" width="' + tw + '" height="' + Math.abs(y2 - y1) + '" fill="#a89f91" fill-opacity="0.9" stroke="#555" stroke-width="0.6"/>'; }
+    }
+  });
+  // 起始磚放樣點
+  var o = fl.chosen.origin;
+  if (o) {
+    var box = E.bboxOf([sf.net]);
+    var lab = '起始點 (' + f1(o[0]) + ', ' + f1(o[1]) + ')';
+    s += startMark(X, Y, o[0], o[1], box, lab);
+  }
+  // 尺寸
+  s += dimLine(X(0), Y(R.D) + 22, X(R.L), Y(R.D) + 22, '粗胚 ' + R.L + ' cm（東西）', -4);
+  s += dimLine(X(0) - 24, Y(0), X(0) - 24, Y(R.D), '粗胚 ' + R.D + ' cm（南北）', -5, true);
+  s += dimLine(X(n[0]), Y(R.D) + 40, X(n[2]), Y(R.D) + 40, '貼磚淨寬 ' + f1(n[2] - n[0]) + ' cm（已扣牆磚＋黏著劑 ' + f1(sf.ew) + ' cm／邊）', -4);
+  s += text(X(0) + R.L * sc, Y(0) - 12, 'N ↑', { size: 12, anchor: 'end', bold: true });
+  s += text(X(0), Y(0) - 12, (res.project.name || '') + '　平面磁磚計畫（' + E.METHOD_NAMES[fl.chosen.method] + '）', { size: 13, bold: true });
+  s += '</svg>';
+  return s;
+}
+
+/* ---------------------------------------------------------------- 立面圖（由室內看；南牆、西牆左右翻轉） */
+function wallSVG(res, w, opts) {
+  opts = opts || {};
+  var pj = res.project, R = pj.room, wi = res.walls[w], sf = wi.surface, ev = wi.chosen.ev, W = opts.width || 680, pad = 56;
+  var len = sf.len, H = R.H, flip = (w === 'S' || w === 'W');
+  var sc = Math.min((W - pad * 2) / len, 440 / H);
+  var hh = H * sc + pad * 2 + 30;
+  var X = function (u) { return pad + (flip ? len - u : u) * sc; }, Y = function (z) { return pad + (H - z) * sc; };
+  function polyPts(p) { return p.map(function (q) { return X(q[0]).toFixed(1) + ',' + Y(q[1]).toFixed(1); }).join(' '); }
+  function rectEl(r, fill, stroke, sw, dash) {
+    var x1 = Math.min(X(r[0]), X(r[2])), x2 = Math.max(X(r[0]), X(r[2])), y1 = Math.min(Y(r[1]), Y(r[3])), y2 = Math.max(Y(r[1]), Y(r[3]));
+    return '<rect x="' + x1.toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + (x2 - x1).toFixed(1) + '" height="' + (y2 - y1).toFixed(1) + '" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>';
+  }
+  var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + hh.toFixed(0) + '" class="fig" role="img" aria-label="' + E.WALL_ZH[w] + '立面磁磚計畫圖">' + arrowDefs();
+  s += '<rect width="100%" height="100%" fill="#fff"/>';
+  s += rectEl([0, 0, len, H], C.net, C.wall, 3);
+  ev.polys.forEach(function (p) {
+    p.clipped.forEach(function (c) { s += '<polygon points="' + polyPts(c) + '" fill="' + C[p.kind] + '" stroke="' + C.line + '" stroke-width="0.5"/>'; });
+  });
+  // 貼磚淨範圍
+  s += rectEl(sf.net, 'none', '#b08968', 1, '4 3');
+  // 洞口（蓋在磚上）
+  sf.openRects.forEach(function (q) {
+    s += rectEl(q.r, q.o.type === 'door' ? C.door : C.win, q.o.type === 'door' ? '#c0392b' : '#3a8fc7', 2);
+    var cx = (X(q.r[0]) + X(q.r[2])) / 2, cy = (Y(q.r[1]) + Y(q.r[3])) / 2;
+    s += text(cx, cy, (q.o.type === 'door' ? '門 ' : '窗 ') + q.o.id, { size: 11, anchor: 'middle', bold: true, fill: '#333' });
+    s += text(cx, cy + 14, q.o.width + '×' + q.o.height + (q.o.type === 'window' ? '（窗台 ' + q.o.sill + '）' : ''), { size: 10, anchor: 'middle', fill: '#555' });
+    // 洞口收邊
+    if ((q.o.type === 'door' && pj.trim.jambDoor) || (q.o.type === 'window' && pj.trim.jambWindow)) {
+      var r = q.r, edges = q.o.type === 'door' ? [[r[0], r[1], r[0], r[3]], [r[2], r[1], r[2], r[3]], [r[0], r[3], r[2], r[3]]] :
+        [[r[0], r[1], r[0], r[3]], [r[2], r[1], r[2], r[3]], [r[0], r[3], r[2], r[3]], [r[0], r[1], r[2], r[1]]];
+      edges.forEach(function (e) { s += '<line x1="' + X(e[0]) + '" y1="' + Y(e[1]) + '" x2="' + X(e[2]) + '" y2="' + Y(e[3]) + '" stroke="' + C.trim + '" stroke-width="3"/>'; });
+    }
+  });
+  // 給排水點
+  sf.fixtureRects.forEach(function (q) {
+    var f = q.f, cx = X(f.offset), cy = Y(f.height), r = Math.max(3, f.dia * sc / 2);
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + (f.kind === 'supply' ? C.sup : C.dra) + '" stroke="#fff" stroke-width="1"/>';
+    s += text(cx + r + 3, cy + 4, (f.kind === 'supply' ? '給水 ' : '排水 ') + f.id + ' h' + f.height, { size: 10, fill: f.kind === 'supply' ? C.sup : '#444' });
+  });
+  // 牆磚頂端收邊
+  if (pj.trim.topEdge && pj.wallTop < H) {
+    s += '<line x1="' + X(sf.net[0]) + '" y1="' + Y(pj.wallTop) + '" x2="' + X(sf.net[2]) + '" y2="' + Y(pj.wallTop) + '" stroke="' + C.trim + '" stroke-width="3"/>';
+  }
+  // 起始點
+  var o = wi.chosen.origin;
+  if (o) {
+    var box = [sf.net[0], sf.net[1], sf.net[2], sf.net[3]];
+    s += startMark(X, Y, o[0], o[1], box, '起始點 u=' + f1(o[0]) + ' z=' + f1(o[1]));
+  }
+  // 尺寸
+  var ex = sf.deduct[0] + sf.deduct[1];
+  s += dimLine(X(0), Y(0) + 20, X(len), Y(0) + 20, E.WALL_ZH[w] + ' 粗胚長 ' + len + ' cm', -4);
+  s += dimLine(X(sf.net[0]), Y(0) + 38, X(sf.net[2]), Y(0) + 38, '貼磚淨長 ' + f1(sf.net[2] - sf.net[0]) + ' cm' + (ex > 0 ? '（兩端共扣 ' + f1(ex) + '）' : '（通到轉角）'), -4);
+  var vx = (flip ? X(len) + 26 : X(0) - 26);
+  s += dimLine(vx, Y(sf.net[1]), vx, Y(sf.net[3]), '貼磚淨高 ' + f1(sf.net[3] - sf.net[1]) + ' cm', flip ? 14 : -5, true);
+  s += text(pad, 20, (pj.name || '') + '　' + E.WALL_ZH[w] + '立面（由室內看；' + (flip ? '左＝' + (w === 'S' ? '東' : '南') : '左＝' + (w === 'N' ? '西' : '北')) + '）　' + E.METHOD_NAMES[wi.chosen.method], { size: 13, bold: true });
+  s += '</svg>';
+  return s;
+}
+
+/* ---------------------------------------------------------------- 貼法縮圖 */
+function thumbSVG(layout, surface, kind, size) {
+  var box = E.bboxOf(surface.rects), w = box[2] - box[0], h = box[3] - box[1], sc = size / Math.max(w, h), sw = w * sc, shh = h * sc;
+  var X = function (x) { return (x - box[0]) * sc; }, Y = function (y) { return kind === 'wall' ? (box[3] - y) * sc : (y - box[1]) * sc; };
+  var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + sw.toFixed(1) + ' ' + shh.toFixed(1) + '" width="' + sw.toFixed(0) + '" height="' + shh.toFixed(0) + '" class="thumb">';
+  s += '<rect width="100%" height="100%" fill="#fff"/>';
+  layout.ev.polys.forEach(function (p) {
+    p.clipped.forEach(function (c) { s += '<polygon points="' + pts(c, X, Y) + '" fill="' + C[p.kind] + '" stroke="#999" stroke-width="0.3"/>'; });
+  });
+  (surface.holes || []).forEach(function (r) {
+    if (kind === 'wall') { s += '<rect x="' + X(r[0]) + '" y="' + Y(r[3]) + '" width="' + ((r[2] - r[0]) * sc) + '" height="' + ((r[3] - r[1]) * sc) + '" fill="#fff" stroke="#999" stroke-width="0.5"/>'; }
+  });
+  s += '</svg>';
+  return s;
+}
+
+/* ---------------------------------------------------------------- 門檻斷面（示意，依輸入尺寸等比） */
+function thresholdSVG(res) {
+  var pj = res.project, th = pj.threshold, ft = res.floorTile, wt = res.wallTile, W = 420, Hh = 250;
+  var t = ft.t / 10, a = E.ADH, sc = 12, x0 = 40, ybase = 180;
+  var mortarH = 1.5;                                  // 示意：砂漿墊層 1.5cm
+  var slabTop = ybase;
+  var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + Hh + '" class="fig secfig" role="img" aria-label="門檻斷面示意圖">';
+  s += '<rect width="100%" height="100%" fill="#fff"/>';
+  s += text(10, 18, '門檻斷面示意（' + (th.material || th.label) + '，寬 ' + th.width + '、厚 ' + th.thick + '、高出地磚 ' + th.riseAbove + ' cm）', { size: 12, bold: true });
+  // 結構樓板
+  s += '<rect x="10" y="' + slabTop + '" width="' + (W - 20) + '" height="40" fill="#cfcfcf" stroke="#777"/>' + text(16, slabTop + 24, '結構樓板', { size: 11 });
+  // 室內側：砂漿＋黏著劑＋地磚
+  var mx = x0, mw = 150, mY = slabTop - mortarH * sc, aY = mY - a * sc, tY = aY - t * sc;
+  s += '<rect x="' + mx + '" y="' + mY + '" width="' + mw + '" height="' + (mortarH * sc) + '" fill="#d9d2c3" stroke="#888"/>' + text(mx + 4, mY + 12, '砂漿墊層', { size: 10 });
+  s += '<rect x="' + mx + '" y="' + aY + '" width="' + mw + '" height="' + (a * sc) + '" fill="#f0e6a8" stroke="#888"/>';
+  s += '<rect x="' + mx + '" y="' + tY + '" width="' + mw + '" height="' + (t * sc) + '" fill="' + C.full + '" stroke="#555"/>' + text(mx + 6, tY + (t * sc) / 2 + 4, '地磚 ' + ft.t + 'mm＋黏著劑 ' + a + 'cm', { size: 10.5 });
+  // 門檻本體
+  var tx = mx + mw, tw = Math.max(40, th.width * sc / 1.4), topY = tY - th.riseAbove * sc;
+  var thH = slabTop - topY;
+  s += '<rect x="' + tx + '" y="' + topY + '" width="' + tw + '" height="' + thH + '" fill="#bfb6a8" stroke="#444" stroke-width="1.5"/>';
+  s += text(tx + tw / 2, topY + thH / 2, th.label, { size: 11, anchor: 'middle', bold: true });
+  // 外側（門外）地面
+  var ox = tx + tw;
+  s += '<rect x="' + ox + '" y="' + (slabTop - 24) + '" width="' + (W - 10 - ox) + '" height="24" fill="#e8e8e8" stroke="#888"/>' + text(ox + 6, slabTop - 8, '門外地面', { size: 10.5 });
+  // 標註
+  s += dimLine(tx, topY - 14, tx + tw, topY - 14, '寬 ' + th.width + ' cm', -4);
+  s += '<line x1="' + (mx - 6) + '" y1="' + tY + '" x2="' + (tx + 4) + '" y2="' + tY + '" stroke="#d62828" stroke-dasharray="3 3"/>' + text(mx, tY - 6, '地磚完成面', { size: 10, fill: '#d62828' });
+  s += text(W - 12, topY - 20, '門檻頂面高出地磚 ' + th.riseAbove + ' cm', { size: 10, anchor: 'end' });
+  s += text(10, Hh - 8, '示意圖：厚度依輸入等比例，砂漿層 1.5 cm 為假設值，實際以現場為準。', { size: 9.5, fill: '#777' });
+  s += '</svg>';
+  void wt;
+  return s;
+}
+
+/* ---------------------------------------------------------------- 3D 檢視器（canvas，滑鼠旋轉、滾輪縮放） */
+function Viewer3D(canvas) {
+  this.cv = canvas; this.ctx = canvas.getContext('2d');
+  this.yaw = -0.6; this.pitch = 0.62; this.zoom = 1; this.res = null; this.showWalls = { N: true, E: true, S: true, W: true };
+  var me = this, drag = null;
+  canvas.addEventListener('mousedown', function (e) { drag = { x: e.clientX, y: e.clientY, yaw: me.yaw, pitch: me.pitch }; });
+  window.addEventListener('mouseup', function () { drag = null; });
+  window.addEventListener('mousemove', function (e) {
+    if (!drag) { return; }
+    me.yaw = drag.yaw + (e.clientX - drag.x) * 0.008;
+    me.pitch = Math.max(0.05, Math.min(1.5, drag.pitch + (e.clientY - drag.y) * 0.006));
+    me.draw();
+  });
+  canvas.addEventListener('wheel', function (e) { e.preventDefault(); me.zoom = Math.max(0.4, Math.min(3, me.zoom * (e.deltaY < 0 ? 1.1 : 0.9))); me.draw(); }, { passive: false });
+}
+Viewer3D.prototype.setResult = function (res) { this.res = res; this.draw(); };
+Viewer3D.prototype.draw = function () {
+  var res = this.res, ctx = this.ctx, cv = this.cv;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#f6f5f1'; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (!res || !res.ok) { return; }
+  var pj = res.project, R = pj.room, ew = res.floor.surface.ew, cosA = Math.cos(this.yaw), sinA = Math.sin(this.yaw), cosB = Math.cos(this.pitch), sinB = Math.sin(this.pitch);
+  var cx = R.L / 2, cy = R.D / 2, cz = R.H / 3;
+  function T(p) {         // 世界座標 → [螢幕x, 螢幕y, 深度]
+    var x = p[0] - cx, y = p[1] - cy, z = p[2] - cz, x1 = x * cosA - y * sinA, y1 = x * sinA + y * cosA;
+    return [x1, -(-y1 * sinB + z * cosB), -y1 * cosB - z * sinB];
+  }
+  var scale = Math.min(cv.width / (Math.max(R.L, R.D) * 1.9), cv.height / (R.H * 2.2 + Math.max(R.L, R.D) * 0.6)) * this.zoom * 1.5;
+  function P(p) { var t = T(p); return [cv.width / 2 + t[0] * scale, cv.height * 0.55 + t[1] * scale]; }
+  function poly(pts3, fill, stroke, lw) {
+    ctx.beginPath();
+    pts3.forEach(function (p, i) { var q = P(p); if (i) { ctx.lineTo(q[0], q[1]); } else { ctx.moveTo(q[0], q[1]); } });
+    ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 0.5; ctx.stroke(); }
+  }
+  // 地面
+  var fev = res.floor.chosen.ev;
+  poly([[0, 0, -0.5], [R.L, 0, -0.5], [R.L, R.D, -0.5], [0, R.D, -0.5]], '#d9d6cf', '#777', 1);
+  fev.polys.forEach(function (p) {
+    p.clipped.forEach(function (c) { poly(c.map(function (q) { return [q[0], q[1], 0]; }), C[p.kind], '#8f8a7c', 0.5); });
+  });
+  var d = pj.drain, h = d.size / 2;
+  poly([[d.x - h, d.y - h, 0.1], [d.x + h, d.y - h, 0.1], [d.x + h, d.y + h, 0.1], [d.x - h, d.y + h, 0.1]], '#ffffff', '#1d6fa5', 1.5);
+  // 牆（只畫面向鏡頭的內面，由遠到近）
+  var me = this, defs = [
+    { w: 'N', n: [0, 1, 0], map: function (u, z) { return [u, ew, z]; } },
+    { w: 'S', n: [0, -1, 0], map: function (u, z) { return [u, R.D - ew, z]; } },
+    { w: 'W', n: [1, 0, 0], map: function (u, z) { return [ew, u, z]; } },
+    { w: 'E', n: [-1, 0, 0], map: function (u, z) { return [R.L - ew, u, z]; } }
+  ];
+  var vis = defs.filter(function (dw) {
+    if (!res.walls[dw.w] || !me.showWalls[dw.w]) { return false; }
+    var nx = dw.n[0] * cosA - dw.n[1] * sinA, ny = dw.n[0] * sinA + dw.n[1] * cosA;
+    return ny * cosB > 0.02;
+  });
+  vis.forEach(function (dw) { var m = dw.map(res.walls[dw.w].surface.len / 2, R.H / 2); dw.depth = T(m)[2]; });
+  vis.sort(function (a, b) { return b.depth - a.depth; });
+  vis.forEach(function (dw) {
+    var wi = res.walls[dw.w], sf = wi.surface, shade = dw.w === 'N' || dw.w === 'S' ? 1 : 0.93;
+    poly([dw.map(0, 0), dw.map(sf.len, 0), dw.map(sf.len, R.H), dw.map(0, R.H)], '#e6e2d8', '#777', 1);
+    wi.chosen.ev.polys.forEach(function (p) {
+      p.clipped.forEach(function (c) {
+        var col = p.kind === 'full' ? '#efe9dd' : (p.kind === 'cut' ? '#f2c58a' : '#e9a3a3');
+        if (shade < 1) { col = shadeColor(col, shade); }
+        poly(c.map(function (q) { return dw.map(q[0], q[1]); }), col, '#8f8a7c', 0.5);
+      });
+    });
+    sf.openRects.forEach(function (q) {
+      var r = q.r;
+      poly([dw.map(r[0], r[1]), dw.map(r[2], r[1]), dw.map(r[2], r[3]), dw.map(r[0], r[3])], q.o.type === 'door' ? '#f4f4f4' : '#bfe3f5', q.o.type === 'door' ? '#c0392b' : '#3a8fc7', 2);
+    });
+    sf.fixtureRects.forEach(function (q) {
+      var f = q.f, c = P(dw.map(f.offset, f.height));
+      ctx.beginPath(); ctx.arc(c[0], c[1], Math.max(2.5, f.dia * scale / 2), 0, 6.283);
+      ctx.fillStyle = f.kind === 'supply' ? '#1d6fa5' : '#666'; ctx.fill();
+    });
+    ctx.fillStyle = '#333'; ctx.font = '12px sans-serif';
+    var lp = P(dw.map(sf.len / 2, R.H + 2)); ctx.textAlign = 'center'; ctx.fillText(E.WALL_ZH[dw.w], lp[0], lp[1] - 4);
+  });
+  // 起始點
+  var o = res.floor.chosen.origin;
+  if (o) {
+    var c = P([o[0], o[1], 0.3]);
+    ctx.strokeStyle = '#d62828'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c[0], c[1], 6, 0, 6.283); ctx.moveTo(c[0] - 10, c[1]); ctx.lineTo(c[0] + 10, c[1]); ctx.moveTo(c[0], c[1] - 10); ctx.lineTo(c[0], c[1] + 10); ctx.stroke();
+    ctx.fillStyle = '#d62828'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.fillText('起始磚', c[0] + 10, c[1] - 8);
+  }
+  ctx.fillStyle = '#666'; ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('拖曳旋轉 ｜ 滾輪縮放 ｜ 淺色＝整磚、橘色＝切磚、紅色＝開孔磚', 10, cv.height - 10);
+};
+function shadeColor(hex, k) {
+  var n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return 'rgb(' + Math.round(r * k) + ',' + Math.round(g * k) + ',' + Math.round(b * k) + ')';
+}
+
+var api = { planSVG: planSVG, wallSVG: wallSVG, thumbSVG: thumbSVG, thresholdSVG: thresholdSVG, Viewer3D: Viewer3D, C: C, f1: f1, esc: esc };
+if (typeof module !== 'undefined' && module.exports) { module.exports = api; } else { root.TileDraw = api; }
+})(typeof window !== 'undefined' ? window : this);
+</script>
+<script>/* 建議書產生：把 engine 的結果整理成 HTML（表格＋圖）。不做算量，只排版與說明文字。 */
+'use strict';
+(function (root) {
+var E = (typeof module !== 'undefined' && module.exports) ? require('./engine.js') : root.TileEngine;
+var D = (typeof module !== 'undefined' && module.exports) ? require('./draw.js') : root.TileDraw;
+var f1 = D.f1, esc = D.esc;
+
+function pct(x) { return (x * 100).toFixed(1) + '%'; }
+function m2(x) { return x.toFixed(2) + ' m²'; }
+function tag(t, cls) { return '<span class="tag ' + (cls || '') + '">' + t + '</span>'; }
+function table(head, rows, cls) {
+  return '<table class="' + (cls || '') + '"><thead><tr>' + head.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' +
+    rows.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + c + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>';
+}
+
+var METHOD_NOTE = {
+  'stack-h': '最簡單、施工快、對線容易；磚縫成十字，視覺整齊。',
+  'stack-v': '同對縫，磚長邊直立，視覺拉高、牆面顯得較高。',
+  'run2-h': '磚縫錯開 1/2，視覺較活潑，能遮部分地面不平；切磚略多。',
+  'run2-v': '直貼交丁，常用於牆面拉高感；切磚略多。',
+  'run3-h': '錯縫 1/3（長磚常用，避免 1/2 時的磚面翹邊對齊）；切磚較多。',
+  'run3-v': '直貼 1/3 交丁；切磚較多。',
+  'diag': '45° 斜貼：視覺放大空間，但切磚最多、損耗最大、工資較高。',
+  'herring-h': '人字拼：質感高，但切磚與損耗多、工資高，需熟練師傅。',
+  'herring-v': '人字拼（直）：同上。'
+};
+
+function startText(res, kind, w) {
+  var pj = res.project;
+  if (kind === 'floor') {
+    var fl = res.floor, o = fl.chosen.origin, n = fl.surface.net;
+    if (!o) { return '（無）'; }
+    var why = fl.chosen.start.indexOf('drain') === 0 && pj.drain.mode === 'point' && pj.drain.slope > 0 ?
+      '（因為有洩水坡度，系統優先讓落水孔對正磚縫，四個斜面可對稱切割）' : '';
+    return '「' + E.FLOOR_STARTS[fl.chosen.start] + '」' + why + '。起始磚角點座標 (x, y) = (' + f1(o[0]) + ', ' + f1(o[1]) + ') cm（以房間西北角粗胚面為原點，x 往東、y 往南）；' +
+      '換算：距西側貼磚淨邊 ' + f1(o[0] - n[0]) + ' cm、距北側貼磚淨邊 ' + f1(o[1] - n[1]) + ' cm。先在地面彈出 x = ' + f1(o[0]) + ' 與 y = ' + f1(o[1]) + ' 兩條放樣線，從交點開始排第一片磚。';
+  }
+  var wi = res.walls[w], oo = wi.chosen.origin;
+  if (!oo) { return '（無）'; }
+  return '「' + E.WALL_STARTS[wi.chosen.start] + '」。起始磚角點 u = ' + f1(oo[0]) + ' cm（自' + ((w === 'N' || w === 'S') ? '西' : '北') + '端量起）、z = ' + f1(oo[1]) +
+    ' cm（自結構樓板量起）。先彈出垂直線 u = ' + f1(oo[0]) + ' 與水平線 z = ' + f1(oo[1]) + '，由交點起貼。';
+  void pj;
+}
+
+function cornerText(res, w) {
+  var sf = res.walls[w].surface, e = sf.e;
+  var ex = sf.deduct[0] + sf.deduct[1];
+  if (ex <= 0) { return E.WALL_ZH[w] + '：長度 ' + sf.len + ' cm，牆磚通到轉角，不扣除。'; }
+  return E.WALL_ZH[w] + '：長度 ' + sf.len + ' cm − 兩端相鄰牆磚完成厚（磚 ' + res.wallTile.t + ' mm ＋ 黏著劑 ' + f1(E.ADH * 10) + ' mm ＝ ' + f1(e) + ' cm）× 2 ＝ 淨長 ' + f1(sf.net[2] - sf.net[0]) + ' cm。';
+}
+
+function wallCompareRows(res) {
+  var wt = res.wallTile, agg = {}, order = [];
+  Object.keys(res.walls).forEach(function (w) {
+    res.walls[w].compare.forEach(function (r) {
+      if (!agg[r.method]) { agg[r.method] = { method: r.method, pieces: 0, cut: 0, slivers: 0, area: 0, starts: [] }; order.push(r.method); }
+      var a = agg[r.method]; a.pieces += r.ev.pieces; a.cut += r.ev.cut; a.slivers += r.ev.slivers; a.starts.push(w + ':' + r.start);
+    });
+  });
+  var area = res.wallTotal.netArea;
+  return order.map(function (m) {
+    var a = agg[m]; a.waste = Math.max(0, (a.pieces * wt.w * wt.h / 1e4 - res.wallTotal.usedArea) / res.wallTotal.usedArea); a.score = a.pieces + 3 * a.slivers + 0.3 * a.cut; return a;
+  }).sort(function (x, y) { return x.score - y.score; });
+}
+
+function compareTable(res, kind) {
+  var pj = res.project, tile = kind === 'floor' ? res.floorTile : res.wallTile, rows, area, bestMethod;
+  var selected = kind === 'floor' ? res.floor.chosen.method : null;
+  if (kind === 'floor') {
+    area = res.floor.netArea;
+    rows = res.floor.compare.map(function (r) {
+      return { method: r.method, pieces: r.ev.pieces, cut: r.ev.cut, slivers: r.ev.slivers, minCut: r.ev.minCut, start: r.start, score: r.score,
+               waste: Math.max(0, (r.ev.pieces * tile.w * tile.h - r.ev.used) / r.ev.used) };
+    });
+  } else {
+    area = res.wallTotal.netArea;
+    rows = wallCompareRows(res).map(function (a) { return { method: a.method, pieces: a.pieces, cut: a.cut, slivers: a.slivers, minCut: null, start: null, score: a.score, waste: a.waste }; });
+  }
+  bestMethod = rows[0].method;
+  var minPieces = Math.min.apply(null, rows.map(function (r) { return r.pieces; }));
+  // 縮圖
+  var thumbWall = null, maxA = -1;
+  if (kind === 'wall') { Object.keys(res.walls).forEach(function (w) { if (res.walls[w].netArea > maxA) { maxA = res.walls[w].netArea; thumbWall = w; } }); }
+  var html = table(['縮圖', '貼法', '片數', '切磚', '細條切磚', '損耗率', '採購（含破損 ' + pj.breakagePct + '%）', '箱數', kind === 'floor' ? '最佳起點' : '', '評語'].filter(function (h, i) { return !(kind === 'wall' && i === 8); }),
+    rows.map(function (r) {
+      var th = '';
+      try {
+        if (kind === 'floor') { th = D.thumbSVG(E.layoutFor(pj, 'floor', null, r.method, r.start), res.floor.surface, 'floor', 110); }
+        else {
+          var wr = res.walls[thumbWall].compare.filter(function (x) { return x.method === r.method; })[0];
+          th = D.thumbSVG(E.layoutFor(pj, 'wall', thumbWall, r.method, wr.start), res.walls[thumbWall].surface, 'wall', 110);
+        }
+      } catch (e) { th = ''; }
+      var purchase = Math.ceil(r.pieces * (1 + pj.breakagePct / 100) - 1e-9);
+      var note = METHOD_NOTE[r.method] || '';
+      if (r.slivers > 0) { note += ' ⚠ 有 ' + r.slivers + ' 片細條切磚。'; }
+      var tags = (r.method === bestMethod ? tag('系統推薦', 'good') + ' ' : '') + (r.pieces === minPieces ? tag('片數最省', 'good') + ' ' : '') + (r.method === selected ? tag('目前採用', 'sel') + ' ' : '');
+      var cells = [th, '<b>' + E.METHOD_NAMES[r.method] + '</b><br>' + tags, r.pieces, r.cut, r.slivers, pct(r.waste), purchase, Math.ceil(purchase / tile.perBox - 1e-9)];
+      if (kind === 'floor') { cells.push(E.FLOOR_STARTS[r.start]); }
+      cells.push(note);
+      return cells;
+    }), 'cmp');
+  if (kind === 'floor' && pj.drain.mode === 'point' && pj.drain.slope > 0) { html += '<p class="note">「系統推薦」已加入洩水考量：點收水的地面優先讓落水孔對正磚縫（便於四向對稱切割），所以可能不是片數最省的那一種。</p>'; }
+  if (kind === 'wall') { html += '<p class="note">縮圖為面積最大的' + E.WALL_ZH[thumbWall] + '；片數為各牆分別以自己最佳起點排磚後的加總，不同牆之間不互相利用餘料。</p>'; }
+  return html;
+}
+
+function floorSection(res) {
+  var pj = res.project, fl = res.floor, ft = res.floorTile, ev = fl.chosen.ev, sl = fl.slope, sf = fl.surface;
+  var h = '<section class="sec"><h2>一、平面磁磚計畫建議書</h2>';
+  h += '<div class="figbox">' + D.planSVG(res) + '</div>';
+  h += '<h3>1. 採用條件</h3>' + table(['項目', '內容'], [
+    ['地磚', esc(ft.name) + '（' + ft.w + '×' + ft.h + ' cm、厚 ' + ft.t + ' mm、每箱 ' + ft.perBox + ' 片）'],
+    ['磁磚縫／黏著劑厚', '0.2 cm（固定）／0.5 cm（固定）'],
+    ['施工順序', pj.sequence === 'wallFirst' ? '先貼牆、後貼地：地磚淨區域已扣除四周牆磚完成厚' : '先貼地、後貼牆：地磚鋪到粗胚牆面，牆磚由地磚面起貼'],
+    ['貼磚淨區域', f1(sf.net[2] - sf.net[0]) + ' × ' + f1(sf.net[3] - sf.net[1]) + ' cm（粗胚 ' + pj.room.L + ' × ' + pj.room.D + ' cm，每邊扣牆磚完成厚 ' + f1(sf.ins.W) + ' cm）'],
+    ['淨貼磚面積', m2(fl.netArea) + '（已扣落水孔 ' + pj.drain.size + '×' + pj.drain.size + ' cm）'],
+    ['貼法', E.METHOD_NAMES[fl.chosen.method] + (pj.floorMethod === 'auto' ? '（系統依片數最省自動選用）' : '（使用者指定）')]
+  ]);
+  h += '<h3>2. 起始磚放樣點</h3><p class="start">' + startText(res, 'floor') + '</p>';
+  h += '<h3>3. 數量</h3>' + table(['項目', '數量', '說明'], [
+    ['淨貼磚面積', m2(fl.netArea), ''],
+    ['理論最少片數', fl.theory + ' 片', '實際貼磚面積 ÷ 單片面積（不含切割損失）'],
+    ['實際需要片數', fl.pieces + ' 片', '整磚 ' + ev.full + '、切磚 ' + ev.cut + '、落水孔開孔磚 ' + ev.holeCut + '（每片切磚都算一整片，不計餘料再利用）'],
+    ['損耗率', pct(fl.waste), '被切掉的邊料占比：（實際片數 × 單片面積 − 實際貼磚面積）÷ 實際貼磚面積（磚縫面積不算）'],
+    ['採購片數', fl.purchase + ' 片', '實際片數 + 破損預留 ' + pj.breakagePct + '%'],
+    ['箱數', fl.boxes + ' 箱', '每箱 ' + ft.perBox + ' 片，無條件進位'],
+    ['最小切邊', ev.minCut == null ? '—' : f1(ev.minCut) + ' cm', ev.slivers > 0 ? '⚠ 有 ' + ev.slivers + ' 片細條切磚' : '無細條切磚（門檻：< ' + f1(ev.sliverMin) + ' cm 算細條）'],
+    ['地面黏著劑', res.adhesive.floorKg.toFixed(1) + ' kg', m2(fl.netArea) + ' × ' + res.adhesive.kgPerM2.toFixed(1) + ' kg/m²（0.5 cm 厚）']
+  ]);
+  h += '<h3>4. 落水孔與洩水坡度</h3>' + table(['項目', '內容'], [
+    ['落水孔位置', '(' + pj.drain.x + ', ' + pj.drain.y + ') cm，格柵 ' + pj.drain.size + ' × ' + pj.drain.size + ' cm；與落水孔重疊的磚 ' + ev.holeCut + ' 片需開孔／對角切割'],
+    ['洩水方式', pj.drain.mode === 'point' ? '四周往落水孔（點收水）' : '單向往' + E.WALL_ZH[pj.drain.dir] + '方向'],
+    ['洩水坡度', pj.drain.slope + '%（每 100 cm 下降 ' + pj.drain.slope + ' cm）'],
+    ['最大落差', f1(sl.maxFall) + ' cm（最遠角到落水孔）；平均 ' + f1(sl.avgFall) + ' cm'],
+    ['找坡砂漿量（估）', sl.bedVolumeM3.toFixed(3) + ' m³', ],
+    ['單片磚面內高低差', (sl.lip * 10).toFixed(1) + ' mm' + (sl.lipOk ? '（≤ 3 mm，磚面可貼平）' : '（> 3 mm，建議對角線 ≤ ' + Math.floor(sl.maxDiag) + ' cm、正方形磚邊長 ≤ ' + sl.maxTileSide + ' cm，或落水孔周圍對角切割）')],
+    ['落水孔周圍', '約 ' + sl.nearDrainTiles + ' 片磚受洩水面影響，建議此範圍先放樣再貼，磚縫對準洩水方向']
+  ]);
+  if (pj.drain.mode === 'point') { h += '<p class="note">點收水時，磚面必須做成「圍著落水孔向下傾斜」的錐形面；大磚是平面，無法服貼，因此落水孔四周的磚要沿對角線切成 4 個斜面（四向收水），或改用小磚。</p>'; }
+  h += '<h3>5. 門檻</h3>' + (res.threshold.count ? table(['門', '位置', '長度', '規格'],
+    res.threshold.items.map(function (i) { return [i.id, E.WALL_ZH[i.wall], i.len + ' cm', esc(pj.threshold.label) + '（寬 ' + pj.threshold.width + '、厚 ' + pj.threshold.thick + ' cm，高出地磚 ' + pj.threshold.riseAbove + ' cm）']; }))
+    + '<div class="figbox small">' + D.thresholdSVG(res) + '</div>' : '<p>本案沒有門。</p>');
+  h += '<h3>6. 貼法比較（地面）</h3>' + compareTable(res, 'floor');
+  return h + '</section>';
+}
+
+function wallSection(res) {
+  var pj = res.project, wt = res.wallTile, wtot = res.wallTotal;
+  var h = '<section class="sec"><h2>二、立面磁磚計畫建議書</h2>';
+  h += '<h3>1. 採用條件與尺寸扣除</h3>' + table(['項目', '內容'], [
+    ['壁磚', esc(wt.name) + '（' + wt.w + '×' + wt.h + ' cm、厚 ' + wt.t + ' mm、每箱 ' + wt.perBox + ' 片）'],
+    ['磁磚縫／黏著劑厚', '0.2 cm（固定）／0.5 cm（固定）'],
+    ['磚＋黏著劑完成厚', f1(wt.t / 10) + ' + ' + f1(E.ADH) + ' = ' + f1(wt.t / 10 + E.ADH) + ' cm'],
+    ['貼到高度', pj.wallTop + ' cm（天花板 ' + pj.room.H + ' cm）' + (pj.wallTop < pj.room.H ? '，頂端加收邊條' : '')],
+    ['貼磚起算高度', pj.sequence === 'wallFirst' ? '從結構樓板起（先貼牆）' : '從地磚完成面起（先貼地，扣除地磚厚＋黏著劑 ' + f1(res.floor.surface.ef) + ' cm）'],
+    ['轉角收法', pj.corner === 'butt' ? '長牆通到轉角、短牆被夾住（短牆兩端扣牆磚完成厚）' : '每面牆兩端都扣牆磚完成厚（保守）']
+  ]);
+  h += '<ul class="deduct">' + Object.keys(res.walls).map(function (w) { return '<li>' + esc(cornerText(res, w)) + '</li>'; }).join('') + '</ul>';
+  Object.keys(res.walls).forEach(function (w, idx) {
+    var wi = res.walls[w], ev = wi.chosen.ev;
+    h += '<div class="wallblock"><h3>' + (idx + 2) + '. ' + E.WALL_ZH[w] + '立面</h3><div class="figbox">' + D.wallSVG(res, w) + '</div>';
+    h += table(['項目', '數量', '說明'], [
+      ['淨貼磚面積', m2(wi.netArea), '已扣門窗與開孔'],
+      ['貼法', E.METHOD_NAMES[wi.chosen.method], ''],
+      ['起始磚放樣點', '', startText(res, 'wall', w)],
+      ['實際需要片數', wi.pieces + ' 片', '整磚 ' + ev.full + '、切磚 ' + ev.cut + '、洞口／開孔磚 ' + ev.holeCut + (wi.fixtureTiles ? '（其中給排水孔相關 ' + wi.fixtureTiles + ' 片）' : '')],
+      ['損耗率', pct(wi.waste), ''],
+      ['最小切邊', ev.minCut == null ? '—' : f1(ev.minCut) + ' cm', ev.slivers > 0 ? '⚠ 有 ' + ev.slivers + ' 片細條切磚' : '']
+    ]) + '</div>';
+  });
+  h += '<h3>牆面合計</h3>' + table(['項目', '數量', '說明'], [
+    ['淨貼磚面積', m2(wtot.netArea), ''],
+    ['理論最少片數', wtot.theory + ' 片', ''],
+    ['實際需要片數', wtot.pieces + ' 片', '各牆分別計算後加總'],
+    ['損耗率', pct(wtot.waste), ''],
+    ['採購片數', wtot.purchase + ' 片', '含破損預留 ' + pj.breakagePct + '%'],
+    ['箱數', wtot.boxes + ' 箱', '每箱 ' + wt.perBox + ' 片'],
+    ['牆面黏著劑', res.adhesive.wallKg.toFixed(1) + ' kg', m2(wtot.netArea) + ' × ' + res.adhesive.kgPerM2.toFixed(1) + ' kg/m²（0.5 cm 厚）']
+  ]);
+  h += '<h3>貼法比較（牆面）</h3>' + compareTable(res, 'wall');
+  return h + '</section>';
+}
+
+function summarySection(res) {
+  var pj = res.project, tr = res.trim, ad = res.adhesive, fl = res.floor, wt = res.wallTotal;
+  var h = '<section class="sec"><h2>四、材料總表</h2>';
+  h += table(['材料', '規格', '淨量', '實際片數／用量', '損耗', '採購', '包裝'], [
+    ['地磚', esc(res.floorTile.name), m2(fl.netArea), fl.pieces + ' 片', pct(fl.waste), fl.purchase + ' 片', fl.boxes + ' 箱'],
+    ['壁磚', esc(res.wallTile.name), m2(wt.netArea), wt.pieces + ' 片', pct(wt.waste), wt.purchase + ' 片', wt.boxes + ' 箱'],
+    ['黏著劑（0.5 cm）', res.adhesive.kgPerM2.toFixed(1) + ' kg/m²', m2(fl.netArea + wt.netArea), ad.totalKg.toFixed(1) + ' kg', '—', ad.totalKg.toFixed(1) + ' kg', ad.bags + ' 包（' + ad.bagKg + ' kg／包）'],
+    [esc(tr.label), '單支 ' + tr.pieceLen + ' cm', (tr.totalCm / 100).toFixed(2) + ' m', (tr.totalCm / 100).toFixed(2) + ' m', pj.trimLossPct + '%', (tr.withLossCm / 100).toFixed(2) + ' m', tr.pieces + ' 支'],
+    ['門檻', esc(pj.threshold.label), '—', res.threshold.count + ' 支', '—', res.threshold.count + ' 支', '長度＝門寬']
+  ]);
+  if (tr.items.length) { h += '<h3>收邊條明細</h3>' + table(['位置', '長度'], tr.items.map(function (i) { return [esc(i.label), (i.len / 100).toFixed(2) + ' m']; })); }
+  return h + '</section>';
+}
+
+function warningsSection(res) {
+  if (!res.warnings.length) { return '<section class="sec"><h2>五、注意事項</h2><p>檢查沒有發現需要特別注意的項目。</p></section>'; }
+  return '<section class="sec"><h2>五、注意事項</h2><ul class="warn">' + res.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></section>';
+}
+
+function assumptionsSection() {
+  return '<section class="sec small"><h2>六、計算假設與限制</h2><ul>' +
+    '<li>單位 cm；磁磚縫 0.2 cm、黏著劑 0.5 cm 為固定值。磁磚尺寸以標稱計，磚距＝磚寬＋0.2 cm。</li>' +
+    '<li>片數：每一片被切到的磚都算一整片（不計餘料再利用），所以是保守估計；實際可再利用餘料，用量會略少。</li>' +
+    '<li>黏著劑用量＝淨貼磚面積 × 0.5 cm × 耗量係數（預設 1.6 kg/m²/mm，可在「施工選項」調整），以廠牌規格為準。</li>' +
+    '<li>細條切磚：切邊 < max(4 cm，磚短邊 20%) 視為細條；單片磚面高低差建議 ≤ 3 mm，皆為建議值，非法規。</li>' +
+    '<li>人字拼假設磚長約為磚寬的整數倍；非整數倍時以最接近的整數倍近似。</li>' +
+    '<li>矩形房間、牆面為矩形；柱、凸牆、斜牆與管道間不在計算範圍。給水點開孔以正方形外框近似。</li>' +
+    '<li>本建議書為估算與放樣參考，不是施工圖；下單與施工前請以現場複丈與廠商規格確認。</li></ul></section>';
+}
+
+function reportHTML(res) {
+  if (!res.ok) { return ''; }
+  return floorSection(res) + wallSection(res) + '<section class="sec" id="sec3d"><h2>三、3D 模擬圖</h2><div id="slot3d"></div></section>' + summarySection(res) + warningsSection(res) + assumptionsSection();
+}
+
+var api = { reportHTML: reportHTML, compareTable: compareTable };
+if (typeof module !== 'undefined' && module.exports) { module.exports = api; } else { root.TileReport = api; }
+})(typeof window !== 'undefined' ? window : this);
+</script>
+<script>/* 介面：表單 → 專案狀態 → 重新計算 → 顯示建議書／3D。計算都在 engine.js，這裡只做輸入輸出。 */
+'use strict';
+(function () {
+var E = window.TileEngine, D = window.TileDraw, RP = window.TileReport;
+var S = E.defaultProject();                 // 專案狀態（表單即時修改它）
+var viewer = null, lastRes = null, timer = null;
+var v3 = document.getElementById('v3box');     // 3D 區塊：重畫報告前要先搬出報告區，否則會被一起清掉
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return D.esc(s); }
+
+/* ---------------------------------------------------------------- 路徑讀寫 */
+function getPath(o, path) { var p = path.split('.'), i; for (i = 0; i < p.length; i++) { if (o == null) { return undefined; } o = o[p[i]]; } return o; }
+function setPath(o, path, v) { var p = path.split('.'), i; for (i = 0; i < p.length - 1; i++) { o = o[p[i]]; } o[p[p.length - 1]] = v; }
+
+function inp(label, path, o) {
+  o = o || {};
+  var v = getPath(S, path), type = o.type || 'num';
+  if (type === 'select') {
+    return '<label class="f"><span>' + label + '</span><select data-path="' + path + '" data-type="str">' +
+      o.options.map(function (op) { return '<option value="' + esc(op[0]) + '"' + (String(v) === String(op[0]) ? ' selected' : '') + '>' + esc(op[1]) + '</option>'; }).join('') + '</select></label>';
+  }
+  if (type === 'bool') { return '<label class="f chk"><input type="checkbox" data-path="' + path + '" data-type="bool"' + (v ? ' checked' : '') + '><span>' + label + '</span></label>'; }
+  return '<label class="f"><span>' + label + '</span><input type="' + (type === 'num' ? 'number' : 'text') + '" step="' + (o.step || 'any') + '" data-path="' + path + '" data-type="' + (type === 'num' ? 'num' : 'str') + '" value="' + (v == null || (typeof v === 'number' && !isFinite(v)) ? '' : esc(v)) + '"' + (o.ro ? ' readonly' : '') + '></label>';
+}
+
+function cellInput(path, type, opts) {
+  var v = getPath(S, path);
+  if (type === 'select') {
+    return '<select data-path="' + path + '" data-type="str">' + opts.map(function (op) { return '<option value="' + op[0] + '"' + (String(v) === String(op[0]) ? ' selected' : '') + '>' + op[1] + '</option>'; }).join('') + '</select>';
+  }
+  return '<input type="' + (type === 'num' ? 'number' : 'text') + '" step="any" data-path="' + path + '" data-type="' + (type === 'num' ? 'num' : 'str') + '" value="' + (v == null || (typeof v === 'number' && !isFinite(v)) ? '' : esc(v)) + '">';
+}
+
+var WALL_OPTS = [['N', '北'], ['E', '東'], ['S', '南'], ['W', '西']];
+
+function listTable(key, cols, addLabel) {
+  var rows = S[key] || [];
+  var head = cols.map(function (c) { return '<th>' + c.h + '</th>'; }).join('') + '<th></th>';
+  var body = rows.map(function (r, i) {
+    return '<tr>' + cols.map(function (c) { return '<td>' + cellInput(key + '.' + i + '.' + c.k, c.t, c.o) + '</td>'; }).join('') +
+      '<td><button class="x" data-del="' + key + '" data-i="' + i + '" title="刪除這列">✕</button></td></tr>';
+  }).join('');
+  return '<div class="tw"><table class="in"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+    '<button class="add" data-add="' + key + '">＋ ' + addLabel + '</button>';
+}
+
+/* ---------------------------------------------------------------- 表單 */
+function tileOptions(use) {
+  return S.tiles.filter(function (t) { return t.use === use || t.use === 'both'; }).map(function (t) { return [t.id, t.id + '　' + t.name]; });
+}
+
+function methodOptions(tileId) {
+  var t = S.tiles.filter(function (x) { return x.id === tileId; })[0];
+  var opts = [['auto', '自動（片數最省）']];
+  if (t && t.w > 0 && t.h > 0) { E.methodsFor(t).forEach(function (m) { opts.push([m, E.METHOD_NAMES[m]]); }); }
+  return opts;
+}
+function startOptions(map) {
+  var opts = [['auto', '自動（切磚最好）']];
+  Object.keys(map).forEach(function (k) { opts.push([k, map[k]]); });
+  return opts;
+}
+
+function renderForm() {
+  var h = '';
+  h += '<details open><summary>① 專案與房間</summary><div class="grid2">' +
+    inp('專案名稱', 'name', { type: 'text' }) +
+    inp('房間寬（東西向）cm', 'room.L') + inp('房間深（南北向）cm', 'room.D') + inp('天花板高 cm', 'room.H') +
+    inp('牆磚貼到高度 cm', 'wallTop') +
+    inp('施工順序', 'sequence', { type: 'select', options: [['wallFirst', '先貼牆、後貼地'], ['floorFirst', '先貼地、後貼牆']] }) +
+    inp('轉角收法', 'corner', { type: 'select', options: [['butt', '長牆通到底、短牆被夾住'], ['both', '每面牆兩端都扣（保守）']] }) +
+    '</div><div class="row">貼牆磚的牆：' + ['N', 'E', 'S', 'W'].map(function (w) { return inp(E.WALL_ZH[w], 'wallTiled.' + w, { type: 'bool' }); }).join('') + '</div>' +
+    '<p class="hint">尺寸皆為粗胚（未貼磚）尺寸。原點在房間西北角，x 往東、y 往南；牆上位置：北南牆自西端量起，東西牆自北端量起。</p></details>';
+
+  h += '<details open><summary>② 落水孔與洩水坡度（地面）</summary><div class="grid2">' +
+    inp('落水孔中心 x cm', 'drain.x') + inp('落水孔中心 y cm', 'drain.y') + inp('格柵邊長 cm', 'drain.size') + inp('洩水坡度 %', 'drain.slope', { step: '0.1' }) +
+    inp('洩水方式', 'drain.mode', { type: 'select', options: [['point', '四周往落水孔（點收水）'], ['oneway', '單向洩水']] }) +
+    inp('單向洩水：往哪面牆', 'drain.dir', { type: 'select', options: WALL_OPTS }) + '</div></details>';
+
+  h += '<details open><summary>③ 門／窗（立面）</summary>' + listTable('openings', [
+    { h: '編號', k: 'id', t: 'str' }, { h: '類型', k: 'type', t: 'select', o: [['door', '門'], ['window', '窗']] }, { h: '牆', k: 'wall', t: 'select', o: WALL_OPTS },
+    { h: '位置 offset', k: 'offset', t: 'num' }, { h: '寬', k: 'width', t: 'num' }, { h: '高', k: 'height', t: 'num' }, { h: '窗台高', k: 'sill', t: 'num' }], '新增門／窗') + '</details>';
+
+  h += '<details><summary>④ 給水／排水點（牆面）</summary>' + listTable('fixtures', [
+    { h: '編號', k: 'id', t: 'str' }, { h: '類型', k: 'kind', t: 'select', o: [['supply', '給水'], ['drain', '排水']] }, { h: '牆', k: 'wall', t: 'select', o: WALL_OPTS },
+    { h: '位置', k: 'offset', t: 'num' }, { h: '高度', k: 'height', t: 'num' }, { h: '孔徑', k: 'dia', t: 'num' }], '新增給排水點') + '</details>';
+
+  h += '<details open><summary>⑤ 材質表：磁磚</summary>' + listTable('tiles', [
+    { h: '編號', k: 'id', t: 'str' }, { h: '名稱', k: 'name', t: 'str' }, { h: '寬 cm', k: 'w', t: 'num' }, { h: '高 cm', k: 'h', t: 'num' },
+    { h: '厚 mm', k: 't', t: 'num' }, { h: '每箱片', k: 'perBox', t: 'num' }, { h: '貼的位置', k: 'use', t: 'select', o: [['floor', '地'], ['wall', '牆'], ['both', '地＋牆']] }], '新增磁磚') +
+    '<div class="grid2">' + inp('地面用磚', 'floorTileId', { type: 'select', options: tileOptions('floor') }) + inp('牆面用磚', 'wallTileId', { type: 'select', options: tileOptions('wall') }) + '</div></details>';
+
+  h += '<details><summary>⑥ 收邊條與門檻</summary><div class="grid2">' +
+    inp('收邊條名稱', 'trim.label', { type: 'text' }) + inp('收邊條單支長度 cm', 'trim.pieceLen') +
+    '</div><div class="row">' + inp('門洞口收邊', 'trim.jambDoor', { type: 'bool' }) + inp('窗洞口收邊', 'trim.jambWindow', { type: 'bool' }) + inp('牆磚頂端收邊（未貼到天花板時）', 'trim.topEdge', { type: 'bool' }) + '</div>' +
+    '<p class="hint">額外的陽角（轉角外凸）收邊：</p>' + listTable('trim.outerCorners', [{ h: '名稱', k: 'label', t: 'str' }, { h: '單處長度 cm', k: 'len', t: 'num' }, { h: '處數', k: 'n', t: 'num' }], '新增陽角') +
+    '<div class="grid2">' + inp('門檻名稱', 'threshold.label', { type: 'text' }) + inp('門檻材質', 'threshold.material', { type: 'text' }) + inp('門檻寬（牆厚方向）cm', 'threshold.width') +
+    inp('門檻厚 cm', 'threshold.thick') + inp('頂面高出地磚 cm', 'threshold.riseAbove', { step: '0.1' }) + '</div></details>';
+
+  h += '<details open><summary>⑦ 施工選項（貼法與起始點）</summary><div class="grid2">' +
+    inp('地面貼法', 'floorMethod', { type: 'select', options: methodOptions(S.floorTileId) }) + inp('地面起始點', 'floorStart', { type: 'select', options: startOptions(E.FLOOR_STARTS) }) +
+    inp('牆面貼法', 'wallMethod', { type: 'select', options: methodOptions(S.wallTileId) }) + inp('牆面起始點', 'wallStart', { type: 'select', options: startOptions(E.WALL_STARTS) }) +
+    inp('破損預留 %', 'breakagePct', { step: '0.5' }) + inp('黏著劑耗量 kg/m²/mm', 'adhesiveKgPerM2PerMm', { step: '0.1' }) +
+    inp('黏著劑每包 kg', 'bagKg') + inp('收邊條損耗 %', 'trimLossPct', { step: '0.5' }) +
+    '<label class="f"><span>磁磚縫（固定）</span><input value="0.2 cm" readonly></label><label class="f"><span>黏著劑厚（固定）</span><input value="0.5 cm" readonly></label></div></details>';
+  $('form').innerHTML = h;
+}
+
+/* ---------------------------------------------------------------- 事件 */
+function onInput(e) {
+  var t = e.target, path = t.getAttribute && t.getAttribute('data-path');
+  if (!path) { return; }
+  var type = t.getAttribute('data-type'), v;
+  if (type === 'num') { v = t.value === '' ? NaN : parseFloat(t.value); }
+  else if (type === 'bool') { v = t.checked; }
+  else { v = t.value; }
+  setPath(S, path, v);
+  if (/^tiles\.|floorTileId|wallTileId/.test(path)) {
+    if (e.type === 'change') { renderForm(); }
+  }
+  schedule();
+}
+
+document.addEventListener('input', onInput);
+document.addEventListener('change', onInput);
+document.addEventListener('click', function (e) {
+  var t = e.target;
+  if (t.getAttribute && t.getAttribute('data-del')) {
+    var key = t.getAttribute('data-del'), i = parseInt(t.getAttribute('data-i'), 10), arr = getPath(S, key);
+    arr.splice(i, 1); renderForm(); schedule(); return;
+  }
+  if (t.getAttribute && t.getAttribute('data-add')) {
+    var k = t.getAttribute('data-add'), a = getPath(S, k);
+    var n = a.length + 1;
+    if (k === 'openings') { a.push({ id: 'O' + n, type: 'window', wall: 'N', offset: 10, width: 50, height: 50, sill: 100 }); }
+    else if (k === 'fixtures') { a.push({ id: 'X' + n, kind: 'supply', wall: 'W', offset: 50, height: 100, dia: 2.5 }); }
+    else if (k === 'tiles') { a.push({ id: 'T' + n, name: '新磁磚', w: 30, h: 60, t: 9, perBox: 6, use: 'both' }); }
+    else if (k === 'trim.outerCorners') { a.push({ label: '陽角 ' + n, len: 240, n: 1 }); }
+    renderForm(); schedule(); return;
+  }
+});
+
+function schedule() { clearTimeout(timer); timer = setTimeout(recalc, 220); }
+
+/* ---------------------------------------------------------------- 計算與顯示 */
+function recalc() {
+  var t0 = performance.now(), res;
+  try { res = E.computeAll(S); }
+  catch (err) { res = { ok: false, errors: ['計算發生例外：' + err.message + '（請檢查輸入）'], warnings: [] }; }
+  lastRes = res;
+  var box = $('errors');
+  if (!res.ok) {
+    box.innerHTML = '<div class="errbox"><b>輸入有問題，先修正才能計算：</b><ul>' + res.errors.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') + '</ul></div>';
+    document.body.appendChild(v3); v3.classList.add('hide');
+    $('report').innerHTML = ''; $('status').textContent = '輸入有誤'; if (viewer) { viewer.setResult(res); }
+    return;
+  }
+  box.innerHTML = '';
+  var html = RP.reportHTML(res);
+  document.body.appendChild(v3); v3.classList.add('hide');
+  $('report').innerHTML = html;
+  var slot = $('slot3d');
+  if (slot) { slot.appendChild(v3); v3.classList.remove('hide'); }
+  if (viewer) { viewer.setResult(res); }
+  $('status').textContent = '已計算（' + Math.round(performance.now() - t0) + ' ms）｜地面 ' + res.floor.pieces + ' 片、牆面 ' + res.wallTotal.pieces + ' 片';
+}
+
+/* ---------------------------------------------------------------- 匯出入 */
+function download(name, mime, data) {
+  var a = document.createElement('a'), blob = data instanceof Blob ? data : new Blob([data], { type: mime });
+  a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function standaloneCSS() { var st = document.getElementById('appstyle'); return st ? st.textContent : ''; }
+
+$('btnSample').addEventListener('click', function () { S = E.defaultProject(); renderForm(); recalc(); });
+$('btnSave').addEventListener('click', function () { download((S.name || '磁磚計畫') + '.json', 'application/json', JSON.stringify(S, null, 2)); });
+$('fileLoad').addEventListener('change', function (e) {
+  var f = e.target.files[0]; if (!f) { return; }
+  var rd = new FileReader();
+  rd.onload = function () {
+    try { var o = JSON.parse(rd.result); S = JSON.parse(JSON.stringify(E.normalize(o))); renderForm(); recalc(); }
+    catch (err) { alert('讀取失敗：不是正確的專案 JSON（' + err.message + '）'); }
+  };
+  rd.readAsText(f); e.target.value = '';
+});
+$('btnPrint').addEventListener('click', function () { window.print(); });
+$('btnPng').addEventListener('click', function () { if (!lastRes || !lastRes.ok) { return; } download((S.name || '磁磚計畫') + '-3D.png', 'image/png', dataURLtoBlob($('cv3d').toDataURL('image/png'))); });
+$('btnHtml').addEventListener('click', function () {
+  if (!lastRes || !lastRes.ok) { alert('輸入有誤，無法輸出建議書'); return; }
+  var img = '<section class="sec"><h2>3D 模擬圖</h2><img style="max-width:100%" src="' + $('cv3d').toDataURL('image/png') + '"></section>';
+  var body = RP.reportHTML(lastRes).replace(/<div id="slot3d"><\/div>/, '').replace(/<section class="sec" id="sec3d">[\s\S]*?<\/section>/, img);
+  var doc = '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>' + esc(S.name) + ' 磁磚計畫建議書</title><style>' + standaloneCSS() + '</style></head><body class="standalone"><main class="doc"><h1>' + esc(S.name) + '　磁磚計畫建議書</h1>' + body + '</main></body></html>';
+  download((S.name || '磁磚計畫') + '-建議書.html', 'text/html', doc);
+});
+function dataURLtoBlob(u) {
+  var p = u.split(','), mime = p[0].match(/:(.*?);/)[1], bin = atob(p[1]), n = bin.length, arr = new Uint8Array(n);
+  while (n--) { arr[n] = bin.charCodeAt(n); }
+  return new Blob([arr], { type: mime });
+}
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (t.getAttribute && t.getAttribute('data-wall3d')) {
+    viewer.showWalls[t.getAttribute('data-wall3d')] = t.checked; viewer.draw();
+  }
+});
+
+/* ---------------------------------------------------------------- 啟動 */
+renderForm();
+viewer = new D.Viewer3D($('cv3d'));
+recalc();
+window.__tile = { get state() { return S; }, get result() { return lastRes; }, recalc: recalc, setState: function (o) { S = o; renderForm(); recalc(); } };
+})();
+</script>
+</body>
+</html>
