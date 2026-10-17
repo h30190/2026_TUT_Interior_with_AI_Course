@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');const fs=require('node:fs');
+const {parse}=require('./mesh.js');const {calculate,defaults}=require('./model.js');
+const buf=s=>new TextEncoder().encode(s).buffer;
+const sample=fs.readFileSync(require('node:path').join(__dirname,'sample-panel.obj'));const m=parse(sample.buffer.slice(sample.byteOffset,sample.byteOffset+sample.byteLength),'obj');
+assert.equal(m.triangles.length,4);assert.deepEqual(m.size,[1000,2000,100]);assert(Math.abs(m.area/1e6-2*Math.sqrt(1.04))<1e-10);
+const ascii='solid panel\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1000 0 0\nvertex 0 2000 0\nendloop\nendfacet\nendsolid panel';assert.equal(parse(buf(ascii),'stl').area,1e6);
+const binary=new ArrayBuffer(134),v=new DataView(binary);v.setUint32(80,1,true);[[0,0,0],[1000,0,0],[0,2000,0]].flat().forEach((x,i)=>v.setFloat32(96+i*4,x,true));assert.equal(parse(binary,'stl').area,1e6);
+assert.equal(parse(buf('v 0 0 0\nv 1 0 0\nv 0 1 0\nf -3 -2 -1'),'obj').area,.5);
+assert.throws(()=>parse(buf('v 0 0 0\nf 1 2 3'),'obj'));assert.throws(()=>parse(buf('invalid'),'stl'));assert.throws(()=>parse(buf('v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nf 1 2 3 4'),'obj'));
+const r=calculate({...defaults,quantity:2},{area:5,face:4});assert.equal(r.area,10);assert.equal(r.face,8);assert.equal(r.rows[1].plastic,10*defaults.printThickness*defaults.density);
+console.log('PASS: binary/ASCII STL, OBJ, bounding dimensions, analytic surface area, negative indices, rejection and imported-area mass calculation.');

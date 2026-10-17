@@ -1,0 +1,11 @@
+# Millimetres. Open single-surface folded panel: 1000 wide x 2000 high x 100 deep.
+v 0 0 0
+v 500 0 100
+v 1000 0 0
+v 0 2000 0
+v 500 2000 100
+v 1000 2000 0
+f 1 2 5
+f 1 5 4
+f 2 3 6
+f 2 6 5
