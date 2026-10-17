@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>全室五面獨立放樣＋施工圖十字展開圖系統</title>
+<title>磁磚放樣施工圖系統（Tile Setting-Out Drawing）</title>
 <style>
   :root{
     --bg:#f6f4ef; --panel:#ffffff; --ink:#2b2b2b; --muted:#7a756c;
@@ -26,6 +26,7 @@
   .faceblk{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:#fbfaf7}
   .faceblk .fname{font-size:13px;font-weight:600;color:var(--ink)}
   .faceblk .fdim{font-size:11px;color:var(--muted);margin-left:6px}
+  .faceblk input{padding:6px}
   .syncbtn{width:100%;padding:10px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;cursor:pointer;font-size:13px}
   .syncbtn:hover{filter:brightness(1.08)}
   .syncnote{font-size:11px;color:var(--muted);margin-top:6px}
@@ -57,8 +58,8 @@
 </style>
 </head>
 <body>
-<h1>全室五面獨立放樣＋施工圖十字展開圖系統</h1>
-<div class="sub">地坪＋A/B/C/D 四牆各自獨立方向／工法／起磚基準｜十字展開全景＋單面特寫放樣｜用數據說話</div>
+<h1>磁磚放樣施工圖系統（Tile Setting-Out Drawing）</h1>
+<div class="sub">上排 A/B/C/D 立面展開＋下排地坪平面索引｜雙向起磚基準線（紅線）＋碎磚「避免小料」警示｜各面實測尺寸＋門窗扣除</div>
 
 <div class="layout">
   <div>
@@ -83,7 +84,9 @@
         <button data-p="living">客廳大板磚（600×400×280，磚 120×60）</button>
         <button data-p="bedroom">主臥木紋磚（450×350×280，磚 15×75）</button>
         <button data-p="bath">浴室壁磚（240×180×240，磚 30×60）</button>
+        <button data-p="demo">放樣案例（A171/B207/C172/D210×H289，磚 30×60）</button>
       </div>
+      <div class="syncnote" style="margin-top:10px">更動上方 L／W／H 或點情境按鈕時，五面面板的實測尺寸會自動連動更新；之後仍可逐面手動微調。</div>
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -136,8 +139,8 @@
     <div class="card">
       <h2>放樣工作區</h2>
       <div class="view">
-        <button id="viewUnfold" class="on">📐 施工圖十字展開全景圖</button>
-        <button id="viewSingle">🔍 單面特寫放樣</button>
+        <button id="viewUnfold" class="on">📐 施工圖全景（立面排開＋地坪平面）</button>
+        <button id="viewSingle">🔍 單面特寫放大</button>
       </div>
       <div class="tabs" id="faceTabs" style="display:none">
         <button data-f="floor" class="on">地坪 L×W</button>
@@ -152,7 +155,8 @@
         <span><i class="sw" style="background:var(--cut)"></i>裁切修邊磚</span>
         <span><i class="sw" style="background:var(--danger)"></i>危險碎磚（&lt;1/4 磚或 &lt;5cm）</span>
         <span><i class="sw" style="background:#fff;border:1px dashed #2b2b2b"></i>壁地交接折線</span>
-        <span><i class="sw" style="background:#eae6df;border:2px double #2b2b2b"></i>門窗開口（不鋪磚）</span>
+        <span><i class="sw" style="background:#eaf2fa;border:2px solid #3a76b5"></i>門窗開口（不鋪磚）</span>
+        <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>紅色放樣基準線</span>
       </div>
       <div id="warn" class="warn" style="display:none"></div>
     </div>
@@ -161,7 +165,7 @@
       <h2>五面明細與全室加總算料表</h2>
       <table id="tbl">
         <thead><tr>
-          <th>面別</th><th>尺寸(cm)</th><th>方向</th><th>工法</th><th>起磚</th>
+          <th>面別</th><th>實測尺寸(cm)</th><th>方向</th><th>工法</th><th>水平起磚</th><th>垂直起磚</th>
           <th>門窗扣除</th><th>實鋪整磚</th><th>邊緣裁切</th><th>總叫料</th><th>損耗率%</th><th>碎磚警示</th>
         </tr></thead>
         <tbody></tbody>
@@ -178,7 +182,9 @@ const EPS = 1e-6;
 const PRESETS = {
   living:{L:600,W:400,H:280,TL:120,TW:60},
   bedroom:{L:450,W:350,H:280,TL:15,TW:75},
-  bath:{L:240,W:180,H:240,TL:30,TW:60}
+  bath:{L:240,W:180,H:240,TL:30,TW:60},
+  demo:{L:190,W:210,H:289,TL:30,TW:60,
+    faces:{floor:[190,210], A:[171,289], B:[207,289], C:[172,289], D:[210,289]}}
 };
 const OPEN_PRESETS = {
   bathop:  {door_on:true,  door_face:'D', door_w:80,  door_h:200, door_x:20, door_y:0,
@@ -189,13 +195,15 @@ const OPEN_PRESETS = {
 const FACE_KEYS = ['floor','A','B','C','D'];
 const FACE_NAMES = {floor:'地坪', A:'A立面', B:'B立面', C:'C立面', D:'D立面'};
 const MODE_NAMES = {grid:'齊貼', '55':'5-5半丁', '37':'3-7步', '28':'2-8步'};
-const ALIGN_NAMES = {corner:'角落起磚', center:'中軸對齊'};
+const XALIGN_NAMES = {left:'靠左', right:'靠右', center:'水平中軸', custom:'自訂X'};
+const YALIGN_NAMES = {bottom:'由地起', top:'由天花', center:'垂直置中', custom:'自訂Y'};
+const CIRCLED = {A:'Ⓐ', B:'Ⓑ', C:'Ⓒ', D:'Ⓓ'};
 const DEFAULT_CFG = {
-  floor:{dir:'H', mode:'grid', align:'corner'},
-  A:    {dir:'H', mode:'grid', align:'corner'},
-  B:    {dir:'V', mode:'grid', align:'corner'},
-  C:    {dir:'H', mode:'55',   align:'corner'},
-  D:    {dir:'V', mode:'grid', align:'corner'}
+  floor:{dir:'H', mode:'grid', xalign:'left', yalign:'bottom'},
+  A:    {dir:'H', mode:'grid', xalign:'left', yalign:'bottom'},
+  B:    {dir:'H', mode:'grid', xalign:'left', yalign:'bottom'},
+  C:    {dir:'H', mode:'grid', xalign:'left', yalign:'bottom'},
+  D:    {dir:'H', mode:'grid', xalign:'left', yalign:'bottom'}
 };
 let view = 'unfold';
 let face = 'floor';
@@ -210,8 +218,8 @@ function num0(id, dft){
   return (Number.isFinite(v) && v >= 0) ? v : dft;
 }
 
-// 門窗開口：依面別整理，並夾到牆面範圍內
-function openings(p){
+// 門窗開口：依面別整理，並夾到該面實測範圍內
+function openings(dims){
   const byFace = {A:[], B:[], C:[], D:[]};
   const list = [];
   if($('door_on').checked){
@@ -223,8 +231,7 @@ function openings(p){
       x:num0('win_x',40), y:num0('win_y',100)});
   }
   for(const o of list){
-    const fw = (o.face==='A'||o.face==='C') ? p.L : p.W;
-    const fh = p.H;
+    const fw = dims[o.face].fw, fh = dims[o.face].fh;
     o.x = Math.max(0, Math.min(o.x, fw));
     o.y = Math.max(0, Math.min(o.y, fh));
     o.w = Math.max(0, Math.min(o.w, fw - o.x));
@@ -243,7 +250,11 @@ function params(){
 }
 
 function cfgOf(k){
-  return { dir:$(k+'_dir').value, mode:$(k+'_mode').value, align:$(k+'_align').value };
+  return {
+    dir:$(k+'_dir').value, mode:$(k+'_mode').value,
+    xalign:$(k+'_xalign').value, yalign:$(k+'_yalign').value,
+    xoff:num0(k+'_xoff',0), yoff:num0(k+'_yoff',0)
+  };
 }
 
 // 第 r 列（沿面寬方向）的起點偏移量，依工法
@@ -256,22 +267,32 @@ function rowOffset(r, pitchL, mode){
 }
 
 // 單面排磚：面寬 fw × 面高 fh；dir 'H' 磚長邊沿面寬、'V' 磚長邊沿面高；ops＝該面門窗開口
+// 雙向起磚：xalign left/right/center/custom(xoff)、yalign bottom/top/center/custom(yoff)
 function layout(p, fw, fh, cfg, ops){
   ops = ops || [];
   const tL = cfg.dir==='H' ? p.TL : p.TW;
   const tW = cfg.dir==='H' ? p.TW : p.TL;
   const pitchL = tL + p.joint, pitchW = tW + p.joint;
   const tiles = [];
-  const rows = Math.ceil((fh + p.joint) / pitchW);
-  for(let r=0;r<rows;r++){
+  let xBase = 0;
+  if(cfg.xalign==='center') xBase = (fw - tL)/2;
+  else if(cfg.xalign==='right') xBase = fw - (Math.ceil((fw - EPS)/pitchL)-1)*pitchL - tL;
+  else if(cfg.xalign==='custom') xBase = Math.max(0, Math.min(cfg.xoff, fw));
+  const yBase = cfg.yalign==='bottom' ? 0
+    : cfg.yalign==='top' ? fh - (Math.ceil((fh - EPS)/pitchW)-1)*pitchW - tW
+    : cfg.yalign==='center' ? (fh - tW)/2
+    : Math.max(0, Math.min(cfg.yoff, fh));
+  const r0 = Math.floor((0 - yBase + EPS)/pitchW);
+  const r1 = Math.ceil((fh - yBase - EPS)/pitchW);
+  for(let r=r0;r<=r1;r++){
     const off = rowOffset(r, pitchL, cfg.mode);
-    const base = cfg.align==='center' ? (fw - tL)/2 : off;
+    const base = xBase + off;
     const c0 = Math.floor((0 - base + EPS)/pitchL);
     const c1 = Math.ceil((fw - base - EPS)/pitchL);
     for(let c=c0;c<=c1;c++){
       const x0 = base + c*pitchL, x1 = x0 + tL;
       if(x1 <= EPS || x0 >= fw - EPS) continue;
-      const y0 = r*pitchW, y1 = y0 + tW;
+      const y0 = yBase + r*pitchW, y1 = y0 + tW;
       if(y1 <= EPS || y0 >= fh - EPS) continue;
       const cutL = (x0 < -EPS || x1 > fw + EPS);
       const cutW = (y0 < -EPS || y1 > fh + EPS);
@@ -300,24 +321,38 @@ function layout(p, fw, fh, cfg, ops){
   const full = tiles.filter(t=>t.full).length;
   const cut = tiles.filter(t=>!t.full).length;
   const danger = tiles.filter(t=>t.danger).length;
-  return {tiles, net, full, cut, total:full+cut, danger, opArea};
+  return {tiles, net, full, cut, total:full+cut, danger, opArea,
+    xBase, yBase, tL, tW, pitchL, pitchW};
 }
 
-// 五面尺寸：地坪 L×W；A/C 牆 L×H、B/D 牆 W×H
+// 五面實測尺寸：各面獨立輸入（num 防呆回退到總體 L/W/H 推導值）
+function faceDims(p){
+  return {
+    floor:{fw:num('floor_fw',p.L), fh:num('floor_fh',p.W)},
+    A:    {fw:num('A_fw',p.L),    fh:num('A_fh',p.H)},
+    B:    {fw:num('B_fw',p.W),    fh:num('B_fh',p.H)},
+    C:    {fw:num('C_fw',p.L),    fh:num('C_fh',p.H)},
+    D:    {fw:num('D_fw',p.W),    fh:num('D_fh',p.H)}
+  };
+}
+
+// 五面尺寸：地坪 L×W；A/C 牆 L×H、B/D 牆 W×H（以各面實測為準）
 function faces(p){
+  const d = faceDims(p);
   return [
-    {key:'floor', name:'地坪',  fw:p.L, fh:p.W},
-    {key:'A',     name:'A立面', fw:p.L, fh:p.H},
-    {key:'B',     name:'B立面', fw:p.W, fh:p.H},
-    {key:'C',     name:'C立面', fw:p.L, fh:p.H},
-    {key:'D',     name:'D立面', fw:p.W, fh:p.H}
+    {key:'floor', name:'地坪',  fw:d.floor.fw, fh:d.floor.fh},
+    {key:'A',     name:'A立面', fw:d.A.fw, fh:d.A.fh},
+    {key:'B',     name:'B立面', fw:d.B.fw, fh:d.B.fh},
+    {key:'C',     name:'C立面', fw:d.C.fw, fh:d.C.fh},
+    {key:'D',     name:'D立面', fw:d.D.fw, fh:d.D.fh}
   ];
 }
 
 function fmt(n){ return Number.isFinite(n) ? n.toLocaleString('en-US') : '—'; }
 
 function computeAll(p){
-  const ops = openings(p);
+  const dims = faceDims(p);
+  const ops = openings(dims);
   return faces(p).map(f=>{
     const cfg = cfgOf(f.key);
     const r = layout(p, f.fw, f.fh, cfg, ops[f.key]||[]);
@@ -335,11 +370,14 @@ function renderTable(rows, p){
     const opTxt = s.ops.length>0
       ? s.ops.map(o=>(o.kind==='door'?'門':'窗')+' '+o.w+'×'+o.h).join('<br>')
       : '—';
+    const xTxt = XALIGN_NAMES[s.cfg.xalign] + (s.cfg.xalign==='custom'?(' '+s.cfg.xoff):'');
+    const yTxt = YALIGN_NAMES[s.cfg.yalign] + (s.cfg.yalign==='custom'?(' '+s.cfg.yoff):'');
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${s.name}</td><td>${s.fw}×${s.fh}</td>
       <td>${s.cfg.dir==='H'?'橫貼':'直貼'}</td>
       <td>${MODE_NAMES[s.cfg.mode]}</td>
-      <td>${ALIGN_NAMES[s.cfg.align]}</td>
+      <td>${xTxt}</td>
+      <td>${yTxt}</td>
       <td>${opTxt}</td>
       <td>${fmt(s.r.full)}</td><td>${fmt(s.r.cut)}</td><td>${fmt(s.r.total)}</td>
       <td>${loss.toFixed(1)}</td>
@@ -351,7 +389,7 @@ function renderTable(rows, p){
   const amt = p.price>0 ? total*p.price : null;
   const tr = document.createElement('tr');
   tr.className = 'total';
-  tr.innerHTML = `<td>全室五面總計</td><td>—</td><td>—</td><td>—</td><td>—</td>
+  tr.innerHTML = `<td>全室五面總計</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
     <td>${opArea>0?(opArea/10000).toFixed(2)+' m²':'—'}</td>
     <td>${fmt(full)}</td><td>${fmt(cut)}</td><td>${fmt(total)}</td>
     <td>${loss.toFixed(1)}</td>
@@ -374,7 +412,7 @@ function renderConcl(p, tot){
   }
   if(tot.danger>0){
     const names = worst.map(s=>`${s.name} ${s.r.danger} 片`).join('、');
-    txt += ` ⚠️ 全室共 ${tot.danger} 片危險碎磚（${names}），建議該面改用中軸對齊或調整工法步距。`;
+    txt += ` ⚠️ 全室共 ${tot.danger} 片危險碎磚（${names}），建議該面改用中軸起磚或調整工法步距。`;
   } else {
     txt += ' 未出現危險碎磚，排磚配置安全。';
   }
@@ -391,37 +429,37 @@ function drawTiles(ctx, ox, oy, sc, tiles){
   }
 }
 
-// 施工圖開口樣式：挖空淺灰＋深色雙線外框＋門扇弧線／四分格窗框
+// 施工圖開口樣式：挖空淺藍＋淺藍線條外框＋門扇弧線／四分格窗框
 function drawOpenings(ctx, ox, oy, sc, ops){
   for(const o of ops){
     const px = ox + o.x*sc, py = oy + (o.y+o.h)*sc;
     const pw = o.w*sc, ph = o.h*sc;
-    ctx.fillStyle = '#eae6df';
+    ctx.fillStyle = '#eaf2fa';
     ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 2;
+    ctx.strokeStyle = '#3a76b5'; ctx.lineWidth = 2;
     ctx.strokeRect(px, py, pw, ph);
     ctx.lineWidth = 1;
     ctx.strokeRect(px+3, py+3, pw-6, ph-6);
     if(o.kind==='door'){
       ctx.save();
-      ctx.strokeStyle = '#8a7f6d'; ctx.lineWidth = 1;
+      ctx.strokeStyle = '#3a76b5'; ctx.lineWidth = 1;
       ctx.setLineDash([4,3]);
       ctx.beginPath();
       ctx.arc(px, py, Math.min(pw,ph), -Math.PI/2, 0);
       ctx.stroke();
       ctx.restore();
       if(pw>46 && ph>18){
-        ctx.fillStyle='#5a544b'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+        ctx.fillStyle='#2b5a8c'; ctx.font='11px sans-serif'; ctx.textAlign='center';
         ctx.fillText('🚪 門 '+o.w+'×'+o.h, px+pw/2, py+ph-8);
       }
     } else {
-      ctx.strokeStyle = '#8a7f6d'; ctx.lineWidth = 1;
+      ctx.strokeStyle = '#3a76b5'; ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(px+pw/2, py); ctx.lineTo(px+pw/2, py+ph);
       ctx.moveTo(px, py+ph/2); ctx.lineTo(px+pw, py+ph/2);
       ctx.stroke();
       if(pw>46 && ph>18){
-        ctx.fillStyle='#5a544b'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+        ctx.fillStyle='#2b5a8c'; ctx.font='11px sans-serif'; ctx.textAlign='center';
         ctx.fillText('🪟 窗 '+o.w+'×'+o.h, px+pw/2, py+ph-8);
       }
     }
@@ -452,64 +490,161 @@ function drawOpeningDims(ctx, ox, oy, sc, ops){
   }
 }
 
-function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops){
+// 紅色放樣基準線＋綠色「由此線開始放樣」＋碎磚邊角「避免小料」警示
+function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, detail){
+  const xPx = ox + Math.max(0, r.xBase)*sc;
+  const yPx = oy + Math.max(0, r.yBase)*sc;
+  ctx.save();
+  ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(xPx, oy); ctx.lineTo(xPx, oy+fh*sc); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox, yPx); ctx.lineTo(ox+fw*sc, yPx); ctx.stroke();
+  if(detail){
+    ctx.fillStyle = '#1a7a33'; ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('由此線開始放樣 ←→', xPx, oy-6);
+    ctx.save();
+    ctx.translate(ox-8, yPx); ctx.rotate(-Math.PI/2);
+    ctx.fillText('由此線開始放樣 ←→', 0, 0);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#1a7a33'; ctx.font = '9px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('放樣線', xPx+3, oy+10);
+  }
+  if(r.danger>0){
+    let t=null;
+    for(const q of r.tiles){ if(q.danger){ t=q; break; } }
+    if(t){
+      const cx = ox + (Math.max(t.x0,0)+t.wL/2)*sc;
+      const cy = oy + (Math.max(t.y0,0)+t.wW/2)*sc;
+      const ex = cx < ox+fw*sc/2 ? ox-6 : ox+fw*sc+6;
+      const ey = cy < oy+fh*sc/2 ? oy-6 : oy+fh*sc+6;
+      ctx.strokeStyle = '#d22'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.fillStyle = '#d22'; ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = ex<ox ? 'right' : 'left';
+      ctx.fillText('避免小料', ex + (ex<ox?-3:3), ey+3);
+    }
+  }
+  ctx.restore();
+}
+
+function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts){
+  opts = opts || {};
   ctx.fillStyle='#fff'; ctx.fillRect(ox,oy,fw*sc,fh*sc);
   ctx.lineWidth=0.5; ctx.strokeStyle='#b9b2a6';
   drawTiles(ctx, ox, oy, sc, r.tiles);
   if(ops && ops.length) drawOpenings(ctx, ox, oy, sc, ops);
+  drawSettingOut(ctx, ox, oy, fw, fh, sc, r, !!opts.detail);
   ctx.strokeStyle='#2b2b2b'; ctx.lineWidth=1.5; ctx.strokeRect(ox,oy,fw*sc,fh*sc);
   ctx.fillStyle='#2b2b2b'; ctx.font='bold 12px sans-serif'; ctx.textAlign='left';
   const dirTxt = cfg.dir==='H'?'橫':'直';
-  ctx.fillText(`${name} ${fw}×${fh}｜${dirTxt}·${MODE_NAMES[cfg.mode]}·${ALIGN_NAMES[cfg.align]==='角落起磚'?'角落':'中軸'}`, ox+4, oy+15);
+  const xTxt = XALIGN_NAMES[cfg.xalign], yTxt = YALIGN_NAMES[cfg.yalign];
+  ctx.fillText(`${name} ${fw}×${fh}｜${dirTxt}·${MODE_NAMES[cfg.mode]}·X:${xTxt}·Y:${yTxt}`, ox+4, oy+15);
 }
 
-// 視角 1：十字展開全景（地坪中央、上 A、下 C、左 D、右 B）
+// 立面下方：圓圈索引標記 ⒶⒷⒸⒹ ＋ 尺寸分段標註線（兩側碎磚寬＋中央整磚模矩）
+function drawElevIndex(ctx, ox, oy, fw, fh, sc, key, r){
+  const cy = oy + fh*sc + 20;
+  ctx.strokeStyle='#2b2b2b'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(ox,cy); ctx.lineTo(ox+fw*sc,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox,cy-5); ctx.lineTo(ox,cy+5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ox+fw*sc,cy-5); ctx.lineTo(ox+fw*sc,cy+5); ctx.stroke();
+  ctx.fillStyle='#2b2b2b'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center';
+  ctx.fillText(CIRCLED[key], ox+fw*sc/2, cy+18);
+  ctx.font='10px sans-serif'; ctx.fillStyle='#8a7f6d';
+  ctx.fillText(fw, ox+fw*sc/2, cy-6);
+  const cutL = Math.max(0, r.xBase);
+  const lastEdge = r.xBase + (Math.ceil((fw - EPS)/r.pitchL)-1)*r.pitchL + r.tL;
+  const cutR = Math.max(0, fw - lastEdge);
+  const segs = [];
+  if(cutL > 0.5) segs.push({a:0, b:cutL, t:cutL.toFixed(1)});
+  const nFull = Math.max(0, Math.ceil((fw - EPS)/r.pitchL) - (cutL>0.5?1:0) - (cutR>0.5?1:0));
+  if(nFull>0) segs.push({a:cutL, b:fw-cutR, t:nFull+'×'+r.pitchL.toFixed(1)});
+  if(cutR > 0.5) segs.push({a:fw-cutR, b:fw, t:cutR.toFixed(1)});
+  for(const sg of segs){
+    const x1 = ox+sg.a*sc, x2 = ox+sg.b*sc;
+    ctx.strokeStyle='#8a7f6d';
+    ctx.beginPath(); ctx.moveTo(x1,cy+26); ctx.lineTo(x2,cy+26); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1,cy+22); ctx.lineTo(x1,cy+30); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x2,cy+22); ctx.lineTo(x2,cy+30); ctx.stroke();
+    if(x2-x1>26){
+      ctx.fillStyle='#8a7f6d'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(sg.t, (x1+x2)/2, cy+38);
+    }
+  }
+}
+
+// 視角 1：施工圖全景——上排 A/B/C/D 立面一字排開，下排中央地坪平面＋索引箭頭＋兩側材料文字
 function drawUnfold(p, rows){
   const cv=$('cv'), ctx=cv.getContext('2d');
   ctx.clearRect(0,0,cv.width,cv.height);
   const byKey = {}; rows.forEach(s=>byKey[s.key]=s);
-  const pad = 40;
-  const s = Math.min((cv.width-2*pad)/(p.L+2*p.W), (cv.height-2*pad)/(p.H*2+p.W));
-  const totalW = (p.L+2*p.W)*s, totalH = (p.H*2+p.W)*s;
-  const X0 = (cv.width-totalW)/2, Y0 = (cv.height-totalH)/2;
-  const fx = X0 + p.W*s, fy = Y0 + p.H*s;
-  const boxes = {
-    floor:{ox:fx, oy:fy, fw:p.L, fh:p.W},
-    A:    {ox:fx, oy:Y0, fw:p.L, fh:p.H},
-    C:    {ox:fx, oy:fy+p.W*s, fw:p.L, fh:p.H},
-    D:    {ox:X0, oy:fy, fw:p.W, fh:p.H},
-    B:    {ox:fx+p.L*s, oy:fy, fw:p.W, fh:p.H}
-  };
-  for(const k of FACE_KEYS){
-    const b = boxes[k], row = byKey[k];
-    drawFaceBox(ctx, b.ox, b.oy, b.fw, b.fh, s, row.name, p, row.cfg, row.r, row.ops);
+  const order = ['A','B','C','D'];
+  const gap = 34;
+  const topH = Math.max(...order.map(k=>byKey[k].fh));
+  const Lf = byKey.floor.fw, Wf = byKey.floor.fh;
+  const pad = 30;
+  const s = Math.min(
+    (cv.width-2*pad-(order.length-1)*gap) / order.reduce((a,k)=>a+byKey[k].fw,0),
+    (cv.height-2*pad-150) / (topH + Wf)
+  );
+  const rowW = order.reduce((a,k)=>a+byKey[k].fw*s,0) + (order.length-1)*gap;
+  let x = (cv.width-rowW)/2;
+  const elevY = pad + 14;
+  for(const k of order){
+    const row = byKey[k];
+    const bH = row.fh*s;
+    const oy = elevY + (topH*s - bH);
+    drawFaceBox(ctx, x, oy, row.fw, row.fh, s, row.name, p, row.cfg, row.r, row.ops, {detail:false});
+    drawElevIndex(ctx, x, oy, row.fw, row.fh, s, k, row.r);
+    x += row.fw*s + gap;
   }
-  // 壁地交接虛線折線
-  ctx.save();
-  ctx.strokeStyle='#2b2b2b'; ctx.lineWidth=1.5; ctx.setLineDash([6,4]);
-  ctx.strokeRect(fx, fy, p.L*s, p.W*s);
-  ctx.restore();
-  // 面別尺寸標記（摺邊旁）
-  ctx.fillStyle='#8a7f6d'; ctx.font='11px sans-serif';
-  ctx.textAlign='center';
-  ctx.fillText('L = '+p.L, fx+p.L*s/2, fy-6);
-  ctx.fillText('L = '+p.L, fx+p.L*s/2, fy+p.W*s+p.H*s+14);
-  ctx.textAlign='left';
-  ctx.fillText('H = '+p.H, X0+p.W*s/2-14, fy-6);
-  ctx.fillText('H = '+p.H, fx+p.L*s+p.W*s/2-14, fy-6);
+  // 下排：地坪平面置中
+  const planW = Lf*s, planH = Wf*s;
+  const px = (cv.width-planW)/2, py = elevY + topH*s + 78;
+  drawFaceBox(ctx, px, py, Lf, Wf, s, '地坪平面', p, byKey.floor.cfg, byKey.floor.r, [], {detail:false});
+  // 四向立面索引箭頭指南針
+  ctx.fillStyle='#2b2b2b'; ctx.strokeStyle='#2b2b2b'; ctx.lineWidth=1.2;
+  ctx.font='bold 13px sans-serif';
+  const arrow = (ax, ay, dir, label)=>{
+    ctx.save(); ctx.translate(ax,ay);
+    const rot = {up:-Math.PI/2, down:Math.PI/2, left:Math.PI, right:0}[dir];
+    ctx.rotate(rot);
+    ctx.beginPath(); ctx.moveTo(-12,0); ctx.lineTo(4,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8,0); ctx.lineTo(1,-4); ctx.lineTo(1,4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.textAlign='center';
+    const off = {up:[0,-16], down:[0,22], left:[-20,4], right:[20,4]}[dir];
+    ctx.fillText(label, ax+off[0], ay+off[1]);
+  };
+  arrow(px+planW/2, py-8, 'up', 'Ⓐ '+byKey.A.fw+'×'+byKey.A.fh);
+  arrow(px+planW/2, py+planH+8, 'down', 'Ⓒ '+byKey.C.fw+'×'+byKey.C.fh);
+  arrow(px-8, py+planH/2, 'left', 'Ⓓ '+byKey.D.fw+'×'+byKey.D.fh);
+  arrow(px+planW+8, py+planH/2, 'right', 'Ⓑ '+byKey.B.fw+'×'+byKey.B.fh);
+  // 兩側材料規格與填縫劑文字
+  ctx.fillStyle='#5a544b'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  const spec = [
+    '材料規格',
+    '磁磚：'+p.TL+'×'+p.TW+' cm',
+    '鋪貼方向：橫貼/直貼依各面設定',
+    '工法：齊貼/5-5/3-7/2-8 依各面設定',
+    '填縫劑：縫寬 '+p.joint+' cm（建議同色系填縫劑）',
+    '收邊：轉角處以矽利康收邊'
+  ];
+  spec.forEach((t,i)=>ctx.fillText(t, pad, py+16+i*16));
   ctx.textAlign='right';
-  ctx.fillText('W = '+p.W, fx-6, fy+p.W*s/2+4);
-  ctx.textAlign='left';
-  ctx.fillText('W = '+p.W, fx+p.L*s+6, fy+p.W*s/2+4);
-  ctx.fillText('W = '+p.W, fx+p.L*s+6, fy+p.W*s/2+4);
-  // 方位標記
-  ctx.fillStyle='#7a756c'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
-  ctx.fillText('北（A 前牆）', X0+totalW/2, Y0-10);
-  ctx.fillText('南（C 後牆）', X0+totalW/2, Y0+totalH+16);
-  ctx.textAlign='left';
-  ctx.fillText('西（D 左牆）', X0, Y0-10);
-  ctx.textAlign='right';
-  ctx.fillText('東（B 右牆）', X0+totalW, Y0-10);
+  const spec2 = [
+    '放樣說明',
+    '紅線＝放樣基準線（各面起磚線）',
+    '綠字＝由此線開始放樣',
+    '藍框＝門窗開口（不鋪磚）',
+    '橘色＝裁切修邊磚；紅色＝危險碎磚',
+    '碎磚處引出紅線標註「避免小料」'
+  ];
+  spec2.forEach((t,i)=>ctx.fillText(t, cv.width-pad, py+16+i*16));
+  // 右下角紅字警語
+  ctx.fillStyle='#c22'; ctx.font='bold 15px sans-serif'; ctx.textAlign='right';
+  ctx.fillText('尺寸若有誤差 依現場放樣 再行溝通', cv.width-14, cv.height-14);
 }
 
 // 視角 2：單面特寫放樣＋外圍尺寸線
@@ -521,7 +656,7 @@ function drawSingle(p, rows){
   const pad = 80;
   const sc = Math.min((cv.width-2*pad)/fw, (cv.height-2*pad)/fh);
   const ox = (cv.width - fw*sc)/2, oy = (cv.height - fh*sc)/2;
-  drawFaceBox(ctx, ox, oy, fw, fh, sc, row.name, p, row.cfg, row.r, row.ops);
+  drawFaceBox(ctx, ox, oy, fw, fh, sc, row.name, p, row.cfg, row.r, row.ops, {detail:true});
   if(row.ops.length) drawOpeningDims(ctx, ox, oy, sc, row.ops);
   // 外圍尺寸標註線
   ctx.strokeStyle='#8a7f6d'; ctx.lineWidth=1; ctx.fillStyle='#8a7f6d';
@@ -556,16 +691,28 @@ function refresh(){
   draw(p, rows);
 }
 
-// 產生五面控制面板
+// 產生五面控制面板（含實測尺寸輸入）
 (function buildPanels(){
   const host = $('faceCfgs');
   const dims = {floor:'L×W', A:'L×H', B:'W×H', C:'L×H', D:'W×H'};
+  const dimLabels = {
+    floor:['長度 L (cm)','寬度 W (cm)'],
+    A:['寬度 W (cm)','高度 H (cm)'],
+    B:['寬度 W (cm)','高度 H (cm)'],
+    C:['寬度 W (cm)','高度 H (cm)'],
+    D:['寬度 W (cm)','高度 H (cm)']
+  };
+  const dimDefaults = {floor:[600,400], A:[600,280], B:[400,280], C:[600,280], D:[400,280]};
   for(const k of FACE_KEYS){
     const d = DEFAULT_CFG[k];
     const blk = document.createElement('div');
     blk.className = 'faceblk';
     blk.innerHTML =
       `<span class="fname">${FACE_NAMES[k]}</span><span class="fdim">${dims[k]}</span>`
+      + `<div class="row2">`
+      + `<div><label>實測${dimLabels[k][0]}</label><input id="${k}_fw" type="number" value="${dimDefaults[k][0]}"></div>`
+      + `<div><label>實測${dimLabels[k][1]}</label><input id="${k}_fh" type="number" value="${dimDefaults[k][1]}"></div>`
+      + `</div>`
       + `<div class="row3">`
       + `<div><label>方向</label><select id="${k}_dir">`
       + `<option value="H"${d.dir==='H'?' selected':''}>橫貼</option>`
@@ -575,9 +722,22 @@ function refresh(){
       + `<option value="55"${d.mode==='55'?' selected':''}>5-5半丁</option>`
       + `<option value="37"${d.mode==='37'?' selected':''}>3-7步</option>`
       + `<option value="28"${d.mode==='28'?' selected':''}>2-8步</option></select></div>`
-      + `<div><label>起磚</label><select id="${k}_align">`
-      + `<option value="corner"${d.align==='corner'?' selected':''}>角落起磚</option>`
-      + `<option value="center"${d.align==='center'?' selected':''}>中軸對齊</option></select></div>`
+      + `</div>`
+      + `<div class="row2">`
+      + `<div><label>水平起磚（X）</label><select id="${k}_xalign">`
+      + `<option value="left"${d.xalign==='left'?' selected':''}>靠左起磚</option>`
+      + `<option value="right"${d.xalign==='right'?' selected':''}>靠右起磚</option>`
+      + `<option value="center"${d.xalign==='center'?' selected':''}>水平中軸</option>`
+      + `<option value="custom"${d.xalign==='custom'?' selected':''}>自訂距左X</option></select></div>`
+      + `<div><label>距左 X (cm)</label><input id="${k}_xoff" type="number" value="0" min="0"></div>`
+      + `</div>`
+      + `<div class="row2">`
+      + `<div><label>垂直起磚（Y）</label><select id="${k}_yalign">`
+      + `<option value="bottom"${d.yalign==='bottom'?' selected':''}>由地起磚</option>`
+      + `<option value="top"${d.yalign==='top'?' selected':''}>由天花向下</option>`
+      + `<option value="center"${d.yalign==='center'?' selected':''}>垂直置中</option>`
+      + `<option value="custom"${d.yalign==='custom'?' selected':''}>自訂起磚高Y</option></select></div>`
+      + `<div><label>起磚高 Y (cm)</label><input id="${k}_yoff" type="number" value="0" min="0"></div>`
       + `</div>`;
     host.appendChild(blk);
   }
@@ -588,15 +748,27 @@ function syncOpBlocks(){
   $('doorBlk').classList.toggle('disabled', !$('door_on').checked);
   $('winBlk').classList.toggle('disabled', !$('win_on').checked);
 }
+
+// 總體 L/W/H → 五面實測尺寸連動（情境按鈕與手動改 L/W/H 都走這裡；情境可附各面覆蓋值）
+function syncFaceDims(override){
+  const L=num('L',600), W=num('W',400), H=num('H',280);
+  const set=(k,fw,fh)=>{ $(k+'_fw').value=fw; $(k+'_fh').value=fh; };
+  set('floor',L,W); set('A',L,H); set('B',W,H); set('C',L,H); set('D',W,H);
+  if(override) for(const k in override) set(k, override[k][0], override[k][1]);
+}
 document.querySelectorAll('.presets button').forEach(b=>{
   b.addEventListener('click',()=>{
     const pr = PRESETS[b.dataset.p];
     $('L').value=pr.L; $('W').value=pr.W; $('H').value=pr.H; $('TL').value=pr.TL; $('TW').value=pr.TW;
+    syncFaceDims(pr.faces);
     refresh();
   });
 });
-['L','W','H','TL','TW','joint','price'].forEach(id=>$(id).addEventListener('input',refresh));
-FACE_KEYS.forEach(k=>['_dir','_mode','_align'].forEach(s=>$(k+s).addEventListener('change',refresh)));
+['L','W','H'].forEach(id=>$(id).addEventListener('input',()=>{syncFaceDims(); refresh();}));
+['TL','TW','joint','price'].forEach(id=>$(id).addEventListener('input',refresh));
+FACE_KEYS.forEach(k=>['_fw','_fh'].forEach(s=>$(k+s).addEventListener('input',refresh)));
+FACE_KEYS.forEach(k=>['_dir','_mode','_xalign','_yalign'].forEach(s=>$(k+s).addEventListener('change',refresh)));
+FACE_KEYS.forEach(k=>['_xoff','_yoff'].forEach(s=>$(k+s).addEventListener('input',refresh)));
 ['door_on','win_on'].forEach(id=>$(id).addEventListener('change',()=>{syncOpBlocks(); refresh();}));
 ['door_face','door_w','door_h','door_x','door_y','win_face','win_w','win_h','win_x','win_y']
   .forEach(id=>$(id).addEventListener('input',refresh));
@@ -616,7 +788,8 @@ $('syncWalls').addEventListener('click',()=>{
   ['B','C','D'].forEach(k=>{
     $(k+'_dir').value = $('A_dir').value;
     $(k+'_mode').value = $('A_mode').value;
-    $(k+'_align').value = $('A_align').value;
+    $(k+'_xalign').value = $('A_xalign').value;
+    $(k+'_yalign').value = $('A_yalign').value;
   });
   refresh();
 });
