@@ -1222,6 +1222,46 @@ Viewer3D.prototype.draw = function () {
     var nx = dw.n[0] * cosA - dw.n[1] * sinA, ny = dw.n[0] * sinA + dw.n[1] * cosA;
     return ny * cosB > 0.02;
   });
+  // 實心牆體：把牆與轉角都做成從樓板到天花板的實心方塊，畫出外側與斷面（切開的端面）
+  (function () {
+    var TW = R.wallT || { N: 0, E: 0, S: 0, W: 0 }, vsn = {};
+    vis.forEach(function (dw) { vsn[dw.w] = true; });
+    var x0 = -TW.W, x1 = R.L + TW.E, y0 = -TW.N, y1 = R.D + TW.S, ix0 = ew, ix1 = R.L - ew, iy0 = ew, iy1 = R.D - ew;
+    var boxes = {
+      N:  { on: vsn.N, b: [ix0, y0, ix1, iy0], inner: '+y', nb: { '-x': 'NW', '+x': 'NE' } },
+      S:  { on: vsn.S, b: [ix0, iy1, ix1, y1], inner: '-y', nb: { '-x': 'SW', '+x': 'SE' } },
+      W:  { on: vsn.W, b: [x0, iy0, ix0, iy1], inner: '+x', nb: { '-y': 'NW', '+y': 'SW' } },
+      E:  { on: vsn.E, b: [ix1, iy0, x1, iy1], inner: '-x', nb: { '-y': 'NE', '+y': 'SE' } },
+      NW: { on: vsn.N || vsn.W, b: [x0, y0, ix0, iy0], nb: { '+x': 'N', '+y': 'W' } },
+      NE: { on: vsn.N || vsn.E, b: [ix1, y0, x1, iy0], nb: { '-x': 'N', '+y': 'E' } },
+      SW: { on: vsn.S || vsn.W, b: [x0, iy1, ix0, y1], nb: { '+x': 'S', '-y': 'W' } },
+      SE: { on: vsn.S || vsn.E, b: [ix1, iy1, x1, y1], nb: { '-x': 'S', '-y': 'E' } }
+    };
+    var dirs = { '-x': [-1, 0], '+x': [1, 0], '-y': [0, -1], '+y': [0, 1] };
+    function faceVisible(n) { return (n[0] * sinA + n[1] * cosA) * cosB > 0.02; }
+    function drawBox(key, zA, zB, thick) {
+      var bx = boxes[key], b = bx.b;
+      if (b[2] - b[0] < 1e-6 || b[3] - b[1] < 1e-6) { return; }
+      Object.keys(dirs).forEach(function (d) {
+        var n = dirs[d];
+        if (bx.inner === d) { return; }                                       // 室內側由磁磚面覆蓋
+        if (bx.nb && bx.nb[d] && boxes[bx.nb[d]].on && boxes[bx.nb[d]].b[2] - boxes[bx.nb[d]].b[0] > 1e-6) { return; }   // 與鄰塊相接的內部面
+        if (!faceVisible(n)) { return; }
+        var q = d === '-x' ? [[b[0], b[1]], [b[0], b[3]]] : d === '+x' ? [[b[2], b[1]], [b[2], b[3]]] : d === '-y' ? [[b[0], b[1]], [b[2], b[1]]] : [[b[0], b[3]], [b[2], b[3]]];
+        poly([[q[0][0], q[0][1], zA], [q[1][0], q[1][1], zA], [q[1][0], q[1][1], zB], [q[0][0], q[0][1], zB]], d[1] === 'x' ? '#85817a' : '#97938a', '#555', 1);
+      });
+    }
+    // 樓板（結構體）：牆下方的厚度
+    var SLAB = 15, slb = [x0, y0, x1, y1];
+    [['-x', [[slb[0], slb[1]], [slb[0], slb[3]]]], ['+x', [[slb[2], slb[1]], [slb[2], slb[3]]]], ['-y', [[slb[0], slb[1]], [slb[2], slb[1]]]], ['+y', [[slb[0], slb[3]], [slb[2], slb[3]]]]].forEach(function (f) {
+      if (!faceVisible(dirs[f[0]])) { return; }
+      poly([[f[1][0][0], f[1][0][1], -SLAB], [f[1][1][0], f[1][1][1], -SLAB], [f[1][1][0], f[1][1][1], -0.5], [f[1][0][0], f[1][0][1], -0.5]], '#b9b5ab', '#555', 1);
+    });
+    var order = Object.keys(boxes).filter(function (k) { return boxes[k].on; });
+    order.forEach(function (k) { var b = boxes[k].b; boxes[k].depth = T([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2, R.H / 2])[2]; });
+    order.sort(function (p, q) { return boxes[q].depth - boxes[p].depth; });
+    order.forEach(function (k) { drawBox(k, -0.5, R.H); });
+  })();
   vis.forEach(function (dw) { var m = dw.map(res.walls[dw.w].surface.len / 2, R.H / 2); dw.depth = T(m)[2]; });
   vis.sort(function (a, b) { return b.depth - a.depth; });
   vis.forEach(function (dw) {
