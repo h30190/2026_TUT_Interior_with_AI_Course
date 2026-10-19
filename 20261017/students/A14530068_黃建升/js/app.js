@@ -533,20 +533,30 @@ function initCADToolbar() {
     refresh();
   });
 
-  // 🧲 吸附門框
+  // 🧲 吸附門框（取當前立面上第一個門的左緣；改為多門窗後不再有 door_x 欄位）
   $('cadSnapDoorBtn').addEventListener('click', () => {
     const k = selFace.value;
-    const doorX = parseFloat($('door_x').value) || 0;
+    const door = openingsList.find(o => o.kind === 'door' && o.face === k);
+    if (!door) {
+      alert(`${FACE_NAMES[k]} 上沒有門，請先選擇有門的立面，或在左側新增開門。`);
+      return;
+    }
+    const doorX = parseFloat(door.x) || 0;
     $(k + '_xalign').value = 'custom';
     $(k + '_xoff').value = doorX;
     $('cadX').value = doorX;
     refresh();
   });
 
-  // 🧲 吸附窗台
+  // 🧲 吸附窗台（取當前立面上第一個窗的窗台高度）
   $('cadSnapWinBtn').addEventListener('click', () => {
     const k = selFace.value;
-    const winY = parseFloat($('win_y').value) || 0;
+    const win = openingsList.find(o => o.kind === 'window' && o.face === k);
+    if (!win) {
+      alert(`${FACE_NAMES[k]} 上沒有窗，請先選擇有窗的立面，或在左側新增開窗。`);
+      return;
+    }
+    const winY = parseFloat(win.y) || 0;
     $(k + '_yalign').value = 'custom';
     $(k + '_yoff').value = winY;
     $('cadY').value = winY;
