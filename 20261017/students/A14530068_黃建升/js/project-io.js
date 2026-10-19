@@ -18,10 +18,14 @@ function collectProject() {
   const faces = {};
   for (const k of FACE_KEYS) {
     faces[k] = Object.assign({ fw: dims[k].fw, fh: dims[k].fh }, cfgOf(k));
+    const t = parseTileSize($(k + '_tile') ? $(k + '_tile').value : '');
+    if (t) Object.assign(faces[k], t);
   }
   return {
     format: PROJECT_FORMAT,
     version: PROJECT_VERSION,
+    meta: projectMeta,
+    materials: projectMaterials,
     room: { L: p.L, W: p.W, H: p.H },
     tile: { TL: p.TL, TW: p.TW, jointMM: Math.round(p.joint * 100) / 10, price: p.price },
     faces,
@@ -52,10 +56,9 @@ function validateProject(obj) {
   const out = { room: {}, tile: {}, faces: {}, openings: [], column: null };
   const room = obj.room || {};
   ['L', 'W', 'H'].forEach(k => { out.room[k] = pos(room[k], `room.${k}`); });
+  // 磁磚欄位沒寫就沿用目前設定（例如 DXF 裡沒有磚縫寬）
   const tile = obj.tile || {};
-  out.tile.TL = pos(tile.TL, 'tile.TL');
-  out.tile.TW = pos(tile.TW, 'tile.TW');
-  out.tile.jointMM = pos(tile.jointMM, 'tile.jointMM');
+  ['TL', 'TW', 'jointMM'].forEach(k => { if (tile[k] !== undefined) out.tile[k] = pos(tile[k], `tile.${k}`); });
   if (tile.price !== undefined) out.tile.price = nonNeg(tile.price, 'tile.price');
 
   for (const k of FACE_KEYS) {
@@ -69,6 +72,14 @@ function validateProject(obj) {
     }
     if (f.xoff !== undefined) face.xoff = nonNeg(f.xoff, `${k}.xoff`);
     if (f.yoff !== undefined) face.yoff = nonNeg(f.yoff, `${k}.yoff`);
+    if (f.TL !== undefined || f.TW !== undefined) {
+      face.TL = pos(f.TL, `${k}.TL`); face.TW = pos(f.TW, `${k}.TW`);
+      if (face.TL === undefined || face.TW === undefined) { delete face.TL; delete face.TW; }
+    }
+    if (f.marks !== undefined) {
+      face.marks = Array.isArray(f.marks) ? f.marks.filter(v => Number.isFinite(v) && v > 0) : [];
+      if (!Array.isArray(f.marks) || face.marks.length !== f.marks.length) warnings.push(`${k}.marks 有不是正數的值，已略過`);
+    }
     out.faces[k] = face;
   }
 
@@ -90,6 +101,13 @@ function validateProject(obj) {
   });
 
   if (obj.column && typeof obj.column === 'object') out.column = obj.column;
+  out.materials = (Array.isArray(obj.materials) ? obj.materials : []).filter(m => m && typeof m.role === 'string')
+    .map(m => ({
+      role: m.role, code: String(m.code || ''), spec: String(m.spec || ''), grout: String(m.grout || ''),
+      size: Array.isArray(m.size) && m.size.length === 2 && m.size.every(v => Number.isFinite(v) && v > 0) ? m.size : null
+    }));
+  const meta = obj.meta && typeof obj.meta === 'object' ? obj.meta : {};
+  out.meta = { project: String(meta.project || ''), drawingName: String(meta.drawingName || ''), number: String(meta.number || '') };
   return { errors, warnings, project: out };
 }
 
@@ -103,11 +121,25 @@ function applyProject(pj) {
     const f = pj.faces[k];
     setIf(k + '_fw', f.fw); setIf(k + '_fh', f.fh);
     CFG_FIELDS.forEach(c => setIf(k + '_' + c, f[c]));
+    // 匯入的資料檔描述整張圖：沒寫磚尺寸／紅線就清空，不沿用上一張圖
+    setIf(k + '_tile', f.TL ? `${f.TL}×${f.TW}` : '');
+    setIf(k + '_marks', (f.marks || []).join(', '));
   }
+  projectMaterials = pj.materials || [];
+  projectMeta = pj.meta || {};
+  renderProjectMeta();
   openingsList = pj.openings;
   renderOpeningsUI();
   if (pj.column) setColumnParams(pj.column);
   refresh();
+}
+
+// 資料檔卡片上顯示目前圖面名稱
+function renderProjectMeta() {
+  const el = $('projectMetaLine');
+  if (!el) return;
+  const name = [projectMeta.project, projectMeta.drawingName].filter(Boolean).join('｜');
+  el.textContent = name ? `目前圖面：${name}${projectMeta.number ? '（圖號 ' + projectMeta.number + '）' : ''}` : '';
 }
 
 function exportProject() {

@@ -40,6 +40,7 @@ const requiredFiles = [
   'js/calculator.js',
   'js/renderer.js',
   'js/project-io.js',
+  'js/dxf-import.js',
   'js/app.js'
 ];
 
@@ -50,7 +51,7 @@ requiredFiles.forEach(file => {
 });
 
 // 檢查 JS 檔案語法 (Syntax Check)
-const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'app.js'];
+const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'app.js'];
 jsFiles.forEach(f => {
   const fPath = path.join(JS_DIR, f);
   try {
@@ -65,7 +66,7 @@ jsFiles.forEach(f => {
 
 // 檢查 index.html 模組引入順序
 const htmlContent = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
-const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'app.js'];
+const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'app.js'];
 let lastIdx = -1;
 let orderCorrect = true;
 scriptOrder.forEach(s => {
@@ -110,7 +111,7 @@ const vmCtx = {
   Date, Math, JSON, parseFloat, Number, isFinite
 };
 vm.createContext(vmCtx);
-['config.js', 'columns.js', 'openings.js', 'calculator.js', 'project-io.js'].forEach(f => {
+['config.js', 'columns.js', 'openings.js', 'calculator.js', 'project-io.js', 'dxf-import.js'].forEach(f => {
   vm.runInContext(fs.readFileSync(path.join(JS_DIR, f), 'utf8'), vmCtx, { filename: f });
 });
 const { layout, faceDims, openings, params, cfgOf, columnParams, setColumnParams,
@@ -212,6 +213,37 @@ assert('smoke', '資料檔：D 面尺寸、起磚與門窗完整保留',
   && reimport.project.openings.length === 1 && reimport.project.openings[0].w === 86);
 assert('smoke', '資料檔：磚縫以 mm 存檔（2mm）', exported.tile.jointMM === 2);
 
+// Test S9: DXF 匯入（tests/fixtures/sample-bathroom.dxf：從實際施工圖抽出、已去個資的浴室圖）
+const dxfText = fs.readFileSync(path.join(__dirname, 'fixtures', 'sample-bathroom.dxf'), 'utf8');
+const dxfSheets = vmCtx.findDxfSheets(vmCtx.parseDxf(dxfText));
+const sh = dxfSheets[0];
+assert('smoke', 'DXF：找到 1 張施工圖，圖名「範例浴室」', dxfSheets.length === 1 && sh.meta.drawingName === '範例浴室');
+const fz = sh && sh.project.faces;
+assert('smoke', 'DXF：四面立面尺寸 171/207/172/210 × 289',
+  fz && fz.A.fw === 171 && fz.B.fw === 207 && fz.C.fw === 172 && fz.D.fw === 210 && ['A', 'B', 'C', 'D'].every(k => fz[k].fh === 289));
+assert('smoke', 'DXF：「由此線開始放樣」起點 A59／B117／C0／D104',
+  fz && fz.A.xoff === 59 && fz.B.xoff === 117 && fz.C.xoff === 0 && fz.D.xoff === 104);
+assert('smoke', 'DXF：紅線 A[59,142]／B[117]／D[190]',
+  fz && JSON.stringify([fz.A.marks, fz.B.marks, fz.C.marks, fz.D.marks]) === '[[59,142],[117],[],[190]]');
+const dxfDoor = sh && sh.project.openings;
+assert('smoke', 'DXF：D 面門 86×239 距左 104',
+  dxfDoor && dxfDoor.length === 1 && dxfDoor[0].face === 'D' && dxfDoor[0].w === 86 && dxfDoor[0].h === 239 && dxfDoor[0].x === 104);
+assert('smoke', 'DXF：地坪 207×187、起點 X117／Y172（由 B 牆量）、地磚 120×60',
+  fz && fz.floor.fw === 207 && fz.floor.fh === 187 && fz.floor.xoff === 117 && fz.floor.yoff === 172 && fz.floor.TL === 120 && fz.floor.TW === 60);
+assert('smoke', 'DXF：材料 壁／主秀壁／地 與填縫劑，牆磚 120×120',
+  sh && sh.materials.map(m => m.role).sort().join(',') === '主秀壁,地,壁'
+  && sh.materials.find(m => m.role === '壁').grout === '牙白' && sh.project.tile.TL === 120 && sh.project.tile.TW === 120);
+const dxfValid = sh && vmCtx.validateProject(JSON.parse(JSON.stringify(sh.project)));
+assert('smoke', 'DXF：轉出的資料檔可直接通過檢查', dxfValid && dxfValid.errors.length === 0 && dxfValid.warnings.length === 0,
+  dxfValid && JSON.stringify(dxfValid.warnings));
+const dimsDxf = vmCtx.elevationChains(171, 289, { xBase: 59, yBase: 0 }, [], [59, 142]);
+assert('smoke', 'DXF：A 面尺寸鏈 59/83/29 與施工圖一致', JSON.stringify(dimsDxf.h) === '[0,59,142,171]');
+assert('smoke', '磚尺寸文字「60×120」「60*120」「60x120」都看得懂',
+  ['60×120', '60*120', '60x120'].every(s => { const t = vmCtx.parseTileSize(s); return t && t.TL === 60 && t.TW === 120; })
+  && vmCtx.parseTileSize('') === null);
+assert('smoke', 'MTEXT 格式碼清除（\\P 換行、字型、^J）',
+  vmCtx.cleanMText('{\\fSimSun|b0;壁}\\P120*120^J填縫劑') === '壁\n120*120\n填縫劑');
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================
@@ -282,6 +314,17 @@ assert('redteam', '資料檔：負數／文字／未知選項只略過該欄並�
   && dirty.warnings.length >= 6, JSON.stringify(dirty.warnings));
 assert('redteam', '資料檔：門的離地高度強制為 0、不明門窗略過',
   dirty.project.openings.length === 1 && dirty.project.openings[0].y === 0);
+
+// Test R5c: 亂丟的 DXF 不能讓程式當掉
+let dxfCrash = null;
+try {
+  const empty = vmCtx.findDxfSheets(vmCtx.parseDxf(''));
+  const junk = vmCtx.findDxfSheets(vmCtx.parseDxf('hello\nworld\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n'));
+  // 只有索引圖塊、沒有立面外框
+  const onlySym = vmCtx.findDxfSheets(vmCtx.parseDxf(dxfText.replace(/\nLWPOLYLINE\r?\n/g, '\nXLWPOLY\n')));
+  assert('redteam', 'DXF：空檔、亂碼、缺外框都回 0 張圖而不當機', empty.length === 0 && junk.length === 0 && onlySym.length === 0);
+} catch (e) { dxfCrash = e; }
+if (dxfCrash) assert('redteam', 'DXF：空檔、亂碼、缺外框都回 0 張圖而不當機', false, dxfCrash.message);
 
 // Test R6: 大量門窗高負載壓力測試 (50 個動態開口)
 const stressList = [];

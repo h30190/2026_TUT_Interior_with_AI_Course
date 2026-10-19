@@ -14,12 +14,15 @@
   <div>
     <div class="card" style="margin-bottom:16px">
       <h2>施工圖資料檔</h2>
+      <button id="btnImportDxf" type="button" class="syncbtn" style="margin-bottom:8px">📐 匯入 DXF</button>
       <div class="row2">
         <button id="btnImportProject" type="button" class="syncbtn">📂 匯入資料檔</button>
         <button id="btnExportProject" type="button" class="syncbtn">💾 匯出資料檔</button>
       </div>
+      <input id="dxfFile" type="file" accept=".dxf" style="display:none">
       <input id="projectFile" type="file" accept=".json,application/json" style="display:none">
-      <div class="syncnote">把目前的尺寸、起磚、門窗、柱存成 JSON；之後 DXF 匯入也會轉成同一份格式。</div>
+      <div id="projectMetaLine" class="syncnote" style="font-weight:600;color:var(--ink)"></div>
+      <div class="syncnote">DXF：AutoCAD「另存新檔」選 DXF，程式會找出檔案裡每張放樣施工圖讓你挑。資料檔（JSON）保存尺寸、起磚、紅線、門窗、材料。</div>
     </div>
 
     <div class="card">
@@ -205,6 +208,15 @@
   </div>
 </div>
 
+<!-- 📐 DXF 有多張施工圖時的選圖視窗 -->
+<div id="dxfSheetPicker" class="modal" style="display:none">
+  <div class="modal-box">
+    <h2>這個 DXF 裡有多張施工圖，要匯入哪一張？</h2>
+    <div id="dxfSheetList" class="sheet-list"></div>
+    <button id="dxfSheetCancel" type="button" class="lock-toggle-btn" style="margin-top:12px">取消</button>
+  </div>
+</div>
+
 <!-- 🔍 X 光磁磚透視檢查器浮動視窗 -->
 <div id="tileInspector" class="tile-inspector" style="display:none"></div>
 
@@ -215,6 +227,7 @@
 <script src="js/calculator.js"></script>
 <script src="js/renderer.js"></script>
 <script src="js/project-io.js"></script>
+<script src="js/dxf-import.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

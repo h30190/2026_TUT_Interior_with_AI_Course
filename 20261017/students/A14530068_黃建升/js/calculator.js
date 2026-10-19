@@ -28,8 +28,28 @@ function cfgOf(k) {
     xalign: $(k + '_xalign').value,
     yalign: $(k + '_yalign').value,
     xoff: num0(k + '_xoff', 0),
-    yoff: num0(k + '_yoff', 0)
+    yoff: num0(k + '_yoff', 0),
+    marks: parseMarks($(k + '_marks') ? $(k + '_marks').value : '')
   };
+}
+
+// 紅線位置「59, 142」→ [59, 142]（只留正數）
+function parseMarks(s) {
+  return String(s || '').split(/[,，、\s]+/).map(parseFloat).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+}
+
+// 「60×120」「60*120」「60x120」→ { TL: 60, TW: 120 }；空白或看不懂回 null
+function parseTileSize(s) {
+  const m = String(s || '').match(/(\d+(?:\.\d+)?)\s*[*xX×]\s*(\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const a = parseFloat(m[1]), b = parseFloat(m[2]);
+  return a > 0 && b > 0 ? { TL: a, TW: b } : null;
+}
+
+// 該面用的參數：有自己的磚尺寸就換掉共用磁磚（例如地坪 120×60、牆 120×120）
+function paramsFor(p, k) {
+  const t = parseTileSize($(k + '_tile') ? $(k + '_tile').value : '');
+  return t ? Object.assign({}, p, t) : p;
 }
 
 // 第 r 列（沿面寬方向）的起點偏移量，依工法
@@ -162,7 +182,7 @@ function getSnapPoints(p, dims, faceKey, ops) {
   // 3. 地壁對縫鎖點：計算地坪在相鄰邊界的磁磚垂直縫
   if (faceKey !== 'floor') {
     const flCfg = cfgOf('floor');
-    const flR = layout(p, dims.floor.fw, dims.floor.fh, flCfg, []);
+    const flR = layout(paramsFor(p, 'floor'), dims.floor.fw, dims.floor.fh, flCfg, []);
     // 依據相鄰關係決定對縫軸向
     if (faceKey === 'B' || faceKey === 'D') {
       // B面與D面寬度對齊地坪水平 X 方向
@@ -203,9 +223,9 @@ function dimChainPoints(len, marks) {
   return pts.filter((v, i) => i === 0 || v - pts[i - 1] >= 0.5);
 }
 
-// 立面尺寸鏈：水平＝起磚線＋門窗左右緣＋柱線；垂直＝起磚高＋窗台／窗頂＋門高
-function elevationChains(fw, fh, r, ops) {
-  const hx = [r.xBase], vy = [r.yBase];
+// 立面尺寸鏈：水平＝起磚線＋紅線＋門窗左右緣＋柱線；垂直＝起磚高＋窗台／窗頂＋門高
+function elevationChains(fw, fh, r, ops, marks) {
+  const hx = [r.xBase].concat(marks || []), vy = [r.yBase];
   if (r.col && r.col.on) {
     const x0 = r.col.x0 !== undefined ? r.col.x0 : r.col.x;
     const x1 = r.col.x1 !== undefined ? r.col.x1 : r.col.x + (r.col.w || 0);
@@ -221,8 +241,8 @@ function elevationChains(fw, fh, r, ops) {
 }
 
 // 地坪尺寸鏈：水平＝起磚線＋B/D 牆門窗；垂直（由 B 牆往下量）＝起磚線＋A/C 牆門窗
-function floorChains(fw, fh, r, allOps) {
-  const hx = [r.xBase], vy = [r.yBase];
+function floorChains(fw, fh, r, allOps, marks) {
+  const hx = [r.xBase].concat(marks || []), vy = [r.yBase];
   for (const o of (allOps.B || []).concat(allOps.D || [])) hx.push(o.x, o.x + o.w);
   for (const o of (allOps.A || []).concat(allOps.C || [])) vy.push(o.x, o.x + o.w);
   return { h: dimChainPoints(fw, hx), v: dimChainPoints(fh, vy) };
@@ -246,9 +266,10 @@ function getTileJoints(base, pitch, maxDim) {
 function calcJointAlignment(p, dims, faceKey) {
   if (faceKey === 'floor') return 0;
   const flCfg = cfgOf('floor');
-  const flR = layout(p, dims.floor.fw, dims.floor.fh, flCfg, []);
+  const flR = layout(paramsFor(p, 'floor'), dims.floor.fw, dims.floor.fh, flCfg, []);
   const wallCfg = cfgOf(faceKey);
-  const tL = wallCfg.dir === 'H' ? p.TL : p.TW;
+  const wp = paramsFor(p, faceKey);
+  const tL = wallCfg.dir === 'H' ? wp.TL : wp.TW;
   const pitchL = tL + p.joint;
 
   let targetJoint = 0;
@@ -303,14 +324,14 @@ function computeAll(p) {
     const colInfo = (typeof getFaceColumnInfo === 'function')
       ? getFaceColumnInfo(f.key, col, dims)
       : (col.on && col.face === f.key ? col : null);
-    const r = layout(p, f.fw, f.fh, cfg, ops[f.key] || [], f.key !== 'floor', colInfo);
+    const r = layout(paramsFor(p, f.key), f.fw, f.fh, cfg, ops[f.key] || [], f.key !== 'floor', colInfo);
     return { key: f.key, name: f.name, fw: f.fw, fh: f.fh, cfg, r, ops: ops[f.key] || [], col: colInfo };
   });
 }
 
 // ✨ 智慧消除小料演算法（尋找消除危險碎磚的最優位移偏移量）
 function autoFixSlivers(faceKey) {
-  const p = params();
+  const p = paramsFor(params(), faceKey);
   const d = faceDims(p)[faceKey];
   const cfg = cfgOf(faceKey);
   const ops = openings(faceDims(p))[faceKey] || [];

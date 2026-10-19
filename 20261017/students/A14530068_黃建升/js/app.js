@@ -186,6 +186,10 @@ function buildPanels() {
       + `<option value="center"${d.yalign === 'center' ? ' selected' : ''}>垂直置中</option>`
       + `<option value="custom"${d.yalign === 'custom' ? ' selected' : ''}>自訂起磚高Y</option></select></div>`
       + `<div><label>起磚高 Y (cm)</label><input id="${k}_yoff" type="number" value="0" min="0"></div>`
+      + `</div>`
+      + `<div class="row2">`
+      + `<div><label>此面磚 長×寬</label><input id="${k}_tile" type="text" placeholder="空白＝共用"></div>`
+      + `<div><label>紅線 X (cm)</label><input id="${k}_marks" type="text" placeholder="例 59, 142"></div>`
       + `</div>`;
     host.appendChild(blk);
   }
@@ -621,12 +625,18 @@ function initApp() {
       $('L').value = pr.L; $('W').value = pr.W; $('H').value = pr.H;
       $('TL').value = pr.TL; $('TW').value = pr.TW;
       syncFaceDims(pr.faces);
+      // 換成內建案例：清掉上一張匯入圖的材料與圖名
+      projectMaterials = [];
+      projectMeta = Object.assign({}, EMPTY_META);
+      renderProjectMeta();
       // 案例附帶各面起磚設定：其餘欄位回到預設，避免沿用上一個情境的起磚點
       if (pr.cfg) {
         lockAllJoints = false;
         for (const k of FACE_KEYS) {
           const c = Object.assign({}, DEFAULT_CFG[k], pr.cfg[k] || {});
           ['dir', 'mode', 'xalign', 'yalign', 'xoff', 'yoff'].forEach(f => { $(k + '_' + f).value = c[f]; });
+          $(k + '_tile').value = c.TL ? `${c.TL}×${c.TW}` : '';
+          $(k + '_marks').value = (c.marks || []).join(', ');
         }
       }
       if (pr.openings) applyOpeningPreset(pr.openings);
@@ -642,7 +652,7 @@ function initApp() {
   ['TL', 'TW', 'joint', 'price'].forEach(id => $(id).addEventListener('input', refresh));
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign'].forEach(s => $(k + s).addEventListener('change', refresh)));
-  FACE_KEYS.forEach(k => ['_xoff', '_yoff'].forEach(s => $(k + s).addEventListener('input', refresh)));
+  FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks'].forEach(s => $(k + s).addEventListener('input', refresh)));
 
   $('syncWalls').addEventListener('click', () => {
     ['B', 'C', 'D'].forEach(k => {
@@ -699,6 +709,7 @@ function initApp() {
   initColumnModule();
   initOpeningsModule();
   initProjectIO();
+  initDxfImport();
 
   refresh();
 }

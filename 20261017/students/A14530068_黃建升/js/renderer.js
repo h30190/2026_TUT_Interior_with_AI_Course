@@ -270,6 +270,17 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
     drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, opts.faceKey || 'A');
   }
 
+  // 施工圖紅線（分界、門框、對縫基準）：整面高度的紅色實線
+  if (cfg.marks && cfg.marks.length) {
+    ctx.save();
+    ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.2;
+    for (const m of cfg.marks) {
+      if (m <= 0 || m >= fw) continue;
+      ctx.beginPath(); ctx.moveTo(ox + m * sc, oy); ctx.lineTo(ox + m * sc, oy + fh * sc); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // 繪製放樣基準線與起磚點
   drawSettingOut(ctx, ox, oy, fw, fh, sc, r, opts.faceKey || 'A', isElevation, !!opts.detail, ops);
 
@@ -508,8 +519,8 @@ function drawPlanCompass(ctx, cx, cy) {
 const DIM_COLOR = '#6b665e';
 
 // 立面外圍：下方水平尺寸鏈＋左側垂直尺寸鏈＋索引符號＋上方「由此線開始放樣」
-function drawElevIndex(ctx, ox, oy, fw, fh, sc, key, r, ops) {
-  const ch = elevationChains(fw, fh, r, ops || []);
+function drawElevIndex(ctx, ox, oy, fw, fh, sc, key, r, ops, marks) {
+  const ch = elevationChains(fw, fh, r, ops || [], marks);
   const baseY = oy + fh * sc;
   drawDimChain(ctx, ox, baseY + 14, 1, 0, sc, ch.h, DIM_COLOR);
   drawDimChain(ctx, ox - 10, baseY, 0, -1, sc, ch.v, DIM_COLOR);
@@ -831,7 +842,7 @@ function drawUnfold(p, rows) {
     facePosX[k] = { x: curX, y: oy, w: row.fw * s, h: bH };
 
     drawFaceBox(ctx, curX, oy, row.fw, row.fh, s, row.name, p, row.cfg, row.r, row.ops, { detail: false, faceKey: k });
-    drawElevIndex(ctx, curX, oy, row.fw, row.fh, s, k, row.r, row.ops);
+    drawElevIndex(ctx, curX, oy, row.fw, row.fh, s, k, row.r, row.ops, row.cfg.marks);
     curX += row.fw * s + gap;
   }
 
@@ -849,7 +860,7 @@ function drawUnfold(p, rows) {
   drawPlanCompass(ctx, px + planW / 2, py + planH / 2);
 
   // 地坪外圍尺寸鏈與放樣起點（避開四面牆的門窗文字）
-  const fch = floorChains(Lf, Wf, flR, allOps);
+  const fch = floorChains(Lf, Wf, flR, allOps, byKey.floor.cfg.marks);
   const botY = py + planH + ((allOps.D || []).length ? 40 : 14);
   drawDimChain(ctx, px, botY, 1, 0, s, fch.h, DIM_COLOR);
   const leftX = px - 10 - ((allOps.A || []).length ? planLabelWidth(ctx, allOps.A) + 12 : 0);
@@ -858,16 +869,28 @@ function drawUnfold(p, rows) {
   drawStartMarker(ctx, px + Math.max(0, flR.xBase) * s, markTop, px - 10, px + planW + 10);
   drawStartMarkerV(ctx, py + Math.max(0, flR.yBase) * s, leftX - 16, py - 10, py + planH + 10);
 
-  // 材料規格與操作說明
-  ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
-  const spec = [
-    '【施工圖規格】',
-    `磁磚：${p.TL}×${p.TW} cm（縫寬 ${p.joint} cm）`,
-    `工法：橫/直貼與起磚依各面設定`,
-    '對縫：地磚縫垂直向上連通 B/D 壁磚',
-    '收邊：轉角陽角處倒 45 度背切收邊'
-  ];
-  spec.forEach((t, i) => ctx.fillText(t, padR, py + 14 + i * 16));
+  // 材料（匯入施工圖時照圖上的材料標註列出；沒有就列共用磁磚規格）
+  ctx.textAlign = 'left';
+  let ty = py + 14;
+  if (projectMaterials.length) {
+    for (const m of projectMaterials) {
+      ctx.fillStyle = '#c0703a'; ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(m.role, padR, ty); ty += 15;
+      ctx.fillStyle = '#3a3a3a'; ctx.font = '10.5px sans-serif';
+      [m.code, m.spec, '填縫劑：' + (m.grout || '')].filter(t => t && t.trim()).forEach(t => { ctx.fillText(t, padR, ty); ty += 13; });
+      ty += 6;
+    }
+  } else {
+    ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif';
+    [
+      '【施工圖規格】',
+      `磁磚：${p.TL}×${p.TW} cm（縫寬 ${p.joint} cm）`,
+      `工法：橫/直貼與起磚依各面設定`,
+      '對縫：地磚縫垂直向上連通 B/D 壁磚',
+      '收邊：轉角陽角處倒 45 度背切收邊'
+    ].forEach((t, i) => ctx.fillText(t, padR, py + 14 + i * 16));
+  }
+  ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif';
 
   ctx.textAlign = 'right';
   const spec2 = [
@@ -898,13 +921,13 @@ function drawSingle(p, rows) {
   drawFaceBox(ctx, ox, oy, fw, fh, sc, row.name, p, row.cfg, row.r, row.ops, { detail: true, faceKey: face });
 
   if (face === 'floor') {
-    const ch = floorChains(fw, fh, row.r, {});
+    const ch = floorChains(fw, fh, row.r, {}, row.cfg.marks);
     drawDimChain(ctx, ox, oy + fh * sc + 22, 1, 0, sc, ch.h, DIM_COLOR);
     drawDimChain(ctx, ox - 22, oy, 0, 1, sc, ch.v, DIM_COLOR);
     drawStartMarker(ctx, ox + Math.max(0, row.r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);
     drawStartMarkerV(ctx, oy + Math.max(0, row.r.yBase) * sc, ox - 40, oy - 10, oy + fh * sc + 10);
   } else {
-    const ch = elevationChains(fw, fh, row.r, row.ops);
+    const ch = elevationChains(fw, fh, row.r, row.ops, row.cfg.marks);
     drawDimChain(ctx, ox, oy + fh * sc + 22, 1, 0, sc, ch.h, DIM_COLOR);
     drawDimChain(ctx, ox - 22, oy + fh * sc, 0, -1, sc, ch.v, DIM_COLOR);
     drawStartMarker(ctx, ox + Math.max(0, row.r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);
