@@ -20,20 +20,19 @@ const PRESETS = {
   living: { L: 600, W: 400, H: 280, TL: 120, TW: 60 },
   bedroom: { L: 450, W: 350, H: 280, TL: 15, TW: 75 },
   bath: { L: 240, W: 180, H: 240, TL: 30, TW: 60 },
+  // 依實際浴室施工圖：四面牆高皆 289（239 是 D 面門高，不是牆高），壁磚 120×120
   demo: {
-    L: 171, W: 207, H: 289, TL: 30, TW: 60,
-    faces: { floor: [207, 171], A: [171, 289], B: [207, 289], C: [172, 289], D: [210, 239] }
-  }
-};
-
-const OPEN_PRESETS = {
-  bathop: {
-    door_on: true, door_face: 'D', door_w: 86, door_h: 239, door_x: 104, door_y: 0,
-    win_on: true, win_face: 'B', win_w: 60, win_h: 60, win_x: 40, win_y: 140
-  },
-  livingop: {
-    door_on: true, door_face: 'A', door_w: 100, door_h: 220, door_x: 20, door_y: 0,
-    win_on: true, win_face: 'C', win_w: 240, win_h: 220, win_x: 40, win_y: 0
+    L: 171, W: 207, H: 289, TL: 120, TW: 120,
+    faces: { floor: [207, 171], A: [171, 289], B: [207, 289], C: [172, 289], D: [210, 289] },
+    // 各面放樣起點（對照施工圖「由此線開始放樣」）：A 距左 59、B 距左 117、C 靠左、D 對齊門框左緣 104
+    cfg: {
+      floor: { xalign: 'custom', xoff: 117 },
+      A: { xalign: 'custom', xoff: 59 },
+      B: { xalign: 'custom', xoff: 117 },
+      C: { xalign: 'left', xoff: 0 },
+      D: { xalign: 'custom', xoff: 104 }
+    },
+    openings: 'caseop'
   }
 };
 

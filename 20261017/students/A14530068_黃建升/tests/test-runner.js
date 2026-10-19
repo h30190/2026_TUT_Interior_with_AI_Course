@@ -170,6 +170,19 @@ const clashes = detectColumnClashes(testDims);
 assert('smoke', '成功偵測柱與窗戶位置衝突', clashes.length > 0);
 assert('smoke', '衝突重疊寬度計算精確 (應為 10cm)', clashes[0] && clashes[0].overlapW === 10);
 
+// Test S6: 施工圖案例資料與實際施工圖一致（D 面牆高 289，239 是門高）
+const DEMO = vm.runInContext('PRESETS.demo', vmCtx);
+const CASE_OPS = vm.runInContext('OPENING_PRESETS.caseop', vmCtx);
+assert('smoke', '施工圖案例：四面牆高皆為 289', ['A', 'B', 'C', 'D'].every(k => DEMO.faces[k][1] === 289));
+assert('smoke', '施工圖案例：壁磚 120×120', DEMO.TL === 120 && DEMO.TW === 120);
+const caseDoor = CASE_OPS.items.find(o => o.kind === 'door');
+assert('smoke', '施工圖案例：D 面門 86×239 距左 104（104/86/20）',
+  caseDoor && caseDoor.face === 'D' && caseDoor.w === 86 && caseDoor.h === 239 && caseDoor.x === 104
+  && 210 - caseDoor.x - caseDoor.w === 20);
+const caseD = layout({ L: 171, W: 207, H: 289, TL: 120, TW: 120, joint: 0.2, price: 0 }, 210, 289,
+  { dir: 'H', mode: 'grid', xalign: 'custom', yalign: 'bottom', xoff: DEMO.cfg.D.xoff, yoff: 0 }, []);
+assert('smoke', '施工圖案例：D 面起磚線對齊門框左緣 104', caseD.xBase === 104);
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================

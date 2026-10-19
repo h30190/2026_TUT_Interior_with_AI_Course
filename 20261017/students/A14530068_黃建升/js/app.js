@@ -621,6 +621,15 @@ function initApp() {
       $('L').value = pr.L; $('W').value = pr.W; $('H').value = pr.H;
       $('TL').value = pr.TL; $('TW').value = pr.TW;
       syncFaceDims(pr.faces);
+      // 案例附帶各面起磚設定：其餘欄位回到預設，避免沿用上一個情境的起磚點
+      if (pr.cfg) {
+        lockAllJoints = false;
+        for (const k of FACE_KEYS) {
+          const c = Object.assign({}, DEFAULT_CFG[k], pr.cfg[k] || {});
+          ['dir', 'mode', 'xalign', 'yalign', 'xoff', 'yoff'].forEach(f => { $(k + '_' + f).value = c[f]; });
+        }
+      }
+      if (pr.openings) applyOpeningPreset(pr.openings);
       refresh();
     });
   });

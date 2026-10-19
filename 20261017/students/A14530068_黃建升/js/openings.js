@@ -33,6 +33,13 @@ const OPENING_PRESETS = {
       { id: 'bed_w1', kind: 'window', name: '雙推景觀窗 W1', face: 'B', w: 140, h: 140, x: 100, y: 80 }
     ],
     column: { on: false }
+  },
+  caseop: {
+    name: '施工圖案例（D 面 1 門 86×239，門框左緣距左 104）',
+    items: [
+      { id: 'case_d1', kind: 'door', name: '浴室門', face: 'D', w: 86, h: 239, x: 104, y: 0 }
+    ],
+    column: { on: false }
   }
 };
 
