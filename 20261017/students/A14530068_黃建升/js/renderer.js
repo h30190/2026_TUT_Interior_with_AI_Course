@@ -38,10 +38,18 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
       : oy + Math.max(t.y0, 0) * sc;
     const pw = t.wL * sc, ph = t.wW * sc;
 
-    ctx.fillStyle = t.danger ? '#e04545' : (t.full ? '#efe9df' : '#f2b48c');
-    ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = '#d8d2c6';
-    ctx.lineWidth = 0.6;
+    if (drawStyle === 'line') {
+      // 線稿：只畫磚縫，小料淡紅底提醒
+      ctx.fillStyle = t.danger ? 'rgba(224, 69, 69, 0.14)' : '#ffffff';
+      ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = '#8c8c8c';
+      ctx.lineWidth = 0.7;
+    } else {
+      ctx.fillStyle = t.danger ? '#e04545' : (t.full ? '#efe9df' : '#f2b48c');
+      ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = '#d8d2c6';
+      ctx.lineWidth = 0.6;
+    }
     ctx.strokeRect(px, py, pw, ph);
 
     interactiveTargets.push({
@@ -60,6 +68,28 @@ function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
     const py = oy + (fh - (o.y + o.h)) * sc;
     const pw = o.w * sc, ph = o.h * sc;
     const isDrag = (activeDrag && activeDrag.type === o.kind && activeDrag.faceKey === faceKey);
+
+    if (drawStyle === 'line') {
+      // 線稿：門窗只畫青色外框與內框（同施工圖）
+      const thk = Math.max(3, 4.5 * sc);
+      ctx.save();
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = isDrag ? '#d22' : '#18a7c9'; ctx.lineWidth = isDrag ? 2 : 1.4;
+      ctx.strokeRect(px, py, pw, ph);
+      ctx.lineWidth = 0.9;
+      if (o.kind === 'door') ctx.strokeRect(px + thk, py + thk, pw - thk * 2, ph - thk);
+      else ctx.strokeRect(px + thk, py + thk, pw - thk * 2, ph - thk * 2);
+      if (pw > 36) {
+        ctx.fillStyle = '#0f7f99'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(`${o.kind === 'door' ? '門' : '窗'} ${o.w}×${o.h}`, px + pw / 2, py + ph / 2);
+      }
+      ctx.restore();
+      interactiveTargets.push({
+        type: o.kind, faceKey: faceKey, op: o,
+        box: [px, py, pw, ph], ox, oy, fw, fh, sc
+      });
+      continue;
+    }
 
     ctx.save();
     ctx.fillStyle = '#ffffff';
@@ -160,15 +190,18 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
   ctx.beginPath(); ctx.moveTo(xPx, oy); ctx.lineTo(xPx, oy + fh * sc); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(ox, yPx); ctx.lineTo(ox + fw * sc, yPx); ctx.stroke();
 
-  // 🎯 起磚十字靶心
+  // 🎯 起磚十字靶心（線稿只留小紅點，仍可拖曳）
   const isTargetActive = activeDrag && activeDrag.type === 'origin' && activeDrag.faceKey === faceKey;
+  const lineStyle = drawStyle === 'line';
   ctx.fillStyle = isTargetActive ? '#ff3838' : '#d22';
-  ctx.beginPath(); ctx.arc(xPx, yPx, 7, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath(); ctx.arc(xPx, yPx, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(xPx, yPx, lineStyle ? 4 : 7, 0, Math.PI * 2); ctx.fill();
+  if (!lineStyle) {
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(xPx, yPx, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
 
-  // 📍 起磚點明確標註 (CAD 座標標籤)
+  // 📍 起磚點明確標註 (CAD 座標標籤；線稿改由尺寸鏈表達)
   const xVal = Math.round(r.xBase * 10) / 10;
   const yVal = Math.round(r.yBase * 10) / 10;
   const tagText = `⌖ 起磚點 (X:${xVal}, Y:${yVal})`;
@@ -177,12 +210,14 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
   const tagX = (xPx + tagW + 10 < ox + fw * sc) ? xPx + 8 : xPx - tagW - 8;
   // 不壓到面頂的面別標題列
   const tagY = Math.max(oy + 34, (yPx - 16 > oy) ? yPx - 10 : yPx + 16);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-  ctx.fillRect(tagX, tagY - 10, tagW, 14);
-  ctx.strokeStyle = '#d22'; ctx.lineWidth = 1;
-  ctx.strokeRect(tagX, tagY - 10, tagW, 14);
-  ctx.fillStyle = '#b22'; ctx.textAlign = 'left';
-  ctx.fillText(tagText, tagX + 5, tagY + 1);
+  if (!lineStyle) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.fillRect(tagX, tagY - 10, tagW, 14);
+    ctx.strokeStyle = '#d22'; ctx.lineWidth = 1;
+    ctx.strokeRect(tagX, tagY - 10, tagW, 14);
+    ctx.fillStyle = '#b22'; ctx.textAlign = 'left';
+    ctx.fillText(tagText, tagX + 5, tagY + 1);
+  }
   // （距左 X 改由面外的分段尺寸鏈標示）
 
   // 註冊互動目標
@@ -354,7 +389,8 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   // 外牆線（粗黑線）
   ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1.6; ctx.strokeRect(ox, oy, fw * sc, fh * sc);
 
-  // 頂部面別資訊標籤
+  // 頂部面別資訊標籤（線稿不寫，面別看下方索引符號）
+  if (drawStyle === 'line') return;
   ctx.fillStyle = '#2b2b2b'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
   const dirTxt = cfg.dir === 'H' ? '橫貼' : '直貼';
   const xTxt = XALIGN_NAMES[cfg.xalign] || '靠左';

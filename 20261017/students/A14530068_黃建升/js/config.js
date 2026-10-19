@@ -54,6 +54,8 @@ const DEFAULT_CFG = {
 };
 
 let view = 'unfold';
+// 圖面風格：'color' 彩色方案（給業主看損耗）／'line' 施工線稿（給師傅放樣）
+let drawStyle = 'color';
 let face = 'floor';
 
 // 結構柱／分界紅線預設設定

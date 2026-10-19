@@ -98,6 +98,10 @@
         <button id="viewUnfold" class="on">📐 施工圖全景（立面排開＋地坪平面）</button>
         <button id="viewSingle">🔍 單面特寫放大</button>
       </div>
+      <div class="view style-toggle">
+        <button id="styleColor" class="on">🎨 彩色方案（給業主看損耗）</button>
+        <button id="styleLine">✏️ 施工線稿（給師傅放樣）</button>
+      </div>
       <div class="tabs" id="faceTabs" style="display:none">
         <button data-f="floor" class="on">地坪 L×W</button>
         <button data-f="A">A立面 L×H</button>
@@ -140,13 +144,20 @@
       </div>
 
       <canvas id="cv" width="1240" height="820"></canvas>
-      <div class="legend">
+      <div class="legend" id="legendColor">
         <span><i class="sw" style="background:var(--tile)"></i>整磚</span>
         <span><i class="sw" style="background:var(--cut)"></i>裁切修邊磚</span>
         <span><i class="sw" style="background:var(--danger)"></i>危險小料（最短邊 &lt; 5cm）</span>
         <span><i class="sw" style="background:#fff;border:1px dashed #2b2b2b"></i>壁地交接折線</span>
         <span><i class="sw" style="background:#eaf2fa;border:2px solid #3a76b5"></i>門窗開口（不鋪磚，可拖曳）</span>
         <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>🎯 紅色起磚靶心（可拖曳）</span>
+      </div>
+      <div class="legend" id="legendLine" style="display:none">
+        <span><i class="sw" style="background:#fff;border:1px solid #8c8c8c"></i>磁磚（灰線＝磚縫）</span>
+        <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>紅線＝放樣基準線（可拖曳）</span>
+        <span><i class="sw" style="background:#fff;border-top:3px solid #7cb518"></i>綠箭頭＝由此線開始放樣</span>
+        <span><i class="sw" style="background:#fff;border:1.5px solid #d22;border-radius:50%"></i>紅圈＝避免小料</span>
+        <span><i class="sw" style="background:#fff;border:2px solid #18a7c9"></i>門窗開口（不鋪磚，可拖曳）</span>
       </div>
       <div id="warn" class="warn" style="display:none">
         <span id="warnMsg"></span>

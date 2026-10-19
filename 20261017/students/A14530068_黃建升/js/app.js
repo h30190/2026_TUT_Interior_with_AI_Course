@@ -672,6 +672,18 @@ function initApp() {
     refresh();
   });
 
+  // 🎨／✏️ 彩色方案與施工線稿切換（同一份資料，兩種給不同人看的畫法）
+  const setStyle = st => {
+    drawStyle = st;
+    $('styleColor').classList.toggle('on', st === 'color');
+    $('styleLine').classList.toggle('on', st === 'line');
+    $('legendColor').style.display = st === 'color' ? 'flex' : 'none';
+    $('legendLine').style.display = st === 'line' ? 'flex' : 'none';
+    refresh();
+  };
+  $('styleColor').addEventListener('click', () => setStyle('color'));
+  $('styleLine').addEventListener('click', () => setStyle('line'));
+
   document.querySelectorAll('#faceTabs button').forEach(b => {
     b.addEventListener('click', () => {
       face = b.dataset.f;
