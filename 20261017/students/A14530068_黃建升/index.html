@@ -12,6 +12,16 @@
 
 <div class="layout">
   <div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>施工圖資料檔</h2>
+      <div class="row2">
+        <button id="btnImportProject" type="button" class="syncbtn">📂 匯入資料檔</button>
+        <button id="btnExportProject" type="button" class="syncbtn">💾 匯出資料檔</button>
+      </div>
+      <input id="projectFile" type="file" accept=".json,application/json" style="display:none">
+      <div class="syncnote">把目前的尺寸、起磚、門窗、柱存成 JSON；之後 DXF 匯入也會轉成同一份格式。</div>
+    </div>
+
     <div class="card">
       <h2>空間與磁磚</h2>
       <div class="row2">
@@ -204,6 +214,7 @@
 <script src="js/openings.js"></script>
 <script src="js/calculator.js"></script>
 <script src="js/renderer.js"></script>
+<script src="js/project-io.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

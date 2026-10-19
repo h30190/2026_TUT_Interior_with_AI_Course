@@ -39,6 +39,7 @@ const requiredFiles = [
   'js/openings.js',
   'js/calculator.js',
   'js/renderer.js',
+  'js/project-io.js',
   'js/app.js'
 ];
 
@@ -49,7 +50,7 @@ requiredFiles.forEach(file => {
 });
 
 // 檢查 JS 檔案語法 (Syntax Check)
-const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'app.js'];
+const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'app.js'];
 jsFiles.forEach(f => {
   const fPath = path.join(JS_DIR, f);
   try {
@@ -64,7 +65,7 @@ jsFiles.forEach(f => {
 
 // 檢查 index.html 模組引入順序
 const htmlContent = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
-const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'app.js'];
+const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'app.js'];
 let lastIdx = -1;
 let orderCorrect = true;
 scriptOrder.forEach(s => {
@@ -109,7 +110,7 @@ const vmCtx = {
   Date, Math, JSON, parseFloat, Number, isFinite
 };
 vm.createContext(vmCtx);
-['config.js', 'columns.js', 'openings.js', 'calculator.js'].forEach(f => {
+['config.js', 'columns.js', 'openings.js', 'calculator.js', 'project-io.js'].forEach(f => {
   vm.runInContext(fs.readFileSync(path.join(JS_DIR, f), 'utf8'), vmCtx, { filename: f });
 });
 const { layout, faceDims, openings, params, cfgOf, columnParams, setColumnParams,
@@ -191,6 +192,26 @@ assert('smoke', '尺寸鏈：D 面垂直分段 0/239/289', JSON.stringify(chD.v)
 assert('smoke', '尺寸鏈：相距 < 0.5cm 的點合併、超出範圍的點忽略',
   JSON.stringify(vmCtx.dimChainPoints(100, [50, 50.3, -5, 120, NaN])) === '[0,50,100]');
 
+// Test S8: 施工圖資料檔（JSON）匯出→檢查→可再匯入
+const faceInputs = {};
+['floor', 'A', 'B', 'C', 'D'].forEach(k => Object.assign(faceInputs, {
+  [k + '_dir']: 'H', [k + '_mode']: 'grid', [k + '_xalign']: 'custom', [k + '_yalign']: 'bottom', [k + '_xoff']: 0, [k + '_yoff']: 0
+}));
+setInputs(Object.assign(faceInputs, {
+  L: 171, W: 207, H: 289, TL: 120, TW: 120, joint: 2, price: 0,
+  floor_fw: 207, floor_fh: 171, A_fw: 171, A_fh: 289, B_fw: 207, B_fh: 289, C_fw: 172, C_fh: 289, D_fw: 210, D_fh: 289,
+  D_xoff: 104
+}));
+setOpenings(JSON.parse(JSON.stringify(CASE_OPS.items)));
+const exported = JSON.parse(JSON.stringify(vmCtx.collectProject()));
+const reimport = vmCtx.validateProject(exported);
+assert('smoke', '資料檔：匯出後可原樣通過檢查（無錯誤、無略過）',
+  reimport.errors.length === 0 && reimport.warnings.length === 0, JSON.stringify(reimport.warnings));
+assert('smoke', '資料檔：D 面尺寸、起磚與門窗完整保留',
+  reimport.project.faces.D.fw === 210 && reimport.project.faces.D.xoff === 104
+  && reimport.project.openings.length === 1 && reimport.project.openings[0].w === 86);
+assert('smoke', '資料檔：磚縫以 mm 存檔（2mm）', exported.tile.jointMM === 2);
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================
@@ -241,6 +262,26 @@ setOpenings([
 ]);
 const xssOps = getOpeningsByFace(testDims);
 assert('redteam', '開口名稱接受特殊字元不中斷執行', xssOps.D[0].name.toUpperCase().includes('SCRIPT'));
+
+// Test R5b: 亂寫的資料檔不能匯入或只略過壞欄位
+assert('redteam', '資料檔：format 不對直接拒絕', vmCtx.validateProject({ format: 'xxx', version: 1 }).errors.length > 0);
+assert('redteam', '資料檔：不是物件直接拒絕', vmCtx.validateProject(null).errors.length > 0);
+const dirty = vmCtx.validateProject({
+  format: 'tile-setting-out', version: 1,
+  room: { L: -1, W: 'abc', H: 289 }, tile: { TL: 120, TW: 0, jointMM: 2 },
+  faces: { A: { fw: 171, fh: 289, dir: 'X', xoff: -5 } },
+  openings: [
+    { kind: 'door', face: 'D', w: 86, h: 239, x: 104, y: 50 },
+    { kind: 'sofa', face: 'D', w: 10, h: 10, x: 0 },
+    { kind: 'window', face: 'Z', w: 10, h: 10, x: 0 }
+  ]
+});
+assert('redteam', '資料檔：負數／文字／未知選項只略過該欄並提示',
+  dirty.errors.length === 0 && dirty.project.room.L === undefined && dirty.project.room.H === 289
+  && dirty.project.tile.TW === undefined && dirty.project.faces.A.dir === undefined && dirty.project.faces.A.xoff === undefined
+  && dirty.warnings.length >= 6, JSON.stringify(dirty.warnings));
+assert('redteam', '資料檔：門的離地高度強制為 0、不明門窗略過',
+  dirty.project.openings.length === 1 && dirty.project.openings[0].y === 0);
 
 // Test R6: 大量門窗高負載壓力測試 (50 個動態開口)
 const stressList = [];

@@ -698,6 +698,7 @@ function initApp() {
   initAutoFix();
   initColumnModule();
   initOpeningsModule();
+  initProjectIO();
 
   refresh();
 }
