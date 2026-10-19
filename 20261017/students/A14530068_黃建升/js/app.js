@@ -212,8 +212,8 @@ function initCanvasInteraction() {
 
   cv.addEventListener('mousedown', e => {
     const rect = cv.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * (1240 / rect.width);
-    const my = (e.clientY - rect.top) * (760 / rect.height);
+    const mx = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+    const my = (e.clientY - rect.top) * (CANVAS_H / rect.height);
 
     for (const t of interactiveTargets) {
       if (t.type === 'origin') {
@@ -299,8 +299,8 @@ function initCanvasInteraction() {
 
   cv.addEventListener('mousemove', e => {
     const rect = cv.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * (1240 / rect.width);
-    const my = (e.clientY - rect.top) * (760 / rect.height);
+    const mx = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+    const my = (e.clientY - rect.top) * (CANVAS_H / rect.height);
 
     if (activeDrag) {
       const p = params();

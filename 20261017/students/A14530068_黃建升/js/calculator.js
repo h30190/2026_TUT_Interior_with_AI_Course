@@ -193,6 +193,41 @@ function getSnapPoints(p, dims, faceKey, ops) {
   return snaps;
 }
 
+// 尺寸鏈分段點：兩端＋各標記點，排序去重（相距 < 0.5cm 視為同一點，避免擠在一起的小段）
+function dimChainPoints(len, marks) {
+  const pts = [0, len];
+  for (const m of marks) {
+    if (Number.isFinite(m) && m > 0.5 && m < len - 0.5) pts.push(Math.round(m * 10) / 10);
+  }
+  pts.sort((a, b) => a - b);
+  return pts.filter((v, i) => i === 0 || v - pts[i - 1] >= 0.5);
+}
+
+// 立面尺寸鏈：水平＝起磚線＋門窗左右緣＋柱線；垂直＝起磚高＋窗台／窗頂＋門高
+function elevationChains(fw, fh, r, ops) {
+  const hx = [r.xBase], vy = [r.yBase];
+  if (r.col && r.col.on) {
+    const x0 = r.col.x0 !== undefined ? r.col.x0 : r.col.x;
+    const x1 = r.col.x1 !== undefined ? r.col.x1 : r.col.x + (r.col.w || 0);
+    hx.push(x0, x1);
+    if (r.col.mode === 'independent') hx.push(r.xBase2);
+  }
+  for (const o of ops) {
+    hx.push(o.x, o.x + o.w);
+    if (o.kind === 'window') vy.push(o.y, o.y + o.h);
+    else vy.push(o.h);
+  }
+  return { h: dimChainPoints(fw, hx), v: dimChainPoints(fh, vy) };
+}
+
+// 地坪尺寸鏈：水平＝起磚線＋B/D 牆門窗；垂直（由 B 牆往下量）＝起磚線＋A/C 牆門窗
+function floorChains(fw, fh, r, allOps) {
+  const hx = [r.xBase], vy = [r.yBase];
+  for (const o of (allOps.B || []).concat(allOps.D || [])) hx.push(o.x, o.x + o.w);
+  for (const o of (allOps.A || []).concat(allOps.C || [])) vy.push(o.x, o.x + o.w);
+  return { h: dimChainPoints(fw, hx), v: dimChainPoints(fh, vy) };
+}
+
 // 計算磁磚縫隙座標列表
 function getTileJoints(base, pitch, maxDim) {
   const list = [];

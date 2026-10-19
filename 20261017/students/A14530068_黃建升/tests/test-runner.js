@@ -183,6 +183,14 @@ const caseD = layout({ L: 171, W: 207, H: 289, TL: 120, TW: 120, joint: 0.2, pri
   { dir: 'H', mode: 'grid', xalign: 'custom', yalign: 'bottom', xoff: DEMO.cfg.D.xoff, yoff: 0 }, []);
 assert('smoke', '施工圖案例：D 面起磚線對齊門框左緣 104', caseD.xBase === 104);
 
+// Test S7: 分段尺寸鏈與施工圖一致（D：104/86/20；門高 239 與上方 50）
+const caseDoorOps = [{ kind: 'door', x: 104, y: 0, w: 86, h: 239 }];
+const chD = vmCtx.elevationChains(210, 289, caseD, caseDoorOps);
+assert('smoke', '尺寸鏈：D 面水平分段 0/104/190/210', JSON.stringify(chD.h) === '[0,104,190,210]', JSON.stringify(chD.h));
+assert('smoke', '尺寸鏈：D 面垂直分段 0/239/289', JSON.stringify(chD.v) === '[0,239,289]', JSON.stringify(chD.v));
+assert('smoke', '尺寸鏈：相距 < 0.5cm 的點合併、超出範圍的點忽略',
+  JSON.stringify(vmCtx.dimChainPoints(100, [50, 50.3, -5, 120, NaN])) === '[0,50,100]');
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================
