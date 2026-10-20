@@ -3,39 +3,50 @@
 function renderTable(rows, p) {
   const tb = document.querySelector('#tbl tbody');
   tb.innerHTML = '';
-  let net = 0, full = 0, cut = 0, danger = 0, opArea = 0;
+  const lossOf = g => g.net > 0 ? ((g.total - g.net) / g.net * 100) : 0;
+  const byMat = {};
+  let danger = 0, opArea = 0;
   for (const s of rows) {
-    net += s.r.net; full += s.r.full; cut += s.r.cut; danger += s.r.danger; opArea += s.r.opArea;
-    const loss = s.r.net > 0 ? ((s.r.total - s.r.net) / s.r.net * 100) : 0;
+    danger += s.r.danger; opArea += s.r.opArea;
     const opTxt = s.ops.length > 0
       ? s.ops.map(o => (o.kind === 'door' ? '門' : '窗') + ' ' + o.w + '×' + o.h).join('<br>')
       : '—';
     const xTxt = XALIGN_NAMES[s.cfg.xalign] + (s.cfg.xalign === 'custom' ? (' ' + s.cfg.xoff) : '');
     const yTxt = YALIGN_NAMES[s.cfg.yalign] + (s.cfg.yalign === 'custom' ? (' ' + s.cfg.yoff) : '');
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${s.name}</td><td>${s.fw}×${s.fh}</td>
-      <td>${s.cfg.dir === 'H' ? '橫貼' : '直貼'}</td>
-      <td>${MODE_NAMES[s.cfg.mode]}</td>
-      <td>${xTxt}</td>
-      <td>${yTxt}</td>
-      <td>${opTxt}</td>
-      <td>${fmt(s.r.full)}</td><td>${fmt(s.r.cut)}</td><td>${fmt(s.r.total)}</td>
-      <td>${loss.toFixed(1)}</td>
-      <td class="${s.r.danger > 0 ? 'danger' : ''}">${s.r.danger > 0 ? ('⚠ ' + s.r.danger + ' 片') : '—'}</td>`;
-    tb.appendChild(tr);
+    // 有分區的面：每種磚各一行（不同尺寸的片數不能相加）
+    s.r.groups.forEach((g, gi) => {
+      const m = byMat[g.label] || (byMat[g.label] = { net: 0, full: 0, cut: 0, total: 0, danger: 0 });
+      ['net', 'full', 'cut', 'total', 'danger'].forEach(k => { m[k] += g[k]; });
+      const tr = document.createElement('tr');
+      const multi = s.r.groups.length > 1;
+      tr.innerHTML = `<td>${s.name}${multi ? `<br><small>${g.label}</small>` : ''}</td><td>${gi === 0 ? s.fw + '×' + s.fh : ''}</td>
+        <td>${s.cfg.dir === 'H' ? '橫貼' : '直貼'}</td>
+        <td>${MODE_NAMES[s.cfg.mode]}</td>
+        <td>${gi === 0 ? xTxt : ''}</td>
+        <td>${gi === 0 ? yTxt : ''}</td>
+        <td>${gi === 0 ? opTxt : ''}</td>
+        <td>${fmt(g.full)}</td><td>${fmt(g.cut)}</td><td>${fmt(g.total)}</td>
+        <td>${lossOf(g).toFixed(1)}</td>
+        <td class="${g.danger > 0 ? 'danger' : ''}">${g.danger > 0 ? ('⚠ ' + g.danger + ' 片') : '—'}</td>`;
+      tb.appendChild(tr);
+    });
   }
-  const total = full + cut;
-  const loss = net > 0 ? ((total - net) / net * 100) : 0;
-  const amt = p.price > 0 ? total * p.price : null;
-  const tr = document.createElement('tr');
-  tr.className = 'total';
-  tr.innerHTML = `<td>全室五面總計</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
-    <td>${opArea > 0 ? (opArea / 10000).toFixed(2) + ' m²' : '—'}</td>
-    <td>${fmt(full)}</td><td>${fmt(cut)}</td><td>${fmt(total)}</td>
-    <td>${loss.toFixed(1)}</td>
-    <td class="${danger > 0 ? 'danger' : ''}">${danger > 0 ? ('⚠ ' + danger + ' 片') : '—'}</td>`;
-  tb.appendChild(tr);
-  return { net, full, cut, total, danger, loss, amt, opArea };
+  // 依材料合計
+  const mats = Object.keys(byMat).map(label => Object.assign({ label }, byMat[label]));
+  mats.forEach((m, i) => {
+    const tr = document.createElement('tr');
+    tr.className = 'total';
+    tr.innerHTML = `<td>合計｜${m.label}</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+      <td>${i === 0 && opArea > 0 ? (opArea / 10000).toFixed(2) + ' m²' : '—'}</td>
+      <td>${fmt(m.full)}</td><td>${fmt(m.cut)}</td><td>${fmt(m.total)}</td>
+      <td>${lossOf(m).toFixed(1)}</td>
+      <td class="${m.danger > 0 ? 'danger' : ''}">${m.danger > 0 ? ('⚠ ' + m.danger + ' 片') : '—'}</td>`;
+    tb.appendChild(tr);
+  });
+  // 單價只有一種材料時才有意義
+  const one = mats.length === 1 ? mats[0] : null;
+  const amt = one && p.price > 0 ? one.total * p.price : null;
+  return { mats, danger, opArea, amt, total: one ? one.total : null, loss: one ? lossOf(one) : null };
 }
 
 function renderConcl(p, tot) {
@@ -44,9 +55,12 @@ function renderConcl(p, tot) {
     .sort((a, b) => b.r.danger - a.r.danger);
   const opNames = rows.filter(s => s.ops.length > 0)
     .flatMap(s => s.ops.map(o => `${s.name}${o.kind === 'door' ? '門' : '窗'} ${o.w}×${o.h}`));
-  let txt = `【全室五面】總叫料 ${fmt(tot.total)} 片（整磚 ${fmt(tot.full)}＋裁切 ${fmt(tot.cut)}），`
-    + `總損耗率 ${tot.loss.toFixed(1)}%。`
-    + (tot.amt !== null ? ` 總工程金額 ${fmt(tot.amt)} 元（單價 ${fmt(p.price)} 元/片）。` : '');
+  let txt = '【全室五面】' + tot.mats.map(m => {
+    const loss = m.net > 0 ? ((m.total - m.net) / m.net * 100) : 0;
+    return `${m.label} 叫料 ${fmt(m.total)} 片（整磚 ${fmt(m.full)}＋裁切 ${fmt(m.cut)}，損耗 ${loss.toFixed(1)}%）`;
+  }).join('；') + '。'
+    + (tot.amt !== null ? ` 總工程金額 ${fmt(tot.amt)} 元（單價 ${fmt(p.price)} 元/片）。` : '')
+    + (p.price > 0 && tot.mats.length > 1 ? ' （有多種材料，單價請依材料分別計算）' : '');
   if (tot.opArea > 0) {
     txt += ` 已扣除門窗開口 ${opNames.join('、')}（共 ${(tot.opArea / 10000).toFixed(2)} m²，不鋪磚）。`;
   }
@@ -190,7 +204,8 @@ function buildPanels() {
       + `<div class="row2">`
       + `<div><label>此面磚 長×寬</label><input id="${k}_tile" type="text" placeholder="空白＝共用"></div>`
       + `<div><label>紅線 X (cm)</label><input id="${k}_marks" type="text" placeholder="例 59, 142"></div>`
-      + `</div>`;
+      + `</div>`
+      + `<div><label>分區磚（起-迄: 磚 名稱）</label><input id="${k}_zones" type="text" placeholder="例 117-207: 14.8×14.8 主秀壁"></div>`;
     host.appendChild(blk);
   }
 }
@@ -637,6 +652,7 @@ function initApp() {
           ['dir', 'mode', 'xalign', 'yalign', 'xoff', 'yoff'].forEach(f => { $(k + '_' + f).value = c[f]; });
           $(k + '_tile').value = c.TL ? `${c.TL}×${c.TW}` : '';
           $(k + '_marks').value = (c.marks || []).join(', ');
+          $(k + '_zones').value = formatZones(c.zones);
         }
       }
       if (pr.openings) applyOpeningPreset(pr.openings);
@@ -652,7 +668,7 @@ function initApp() {
   ['TL', 'TW', 'joint', 'price'].forEach(id => $(id).addEventListener('input', refresh));
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign'].forEach(s => $(k + s).addEventListener('change', refresh)));
-  FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks'].forEach(s => $(k + s).addEventListener('input', refresh)));
+  FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones'].forEach(s => $(k + s).addEventListener('input', refresh)));
 
   $('syncWalls').addEventListener('click', () => {
     ['B', 'C', 'D'].forEach(k => {

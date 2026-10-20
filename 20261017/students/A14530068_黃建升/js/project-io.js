@@ -76,6 +76,12 @@ function validateProject(obj) {
       face.TL = pos(f.TL, `${k}.TL`); face.TW = pos(f.TW, `${k}.TW`);
       if (face.TL === undefined || face.TW === undefined) { delete face.TL; delete face.TW; }
     }
+    if (f.zones !== undefined) {
+      const ok = Array.isArray(f.zones) ? f.zones.filter(z => z && [z.x0, z.x1, z.TL, z.TW].every(Number.isFinite)
+        && z.x1 > z.x0 && z.TL > 0 && z.TW > 0) : [];
+      if (!Array.isArray(f.zones) || ok.length !== f.zones.length) warnings.push(`${k}.zones 有起迄或磚尺寸不正確的分區，已略過`);
+      face.zones = ok.map(z => ({ x0: z.x0, x1: z.x1, TL: z.TL, TW: z.TW, name: String(z.name || '') }));
+    }
     if (f.marks !== undefined) {
       face.marks = Array.isArray(f.marks) ? f.marks.filter(v => Number.isFinite(v) && v > 0) : [];
       if (!Array.isArray(f.marks) || face.marks.length !== f.marks.length) warnings.push(`${k}.marks 有不是正數的值，已略過`);
@@ -124,6 +130,7 @@ function applyProject(pj) {
     // 匯入的資料檔描述整張圖：沒寫磚尺寸／紅線就清空，不沿用上一張圖
     setIf(k + '_tile', f.TL ? `${f.TL}×${f.TW}` : '');
     setIf(k + '_marks', (f.marks || []).join(', '));
+    setIf(k + '_zones', formatZones(f.zones));
   }
   projectMaterials = pj.materials || [];
   projectMeta = pj.meta || {};

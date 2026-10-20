@@ -244,6 +244,23 @@ assert('smoke', '磚尺寸文字「60×120」「60*120」「60x120」都看得�
 assert('smoke', 'MTEXT 格式碼清除（\\P 換行、字型、^J）',
   vmCtx.cleanMText('{\\fSimSun|b0;壁}\\P120*120^J填縫劑') === '壁\n120*120\n填縫劑');
 
+// Test S10: 同一面多種磚（B 面 0–117 壁磚 120×120、117–207 主秀壁 14.8×14.8）
+assert('smoke', 'DXF：B 面自動判斷出主秀壁分區 117–207（14.8×14.8）',
+  fz && JSON.stringify(fz.B.zones) === JSON.stringify([{ x0: 117, x1: 207, TL: 14.8, TW: 14.8, name: '主秀壁' }]) && fz.A.zones.length === 0,
+  fz && JSON.stringify(fz.B.zones));
+const zoneB = layout({ L: 171, W: 207, H: 289, TL: 120, TW: 120, joint: 0.2, price: 0 }, 207, 289,
+  { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 117, yalign: 'bottom', yoff: 0, zones: fz.B.zones }, []);
+const gMain = zoneB.groups.find(g => g.key === 'main'), gMosaic = zoneB.groups.find(g => g.key !== 'main');
+assert('smoke', '分區：壁磚區 3 片（117 寬的裁切磚 × 3 列）', gMain && gMain.full === 0 && gMain.cut === 3);
+assert('smoke', '分區：主秀壁 6 欄 × 20 列＝120 片，頂端 4cm 一列 6 片為小料（同施工圖「避免小料」）',
+  gMosaic && gMosaic.total === 120 && gMosaic.full === 114 && gMosaic.danger === 6 && gMosaic.label.includes('主秀壁'));
+assert('smoke', '分區：不同尺寸的磚分開算理論片數（壁 3、主秀壁 119）', gMain && gMosaic && gMain.net === 3 && gMosaic.net === 119);
+assert('smoke', '分區文字「117-207: 14.8×14.8 主秀壁」可讀回、可寫出',
+  vmCtx.formatZones(vmCtx.parseZones('117-207: 14.8×14.8 主秀壁; 0~50：30x60')) === '117-207: 14.8×14.8 主秀壁; 0-50: 30×60');
+const overlap = vmCtx.splitByZones(200, [{ x0: 50, x1: 120, TL: 10, TW: 10 }, { x0: 100, x1: 150, TL: 20, TW: 20 }]);
+assert('smoke', '分區重疊時後一區從前一區結尾開始，整面不重複也不漏',
+  JSON.stringify(overlap.map(sg => [sg.x0, sg.x1, !!sg.zone])) === '[[0,50,false],[50,120,true],[120,150,true],[150,200,false]]');
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================

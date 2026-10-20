@@ -169,6 +169,37 @@ function parseMaterial(text) {
   };
 }
 
+// 先找剛好叫「壁」的，再找含「壁」但不是主秀壁的（其他壁、壁 + 地），最後才用主秀壁
+function pickMaterial(materials, kind) {
+  const tests = kind === 'wall'
+    ? [r => r === '壁', r => r.includes('壁') && !r.includes('主秀'), r => r.includes('壁')]
+    : [r => r === '地', r => r.includes('地')];
+  for (const t of tests) { const m = materials.find(m => m.size && t(m.role)); if (m) return m; }
+  return null;
+}
+
+// 紅線切段後看每段的垂直磚縫間距，對到「不是牆磚」的材料尺寸就成為分區
+function detectZones(R, marks, jointLines, materials, wallMat) {
+  const cuts = [0].concat(marks, [R.w]);
+  const zones = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const x0 = cuts[i], x1 = cuts[i + 1];
+    const xs = jointLines.filter(l => l.x1 > R.x0 + x0 + 0.3 && l.x1 < R.x0 + x1 - 0.3
+      && Math.min(l.y1, l.y2) < R.y1 && Math.max(l.y1, l.y2) > R.y0 && Math.abs(l.y1 - l.y2) >= R.h * 0.3)
+      .map(l => l.x1 - R.x0).sort((a, b) => a - b).filter((v, j, a) => j === 0 || v - a[j - 1] > 0.3);
+    if (xs.length < 3) continue;
+    const gaps = xs.slice(1).map((v, j) => v - xs[j]).sort((a, b) => a - b);
+    const d = gaps[Math.floor(gaps.length / 2)];
+    const m = materials.find(m => m.size && m !== wallMat && m.size.some(v => Math.abs(v - d) < 0.6 || Math.abs(v + 0.2 - d) < 0.6));
+    if (!m) continue;
+    if (wallMat && wallMat.size.some(v => Math.abs(v - d) < 0.6)) continue; // 間距跟牆磚一樣，不算分區
+    const prev = zones[zones.length - 1];
+    if (prev && prev.name === m.role && Math.abs(prev.x1 - x0) < 0.01) prev.x1 = r1(x1);
+    else zones.push({ x0: r1(x0), x1: r1(x1), TL: m.size[0], TW: m.size[1], name: m.role });
+  }
+  return zones;
+}
+
 // 找出檔案裡每一張放樣施工圖
 function findDxfSheets(dxf) {
   const ents = dxf.entities;
@@ -246,6 +277,8 @@ function buildSheet(g, dxf, rects, symbols) {
 
   const lines = ents.filter(e => e.type === 'LINE');
   const isV = l => Math.abs(l.x1 - l.x2) < 0.05, isH = l => Math.abs(l.y1 - l.y2) < 0.05;
+  const jointLines = lines.filter(l => l.layer.includes('磚') && isV(l));
+  const wallMat = pickMaterial(materials, 'wall');
 
   // 5. 各立面：尺寸、放樣起點、紅線、門窗
   const faces = {}, openings = [];
@@ -260,6 +293,8 @@ function buildSheet(g, dxf, rects, symbols) {
     face.marks = lines.filter(l => l.color === DXF_RED && isV(l) && l.x1 > R.x0 + 0.5 && l.x1 < R.x1 - 0.5
       && Math.min(l.y1, l.y2) < R.y1 && Math.max(l.y1, l.y2) > R.y0 && Math.abs(l.y1 - l.y2) >= R.h * 0.5)
       .map(l => r1(l.x1 - R.x0)).sort((a, b) => a - b).filter((v, i, a) => i === 0 || v - a[i - 1] > 0.4);
+    // 分區：紅線切出的每一段，若磚縫間距符合另一種材料（例如主秀壁 14.8），就設成分區
+    face.zones = detectZones(R, face.marks, jointLines, materials, wallMat);
     faces[k] = face;
 
     for (const o of rects) {
@@ -295,16 +330,17 @@ function buildSheet(g, dxf, rects, symbols) {
   faces.floor = floor;
 
   // 7. 磚尺寸：牆用「壁」、地坪用「地」
-  // 先找剛好叫「壁」的，再找含「壁」但不是主秀壁的（其他壁、壁 + 地），最後才用主秀壁
-  const pick = tests => { for (const t of tests) { const m = materials.find(m => m.size && t(m.role)); if (m) return m; } return null; };
-  const wall = pick([r => r === '壁', r => r.includes('壁') && !r.includes('主秀'), r => r.includes('壁')]);
-  const flm = pick([r => r === '地', r => r.includes('地')]);
+  const wall = wallMat;
+  const flm = pickMaterial(materials, 'floor');
   if (!wall) warnings.push('找不到「壁」材料尺寸，沿用目前磁磚尺寸');
   if (flm && wall && (flm.size[0] !== wall.size[0] || flm.size[1] !== wall.size[1])) {
     faces.floor.TL = flm.size[1] >= flm.size[0] ? flm.size[1] : flm.size[0];
     faces.floor.TW = flm.size[1] >= flm.size[0] ? flm.size[0] : flm.size[1];
   }
-  if (materials.some(m => m.role.includes('主秀'))) warnings.push('有「主秀壁」材料：同一面多種磚的分區計算尚未支援，暫以「壁」磚計算');
+  for (const m of materials.filter(m => m.role.includes('主秀') && m.size)) {
+    const used = DXF_FACE_LETTERS.some(k => faces[k] && faces[k].zones.some(z => z.name === m.role));
+    if (!used) warnings.push(`有「${m.role}」材料，但沒在立面找到對應的磚縫分區，請在該面「分區磚」手動設定`);
+  }
 
   const H = Math.max(...Object.values(g.faces).map(r => r.h));
   const project = {

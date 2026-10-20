@@ -29,7 +29,8 @@ function cfgOf(k) {
     yalign: $(k + '_yalign').value,
     xoff: num0(k + '_xoff', 0),
     yoff: num0(k + '_yoff', 0),
-    marks: parseMarks($(k + '_marks') ? $(k + '_marks').value : '')
+    marks: parseMarks($(k + '_marks') ? $(k + '_marks').value : ''),
+    zones: parseZones($(k + '_zones') ? $(k + '_zones').value : '')
   };
 }
 
@@ -105,37 +106,106 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
   return tiles;
 }
 
+// 起磚基準：left/bottom＝0、right/top＝從另一端倒推、center＝置中、custom＝自訂距離
+function startOf(len, pitch, t, align, off) {
+  if (align === 'right' || align === 'top') return len - (Math.ceil((len - EPS) / pitch) - 1) * pitch - t;
+  if (align === 'center') return (len - t) / 2;
+  if (align === 'custom') return Math.max(0, Math.min(off, len));
+  return 0;
+}
+
+// 分區磚「117-207: 14.8×14.8 主秀壁；…」→ [{ x0, x1, TL, TW, name }]（不在分區內的範圍沿用此面的磚）
+function parseZones(s) {
+  const out = [];
+  for (const part of String(s || '').split(/[;；\n]/)) {
+    const m = part.match(/(\d+(?:\.\d+)?)\s*[-~～－]\s*(\d+(?:\.\d+)?)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*[*xX×]\s*(\d+(?:\.\d+)?)\s*(.*)$/);
+    if (!m) continue;
+    const z = { x0: parseFloat(m[1]), x1: parseFloat(m[2]), TL: parseFloat(m[3]), TW: parseFloat(m[4]), name: m[5].trim() };
+    if (z.x1 > z.x0 && z.TL > 0 && z.TW > 0) out.push(z);
+  }
+  return out;
+}
+
+function formatZones(zones) {
+  return (zones || []).map(z => `${z.x0}-${z.x1}: ${z.TL}×${z.TW}${z.name ? ' ' + z.name : ''}`).join('; ');
+}
+
+// 依分區把面寬切段：分區之外的段落用此面的磚（zone = null）
+function splitByZones(fw, zones) {
+  const zs = zones.map(z => Object.assign({}, z, { x0: Math.max(0, z.x0), x1: Math.min(fw, z.x1) }))
+    .filter(z => z.x1 - z.x0 > EPS).sort((a, b) => a.x0 - b.x0);
+  const segs = [];
+  let cur = 0;
+  for (const z of zs) {
+    const x0 = Math.max(z.x0, cur);
+    if (z.x1 - x0 <= EPS) continue; // 跟前一區重疊的部分略過
+    if (x0 - cur > EPS) segs.push({ x0: cur, x1: x0, zone: null });
+    segs.push({ x0, x1: z.x1, zone: z });
+    cur = z.x1;
+  }
+  if (fw - cur > EPS) segs.push({ x0: cur, x1: fw, zone: null });
+  return segs;
+}
+
+// 尺寸鏈要標的分界：紅線＋分區起迄
+function chainMarks(cfg) {
+  return (cfg.marks || []).concat(...(cfg.zones || []).map(z => [z.x0, z.x1]));
+}
+
+// 材料名稱：有匯入的材料就用「壁 120×120」，否則只寫尺寸
+function matLabel(TL, TW, name) {
+  const fmt = v => String(Math.round(v * 10) / 10);
+  const m = projectMaterials.find(m => m.size && ((m.size[0] === TL && m.size[1] === TW) || (m.size[0] === TW && m.size[1] === TL)));
+  const role = name || (m ? m.role : '');
+  return `${role ? role + ' ' : ''}${fmt(Math.min(TL, TW))}×${fmt(Math.max(TL, TW))}`;
+}
+
 // 單面排磚：面寬 fw × 面高 fh；dir 'H' 磚長邊沿面寬、'V' 磚長邊沿面高；ops＝該面門窗開口
 // 雙向起磚：xalign left/right/center/custom(xoff)、yalign bottom/top/center/custom(yoff)
 // col：若該面有啟用柱子分界紅線，支援連動鋪貼或左右獨立起磚
+// cfg.zones：同一面多種磚（例如 B 面右側主秀壁馬賽克），每區用自己的磚尺寸與起磚線各自算料
 function layout(p, fw, fh, cfg, ops, isElevation, col) {
   ops = ops || [];
   const tL = cfg.dir === 'H' ? p.TL : p.TW;
   const tW = cfg.dir === 'H' ? p.TW : p.TL;
   const pitchL = tL + p.joint, pitchW = tW + p.joint;
-  let xBase = 0;
-  if (cfg.xalign === 'center') xBase = (fw - tL) / 2;
-  else if (cfg.xalign === 'right') xBase = fw - (Math.ceil((fw - EPS) / pitchL) - 1) * pitchL - tL;
-  else if (cfg.xalign === 'custom') xBase = Math.max(0, Math.min(cfg.xoff, fw));
-
   // 立面與地坪垂直起磚基準：預設由地面（Y=0）起磚向上排
-  let yBase = 0;
-  if (cfg.yalign === 'bottom') {
-    yBase = 0;
-  } else if (cfg.yalign === 'top') {
-    yBase = fh - (Math.ceil((fh - EPS) / pitchW) - 1) * pitchW - tW;
-  } else if (cfg.yalign === 'center') {
-    yBase = (fh - tW) / 2;
-  } else if (cfg.yalign === 'custom') {
-    yBase = Math.max(0, Math.min(cfg.yoff, fh));
-  }
+  const xBase = startOf(fw, pitchL, tL, cfg.xalign, cfg.xoff);
+  const yBase = startOf(fh, pitchW, tW, cfg.yalign, cfg.yoff);
 
   let tiles = [];
   let xBase2 = 0;
+  const zones = cfg.zones || [];
+  const groupMap = {};
+  const addGroup = (key, label, TL, TW, segTiles, segArea, segOps) => {
+    const g = groupMap[key] || (groupMap[key] = { key, label, TL, TW, full: 0, cut: 0, danger: 0, area: 0, opArea: 0 });
+    g.full += segTiles.filter(t => t.full).length;
+    g.cut += segTiles.filter(t => !t.full).length;
+    g.danger += segTiles.filter(t => t.danger).length;
+    g.area += segArea; g.opArea += segOps;
+  };
+  // 開口落在 [x0, x1] 這一段的面積
+  const opsAreaIn = (x0, x1) => ops.reduce((a, o) => a + Math.max(0, Math.min(x1, o.x + o.w) - Math.max(x0, o.x)) * o.h, 0);
 
-  // 判斷是否啟用柱子獨立起磚模式
-  if (col && col.on && col.mode === 'independent' && col.x > 5 && col.x < fw - 5) {
-    // 柱左側區間 [0, col.x]
+  if (zones.length) {
+    for (const seg of splitByZones(fw, zones)) {
+      let segTiles, TL = p.TL, TW = p.TW;
+      if (seg.zone) {
+        TL = seg.zone.TL; TW = seg.zone.TW;
+        const zL = cfg.dir === 'H' ? TL : TW, zW = cfg.dir === 'H' ? TW : TL;
+        const zx = seg.zone.xoff !== undefined ? seg.zone.xoff : seg.x0; // 分區預設從分界線起磚
+        const zy = startOf(fh, zW + p.joint, zW, cfg.yalign, cfg.yoff);
+        segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, zx, zy, zL + p.joint, zW + p.joint, zL, zW, cfg, ops);
+        segTiles.forEach(t => { t.zone = 1; });
+      } else {
+        segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops);
+      }
+      tiles = tiles.concat(segTiles);
+      const key = seg.zone ? `z${TL}x${TW}${seg.zone.name}` : 'main';
+      addGroup(key, matLabel(TL, TW, seg.zone ? seg.zone.name : ''), TL, TW, segTiles, (seg.x1 - seg.x0) * fh, opsAreaIn(seg.x0, seg.x1));
+    }
+  } else if (col && col.on && col.mode === 'independent' && col.x > 5 && col.x < fw - 5) {
+    // 判斷是否啟用柱子獨立起磚模式：柱左側區間 [0, col.x]
     const tilesLeft = generateZoneTiles(fw, fh, 0, col.x, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops);
     // 柱右側區間 [col.x, fw]，自柱邊起磚加上 xoffRight
     xBase2 = col.x + (col.xoffRight || 0);
@@ -145,14 +215,17 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     // 全牆連續鋪貼（若有柱線則為連動模式）
     tiles = generateZoneTiles(fw, fh, 0, fw, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops);
   }
+  if (!zones.length) addGroup('main', matLabel(p.TL, p.TW), p.TL, p.TW, tiles, fw * fh, ops.reduce((a, o) => a + o.area, 0));
 
+  // 每種材料各自算理論片數與損耗（不同尺寸的磚不能混在一起加）
+  const groups = Object.values(groupMap).map(g => {
+    const net = Math.ceil(Math.max(0, g.area - g.opArea) / (g.TL * g.TW));
+    return Object.assign(g, { net, total: g.full + g.cut });
+  });
   const opArea = ops.reduce((a, o) => a + o.area, 0);
-  const net = Math.ceil(Math.max(0, fw * fh - opArea) / (p.TL * p.TW));
-  const full = tiles.filter(t => t.full).length;
-  const cut = tiles.filter(t => !t.full).length;
-  const danger = tiles.filter(t => t.danger).length;
+  const sum = k => groups.reduce((a, g) => a + g[k], 0);
   return {
-    tiles, net, full, cut, total: full + cut, danger, opArea,
+    tiles, groups, net: sum('net'), full: sum('full'), cut: sum('cut'), total: sum('total'), danger: sum('danger'), opArea,
     xBase, yBase, tL, tW, pitchL, pitchW, col, xBase2
   };
 }

@@ -30,7 +30,7 @@ const PRESETS = {
     cfg: {
       floor: { xalign: 'custom', xoff: 117, yalign: 'custom', yoff: 172, TL: 120, TW: 60 },
       A: { xalign: 'custom', xoff: 59, marks: [59, 142] },
-      B: { xalign: 'custom', xoff: 117, marks: [117] },
+      B: { xalign: 'custom', xoff: 117, marks: [117], zones: [{ x0: 117, x1: 207, TL: 14.8, TW: 14.8, name: '主秀壁' }] },
       C: { xalign: 'left', xoff: 0 },
       D: { xalign: 'custom', xoff: 104, marks: [190] }
     },
