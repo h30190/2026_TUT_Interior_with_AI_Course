@@ -43,6 +43,8 @@ const requiredFiles = [
   'js/dxf-import.js',
   'js/materials.js',
   'js/export.js',
+  'js/dxf-template.js',
+  'js/dxf-export.js',
   'js/app.js'
 ];
 
@@ -53,7 +55,7 @@ requiredFiles.forEach(file => {
 });
 
 // 檢查 JS 檔案語法 (Syntax Check)
-const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'app.js'];
+const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'dxf-template.js', 'dxf-export.js', 'app.js'];
 jsFiles.forEach(f => {
   const fPath = path.join(JS_DIR, f);
   try {
@@ -68,7 +70,7 @@ jsFiles.forEach(f => {
 
 // 檢查 index.html 模組引入順序
 const htmlContent = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
-const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'app.js'];
+const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'dxf-template.js', 'dxf-export.js', 'app.js'];
 let lastIdx = -1;
 let orderCorrect = true;
 scriptOrder.forEach(s => {
@@ -113,7 +115,7 @@ const vmCtx = {
   Date, Math, JSON, parseFloat, Number, isFinite
 };
 vm.createContext(vmCtx);
-['config.js', 'columns.js', 'openings.js', 'calculator.js', 'project-io.js', 'dxf-import.js'].forEach(f => {
+['config.js', 'columns.js', 'openings.js', 'calculator.js', 'project-io.js', 'dxf-import.js', 'dxf-template.js', 'dxf-export.js'].forEach(f => {
   vm.runInContext(fs.readFileSync(path.join(JS_DIR, f), 'utf8'), vmCtx, { filename: f });
 });
 const { layout, faceDims, openings, params, cfgOf, columnParams, setColumnParams,
@@ -389,6 +391,46 @@ const dimsS18 = faceDims(vmCtx.params());
 assert('smoke', '方案比較：四面對縫方案的牆起點＝鎖定對縫的牆起點（套用後鎖定不會跳掉）',
   ['A', 'B', 'C', 'D'].every(k => Math.abs(vmCtx.calcJointAlignment(vmCtx.params(), dimsS18, k) - jointPlan.over[k].xoff) < 1e-6));
 assert('smoke', `方案比較：一間浴室算完 < 3 秒（實測 ${msS18}ms）`, msS18 < 3000);
+
+// Test S19: 匯出 DXF（照施工圖畫法，貼回 AutoCAD）
+// 124.2×250 牆、60 磚、縫 0.2、靠左由地起：磚縫取縫中線 → 直縫 60.1、120.3；橫縫 60.1、120.3、180.5、240.7
+const wallS19 = layout(pS18, 124.2, 250, cfgS18, [], true);
+const jlS19 = vmCtx.jointLines(wallS19.tiles, 124.2, 250, 0.2, []);
+const vxS19 = jlS19.filter(l => l[0][0] === l[1][0]).map(l => l[0][0]).sort((a, b) => a - b);
+const hyS19 = jlS19.filter(l => l[0][1] === l[1][1]).map(l => l[0][1]).sort((a, b) => a - b);
+assert('smoke', '匯出 DXF：磚縫畫成單線（縫中線），每條直縫、橫縫各一條貫通',
+  JSON.stringify(vxS19) === '[60.1,120.3]' && JSON.stringify(hyS19) === '[60.1,120.3,180.5,240.7]'
+  && jlS19.every(l => (l[0][0] === l[1][0] && l[0][1] === 0 && l[1][1] === 250) || (l[0][1] === l[1][1] && l[0][0] === 0 && l[1][0] === 124.2)),
+  JSON.stringify({ vxS19, hyS19, n: jlS19.length }));
+const doorS19 = [{ kind: 'door', x: 104, y: 0, w: 86, h: 239 }];
+const dS19 = layout({ TL: 120, TW: 120, joint: 0.2, smallTh: 5, avoidTh: 5 }, 210, 289, { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 104, yalign: 'bottom', yoff: 0 }, doorS19, true);
+const jdS19 = vmCtx.jointLines(dS19.tiles, 210, 289, 0.2, doorS19);
+const inDoor = l => { const mx = (l[0][0] + l[1][0]) / 2, my = (l[0][1] + l[1][1]) / 2; return mx > 104.01 && mx < 189.99 && my > 0.01 && my < 238.99; };
+assert('smoke', '匯出 DXF：門裡面不畫磚縫（門框邊的縫保留）', jdS19.length > 0 && !jdS19.some(inDoor) && jdS19.some(l => l[0][0] === 104 && l[1][0] === 104));
+// 整張圖：用 S18 的 207×187 浴室加一樘門
+setOpenings([{ id: 'dx1', kind: 'door', name: '門', face: 'D', w: 86, h: 239, x: 104, y: 0 }]);
+setInputs({ D_xalign: 'custom', D_xoff: 104 });
+const dxfS19 = vmCtx.buildDxf(vmCtx.params(), vmCtx.computeAll(vmCtx.params()));
+const handles = [];
+// 檔頭（HEADER）裡的 $HANDSEED 也是代碼 5，不算物件編號
+const bodyS19 = dxfS19.slice(dxfS19.indexOf('ENDSEC'));
+bodyS19.split('\r\n').forEach((v, i, a) => { if (i % 2 === 1 && (v.trim() === '5' || v.trim() === '105')) handles.push(parseInt(a[i + 1], 16)); });
+const seedS19 = parseInt(dxfS19.match(/\$HANDSEED\r\n\s*5\r\n([0-9A-F]+)/)[1], 16);
+assert('smoke', '匯出 DXF：R2013 格式、每個物件編號不重複、下一個編號比全部都大（AutoCAD 才讀得進去）',
+  dxfS19.includes('AC1027') && new Set(handles).size === handles.length && seedS19 > Math.max(...handles) && /EOF\s*$/.test(dxfS19),
+  `handles ${handles.length}/${new Set(handles).size}, seed ${seedS19} max ${Math.max(...handles)}`);
+const reS19 = vmCtx.parseDxf(dxfS19);
+const cnt = (t, l, c) => reS19.entities.filter(e => e.type === t && (!l || e.layer === l) && (c === undefined || e.color === c)).length;
+// 匯入程式不讀尺寸物件，直接數檔案裡 T-DIM 層的 DIMENSION
+const dimsS19 = (dxfS19.match(/ {2}0\r\nDIMENSION\r\n(?:.*\r\n){6} {2}8\r\nT-DIM\r\n/g) || []).length;
+assert('smoke', '匯出 DXF：自己的 DXF 讀得回來——地磚層磚縫、T-DIM 尺寸、紅線、青色門框都在',
+  cnt('LINE', '地磚') > 10 && dimsS19 >= 8 && cnt('LINE', '0', 1) >= 1 && cnt('LWPOLYLINE', '0', 4) === 1,
+  JSON.stringify({ joints: cnt('LINE', '地磚'), dims: dimsS19, red: cnt('LINE', '0', 1), door: cnt('LWPOLYLINE', '0', 4) }));
+assert('smoke', '匯出 DXF：有「由此線開始放樣」（色號 62）與尺寸樣式「複本 ISO-25」',
+  dxfS19.includes('由此線開始放樣') && reS19.entities.some(e => e.type === 'MTEXT' && e.color === 62) && dxfS19.includes('複本 ISO-25'));
+setOpenings([]);
+setInputs({ D_xalign: 'left', D_xoff: 0 });
+
 
 const caseRows = [{ key: 'B', name: 'B立面', cfg: { dir: 'H', skip: false }, ops: [], r: zoneB }];
 const listB = vmCtx.cutListByFace(vmCtx.cutPieces(caseRows));

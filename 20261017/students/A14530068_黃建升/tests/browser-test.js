@@ -183,6 +183,15 @@ function check(name, ok, info) {
     planRows === 4 && after8.danger <= before8.danger && (after8.danger < before8.danger || after8.waste <= before8.waste + 1e-6) && errors.length === n,
     JSON.stringify({ before8, after8, err: errorsSince(n) }));
 
+  // 9. 匯出 DXF（照施工圖畫法）
+  n = errors.length;
+  await page.click('button[data-p="demo"]');
+  const [dxfDl] = await Promise.all([page.waitForEvent('download'), page.click('#btnExportDxf')]);
+  const dxfText = fs.readFileSync(await dxfDl.path(), 'utf8');
+  check('匯出 DXF：tile-setting-out.dxf，R2013、有地磚層磚縫、T-DIM 尺寸、由此線開始放樣',
+    dxfDl.suggestedFilename() === 'tile-setting-out.dxf' && dxfText.includes('AC1027') && dxfText.includes('\r\n  8\r\n地磚\r\n')
+    && dxfText.includes('T-DIM') && dxfText.includes('由此線開始放樣') && errors.length === n, errorsSince(n));
+
   await browser.close();
   console.log(`\n🎯 瀏覽器實測 ${passed + failed} 項，通過 ${passed}，失敗 ${failed}`);
   process.exit(failed ? 1 : 0);

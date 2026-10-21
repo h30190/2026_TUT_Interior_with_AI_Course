@@ -842,6 +842,7 @@ function initApp() {
   initCanvasInteraction();
   initCADToolbar();
   initAutoFix();
+  initDxfExport();
   initPlanSearch();
   initColumnModule();
   initOpeningsModule();
