@@ -25,6 +25,7 @@
 | `tests/test-runner.js` | 計算邏輯測試（Node 直接跑） |
 | `tests/browser-test.js` | 瀏覽器實測（Playwright，真的按按鈕） |
 | `tests/fixtures/sample-bathroom.dxf` | 測試用 DXF（已去個資） |
+| `revit-addin/` | Revit 2024 外掛（C#，.NET Framework 4.8）：選房間匯出資料檔；`RoomExportModel.cs` 是不依賴 Revit 的換算，改資料檔格式時要一起改，並更新 `tests/fixtures/revit-sample.json` |
 
 新增 JS 檔要同時改：`index.html` 的 `<script>`、`tests/test-runner.js` 的 `requiredFiles`／`jsFiles`／`scriptOrder`。
 

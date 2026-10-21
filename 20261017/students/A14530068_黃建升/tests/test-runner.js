@@ -365,6 +365,16 @@ assert('smoke', '裁切清單：B 面壁磚 117×120 ×2、117×48.5 ×1；主�
   && listB[0].items.some(it => it.label === '120×120' && it.w === 117 && it.h === 48.5 && it.count === 1)
   && listB[0].items.some(it => it.label.includes('主秀壁') && it.w === 15 && it.h === 4 && it.count === 6), JSON.stringify(listB[0] && listB[0].items));
 
+// Test S18: Revit 外掛匯出的資料檔（revit-addin/RoomExportModel.cs 對範例浴室實際產生）網頁能讀
+const revitJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'revit-sample.json'), 'utf8'));
+const revitPj = vmCtx.validateProject(revitJson);
+assert('smoke', 'Revit 匯出：資料檔通過檢查（無錯誤、無略過）', revitPj.errors.length === 0 && revitPj.warnings.length === 0, JSON.stringify(revitPj.warnings));
+const rDoor = revitPj.project.openings.find(o => o.kind === 'door');
+assert('smoke', 'Revit 匯出：門在 D 面、換回平面是 20～106（跟 DXF 第 18 張同一個門）',
+  rDoor && rDoor.face === 'D' && vmCtx.planPos('D', rDoor.x, rDoor.w, { D: { fw: revitPj.project.faces.D.fw } }) === 20);
+assert('smoke', 'Revit 匯出：L 形地坪外框 10 點、窗在 B 面窗台 140',
+  revitPj.project.faces.floor.outline.length === 10 && revitPj.project.openings.some(o => o.face === 'B' && o.y === 140));
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================

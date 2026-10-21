@@ -134,6 +134,13 @@ function check(name, ok, info) {
     batch.one && batch.two && +batch.two.split(',')[4] === 2 * +batch.one.split(',')[4] && batch.two.split(',')[7] === '2', JSON.stringify(batch));
   check('總叫料表算完恢復原本的圖', (await state()) === beforeBatch);
 
+  // 4c. Revit 外掛匯出的資料檔
+  n = errors.length;
+  await page.setInputFiles('#projectFile', asUpload(path.join(__dirname, 'fixtures', 'revit-sample.json'), 'revit-sample.json', 'application/json'));
+  await page.waitForTimeout(300);
+  const rv = await page.evaluate(() => ({ meta: $('projectMetaLine').textContent, d: $('D_fw').value, doors: openingsList.filter(o => o.kind === 'door').length, outline: $('floor_outline').value }));
+  check('Revit 資料檔：匯入後圖名、D 面寬 207、1 個門、L 形外框都在', rv.meta.includes('公共衛浴') && rv.d === '207' && rv.doors === 1 && rv.outline.split(' ').length === 10 && errors.length === n, JSON.stringify(rv));
+
   // 5. 換情境要清掉上一張圖的分區、紅線、各面磚尺寸
   await page.click('button[data-p="demo"]');
   await page.click('button[data-p="living"]');
