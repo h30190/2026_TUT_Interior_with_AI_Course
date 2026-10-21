@@ -740,6 +740,7 @@ function buildSheet(g, dxf, rects, symbols) {
 // 天花／門高寫在圖上就用圖上的，例如「天花 FL+289」「CH=280」「門高 239」「DH 210」
 const PLAN_TEXT_CEIL = /(?:天花板?高?|C\.?H\.?|FL\s*\+)\s*[:：=]?\s*(?:FL\s*\+\s*)?(\d{3}(?:\.\d+)?)/i;
 const PLAN_TEXT_DOOR = /(?:門高|D\.?H\.?)\s*[:：=]?\s*(\d{3}(?:\.\d+)?)/i;
+const PLAN_TEXT_LEDGE = /(?:檯高|台高|檯面高|墩高)\s*[:：=]?\s*(\d{2,3}(?:\.\d+)?)/;
 const ROOM_MIN = 60, ROOM_MAX = 1000;
 
 function closedPts(e) {
@@ -1013,7 +1014,71 @@ function traceRoomOutline(dxf, P, spans) {
   return A > W * Hh * 0.5 && A < W * Hh * 2 ? poly : null;
 }
 
+// 平面上的半高檯（管道間、隱藏水箱）：房間裡靠牆、跟牆平行的紅線（色號 1，使用者的畫法），
+// 離牆 1.5～40；兩端各自要嘛碰到轉角的牆、要嘛有一段紅線接回牆（檯的側面）
+// 回傳 [{ face, x, w, d }]，x 是立面距左（還沒攤開側面）
+function planLedges(dxf, P, dims) {
+  const red = [];
+  const add = (x1, y1, x2, y2) => {
+    if (Math.abs(y1 - y2) < 0.05) red.push({ h: true, c: y1, a: Math.min(x1, x2), b: Math.max(x1, x2) });
+    else if (Math.abs(x1 - x2) < 0.05) red.push({ h: false, c: x1, a: Math.min(y1, y2), b: Math.max(y1, y2) });
+  };
+  for (const e of dxf.entities) {
+    if (e.color !== DXF_RED || e.layer.includes('磚')) continue;
+    if (e.type === 'LINE') add(e.x1, e.y1, e.x2, e.y2);
+    else if (e.type === 'LWPOLYLINE') {
+      const n = e.pts.length, m = e.closed ? n : n - 1;
+      for (let k = 0; k < m; k++) { const a = e.pts[k], b = e.pts[(k + 1) % n]; add(a[0], a[1], b[0], b[1]); }
+    }
+  }
+  const out = [];
+  // [面, 水平牆?, 牆線位置, 往房內的方向]
+  const sides = [['B', true, P.y1, -1], ['D', true, P.y0, 1], ['A', false, P.x0, 1], ['C', false, P.x1, -1]];
+  for (const [k, horiz, line, inward] of sides) {
+    const lo = horiz ? P.x0 : P.y0, hi = horiz ? P.x1 : P.y1;
+    for (const q of red) {
+      const d = (q.c - line) * inward;
+      if (q.h !== horiz || d < 1.5 || d > 40 || q.b - q.a < 20 || q.a < lo - 2 || q.b > hi + 2) continue;
+      const ok = v => Math.abs(v - lo) <= 2 || Math.abs(v - hi) <= 2
+        || red.some(r => r.h !== horiz && Math.abs(r.c - v) <= 1 && Math.min(r.b, Math.max(line, q.c)) - Math.max(r.a, Math.min(line, q.c)) >= d * 0.7);
+      if (!ok(q.a) || !ok(q.b)) continue;
+      const a = Math.abs(q.a - lo) <= 2 ? lo : q.a, b = Math.abs(q.b - hi) <= 2 ? hi : q.b;
+      const w = r1(b - a), s0 = horiz ? a - P.x0 : P.y1 - b;
+      const x = r1((k === 'A' || k === 'D') ? dims[k] - s0 - w : s0);
+      if (!out.some(l => l.face === k && Math.abs(l.x - x) < 1 && Math.abs(l.w - w) < 1)) out.push({ face: k, x: Math.max(0, x), w, d: r1(d) });
+    }
+  }
+  return out;
+}
+
+// 地坪不是矩形時，每面立面上「牆面轉折」的位置（照使用者畫法標紅線）：
+// 立面是站在房間裡往那面看，看得到的牆面（凹進去那段、凸出來的側面）都畫在同一張立面上
+// 例：底牆往內一階 9cm → C 立面 147 處一條紅線（147～156 是那一階的側面），D 立面在轉折處一條
+function outlineJogMarks(outline, fw, fh) {
+  const marks = { A: [], B: [], C: [], D: [] };
+  const n = outline.length;
+  for (let i = 0; i < n; i++) {
+    const p = outline[i], q = outline[(i + 1) % n];
+    const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+    if (Math.abs(p[0] - q[0]) < 0.05) {
+      // 直的一段：房間在它右邊（x 大）＝面向 A 那邊看得到；在左邊＝C
+      const k = pointInPoly([mx + 0.5, my], outline) ? 'A' : 'C';
+      for (const y of [p[1], q[1]]) marks[k].push(k === 'A' ? fh - y : y);
+    } else if (Math.abs(p[1] - q[1]) < 0.05) {
+      // 橫的一段（y 由 B 牆往下量）：房間在它下面＝B 牆那種朝向；在上面＝D
+      const k = pointInPoly([mx, my + 0.5], outline) ? 'B' : 'D';
+      for (const x of [p[0], q[0]]) marks[k].push(k === 'D' ? fw - x : x);
+    }
+  }
+  for (const k in marks) {
+    const len = k === 'A' || k === 'C' ? fh : fw;
+    marks[k] = [...new Set(marks[k].map(v => r1(v)))].filter(v => v > 0.5 && v < len - 0.5).sort((a, b) => a - b);
+  }
+  return marks;
+}
+
 // 一間房間 → 施工圖資料（四面牆由地坪四邊產生）
+// 高度（牆高、門高、窗台、窗高、檯高）平面看不出來：先用圖上文字或網頁預設，匯入前跳確認視窗讓使用者填（finalizePlanSheet）
 function buildPlanSheet(dxf, room, opts) {
   opts = opts || {};
   const warnings = [];
@@ -1033,16 +1098,17 @@ function buildPlanSheet(dxf, room, opts) {
   const texts = dxf.entities.filter(e => (e.type === 'TEXT' || e.type === 'MTEXT') && e.text
     && e.x > P.x0 - near && e.x < P.x1 + near && e.y > P.y0 - near && e.y < P.y1 + near);
   const pick = re => { for (const t of texts) { const m = t.text.match(re); if (m) return parseFloat(m[1]); } return null; };
-  const ceilTxt = pick(PLAN_TEXT_CEIL), doorTxt = pick(PLAN_TEXT_DOOR);
+  const ceilTxt = pick(PLAN_TEXT_CEIL), doorTxt = pick(PLAN_TEXT_DOOR), ledgeTxt = pick(PLAN_TEXT_LEDGE);
   const H = r1(ceilTxt || opts.H || 280), doorH = r1(Math.min(H, doorTxt || opts.doorH || 210));
-  warnings.push(`只有地坪平面：四面牆由地坪四邊產生（B、D 寬 ${fwF}，A、C 寬 ${fhF}），牆高 ${H}${ceilTxt ? '（圖上文字）' : '（網頁「空間高度 H」）'}`
-    + `、門高 ${doorH}${doorTxt ? '（圖上文字）' : '（網頁「門高預設」）'}，請確認`);
+  const ledgeH = r1(Math.min(H, ledgeTxt || opts.ledgeH || 110));
+  warnings.push(`只有地坪平面：四面牆由地坪四邊產生（B、D 寬 ${fwF}，A、C 寬 ${fhF}）`);
+  const heightNotes = [`牆高 ${H}${ceilTxt ? '（圖上文字）' : '（網頁「空間高度 H」）'}、門高 ${doorH}${doorTxt ? '（圖上文字）' : '（網頁「門高預設」）'}，請確認`];
 
   const floor = { fw: fwF, fh: fhF, dir: 'H', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0 };
   const outline = room.e ? planOutline(room.e.pts, true, P) : null;
   if (traced) {
     floor.outline = traced.map(q => [r1(q[0] - P.x0), r1(P.y1 - q[1])]);
-    warnings.push(`地坪不是矩形：照牆線圍出 ${traced.length} 個角的實際形狀算地磚；四面牆寬以外框四邊近似，門口凹進去的門檻不算`);
+    warnings.push(`地坪不是矩形：照牆線圍出 ${traced.length} 個角的實際形狀算地磚；立面寬照外框，凹進去那段的側面畫在看得到的那面立面上（紅線分界），門口凹進去的門檻不算`);
   } else if (outline && outline !== 'odd') {
     floor.outline = outline;
     warnings.push('地坪不是矩形：四面牆寬以外框四邊近似（L 形的內凹牆面請另外確認）');
@@ -1060,13 +1126,21 @@ function buildPlanSheet(dxf, room, opts) {
   if (!doors.length) warnings.push('平面上沒找到開門弧線，請在「門窗」清單加入門');
   const sill = opts.sill || 90, winH = opts.winH || 120;
   const windows = planWindows(dxf, P, dims, doors, sill, Math.min(winH, H - sill));
-  if (windows.length) warnings.push(`找到 ${windows.length} 扇窗（左右位置、寬度照平面）；窗台 ${sill}、窗高 ${Math.min(winH, H - sill)} 是預設值，請照實際改`);
-  else warnings.push('平面上沒找到窗；有窗請在「門窗」清單補上');
+  if (windows.length) {
+    warnings.push(`找到 ${windows.length} 扇窗（左右位置、寬度照平面）`);
+    heightNotes.push(`窗台 ${sill}、窗高 ${Math.min(winH, H - sill)} 是預設值，請照實際改`);
+  } else warnings.push('平面上沒找到窗；有窗請在「門窗」清單補上');
+  const ledges = planLedges(dxf, P, dims).map(l => Object.assign(l, { h: ledgeH, side: '' }));
+  if (ledges.length) {
+    warnings.push(`找到 ${ledges.length} 個半高檯（靠牆的紅線）：${ledges.map(l => `${l.face} 牆長 ${l.w}、深 ${l.d}`).join('；')}`);
+    heightNotes.push(`檯高 ${ledgeH}${ledgeTxt ? '（圖上文字）' : '（預設）'}，請確認`);
+  }
   const openings = doors.concat(windows).map(o => { const c = Object.assign({}, o); delete c.span; return c; });
 
   const faces = { floor };
+  const jogs = floor.outline ? outlineJogMarks(floor.outline, fwF, fhF) : { A: [], B: [], C: [], D: [] };
   for (const k of DXF_FACE_LETTERS) {
-    faces[k] = { fw: dims[k], fh: H, dir: 'H', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0, marks: [], zones: [] };
+    faces[k] = { fw: dims[k], fh: H, dir: 'H', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0, marks: jogs[k], zones: [] };
   }
   // 材料（有寫「填縫劑」的材料文字就用）
   const materials = texts.filter(t => t.text.includes('填縫')).map(t => parseMaterial(t.text)).filter(Boolean);
@@ -1081,9 +1155,69 @@ function buildPlanSheet(dxf, room, opts) {
     format: PROJECT_FORMAT, version: PROJECT_VERSION, meta,
     room: { L: fhF, W: fwF, H },
     tile: wall ? { TL: Math.max(...wall.size), TW: Math.min(...wall.size) } : {},
-    faces, openings, materials, column: { on: false }
+    faces, openings, ledges, materials, column: { on: false }
   };
-  return { box: PB, meta, materials, warnings, project, faceKeys: DXF_FACE_LETTERS.slice(), planOnly: true };
+  const heights = { H, Hsrc: ceilTxt ? '圖上文字' : '網頁預設', doorSrc: doorTxt ? '圖上文字' : '網頁預設', ledgeSrc: ledgeTxt ? '圖上文字' : '預設' };
+  return { box: PB, meta, materials, warnings, heightNotes, heights, project, faceKeys: DXF_FACE_LETTERS.slice(), planOnly: true };
+}
+
+// 匯入前確認的結果套進去（ans 沒給的欄位維持原值）：
+//   ans = { H, doors: [{ h }], windows: [{ y, h }], ledges: [{ use, h, unfold }], faces: { A: true, … } }
+// 半高檯側面攤開（預設）：檯的端點沒碰到牆角那一側，側面（寬＝檯深）攤進這面立面，牆寬加檯深、右邊的門窗跟著往右移
+function finalizePlanSheet(sheet, ans) {
+  const s = Object.assign({}, sheet, { project: JSON.parse(JSON.stringify(sheet.project)) });
+  const pj = s.project;
+  ans = ans || {};
+  const H = ans.H > 0 ? r1(ans.H) : pj.room.H;
+  pj.room.H = H;
+  for (const k of DXF_FACE_LETTERS) pj.faces[k].fh = H;
+  let di = 0, wi = 0;
+  for (const o of pj.openings) {
+    const a = (o.kind === 'door' ? ans.doors || [] : ans.windows || [])[o.kind === 'door' ? di++ : wi++] || {};
+    if (o.kind === 'window' && a.y >= 0) o.y = r1(a.y);
+    if (a.h > 0) o.h = r1(a.h);
+    o.y = Math.min(o.y, H - 1);
+    o.h = r1(Math.min(o.h, H - o.y));
+  }
+  const keep = [];
+  (pj.ledges || []).forEach((l, i) => {
+    const a = (ans.ledges || [])[i] || {};
+    if (a.use === false) return;
+    if (a.h > 0) l.h = r1(a.h);
+    l.h = Math.min(l.h, H);
+    const fw = pj.faces[l.face].fw;
+    l.side = a.unfold === false ? '' : (l.x > 0.5 ? 'L' : '') + (l.x + l.w < fw - 0.5 ? 'R' : '');
+    keep.push(l);
+  });
+  // 由右往左插入攤開的側面，左邊的位置才不會被影響
+  const events = [];
+  for (const l of keep) {
+    if (l.side.includes('L')) events.push({ face: l.face, pos: l.x, d: l.d });
+    if (l.side.includes('R')) events.push({ face: l.face, pos: l.x + l.w, d: l.d });
+  }
+  events.sort((a, b) => b.pos - a.pos);
+  for (const ev of events) {
+    const f = pj.faces[ev.face];
+    f.fw = r1(f.fw + ev.d);
+    for (const o of pj.openings) if (o.face === ev.face && o.x >= ev.pos - 0.05) o.x = r1(o.x + ev.d);
+    for (const l of keep) if (l.face === ev.face && l.x >= ev.pos - 0.05) l.x = r1(l.x + ev.d);
+    f.marks = (f.marks || []).map(m => m >= ev.pos - 0.05 ? r1(m + ev.d) : m);
+  }
+  pj.ledges = keep;
+  for (const k of DXF_FACE_LETTERS) if (ans.faces && ans.faces[k] === false) pj.faces[k].skip = true;
+  if (sheet.heightNotes && Object.keys(ans).length) {
+    const doors = pj.openings.filter(o => o.kind === 'door'), wins = pj.openings.filter(o => o.kind === 'window');
+    s.heightNotes = [];
+    s.warnings = sheet.warnings.concat(`已確認高度：牆高 ${H}`
+      + (doors.length ? `、門高 ${doors.map(o => o.h).join('／')}` : '')
+      + (wins.length ? `、窗台／窗高 ${wins.map(o => `${o.y}／${o.h}`).join('、')}` : '')
+      + (keep.length ? `、檯高 ${keep.map(l => l.h).join('／')}` : ''));
+    const skipped = DXF_FACE_LETTERS.filter(k => pj.faces[k].skip);
+    if (skipped.length) s.warnings.push(`不出立面（不鋪磚）：${skipped.join('、')}`);
+    const unfolded = keep.filter(l => l.side);
+    if (unfolded.length) s.warnings.push(`半高檯側面攤進立面：${unfolded.map(l => `${l.face} 立面 +${l.d}（寬 ${pj.faces[l.face].fw}）`).join('；')}`);
+  }
+  return s;
 }
 
 function sheetLabel(s, i) {
@@ -1120,7 +1254,7 @@ function applyDxfSheet(s) {
     const best = lastPlans.find(pl => pl.best);
     if (best && best.id !== 'current') applyPlan(best.id); else renderPlans(lastPlans);
   }
-  const notes = s.warnings.concat(res.warnings);
+  const notes = s.warnings.concat(s.heightNotes || [], res.warnings);
   alert(`已匯入：${sheetLabel(s, 0).replace(/^#1\s*/, '')}\n`
     + `材料：${s.materials.map(m => `${m.role} ${m.spec}`).join('、') || '無'}`
     + (notes.length ? '\n\n請確認：\n・' + notes.join('\n・') : ''));
@@ -1130,7 +1264,7 @@ function applyDxfSheet(s) {
 let planPick = null;
 
 function planOpts() {
-  return { H: num('H', 280), doorH: num('doorH', 210), sill: num('winSill', 90), winH: num('winH', 120) };
+  return { H: num('H', 280), doorH: num('doorH', 210), sill: num('winSill', 90), winH: num('winH', 120), ledgeH: num('ledgeH', 110) };
 }
 
 function planRoomLabel(dxf, r, i) {
@@ -1184,7 +1318,46 @@ function showPlanPicker(dxf, rooms) {
 
 function usePlanRoom(room) {
   $('planPicker').style.display = 'none';
-  applyDxfSheet(buildPlanSheet(planPick.dxf, room, planOpts()));
+  showPlanConfirm(buildPlanSheet(planPick.dxf, room, planOpts()));
+}
+
+// 匯入前確認：平面看不出來的高度一次填好，再選要出哪幾面立面
+let planConfirmSheet = null;
+
+function showPlanConfirm(sheet) {
+  planConfirmSheet = sheet;
+  const pj = sheet.project, hs = sheet.heights || {};
+  const inp = (cls, v, extra) => `<input type="number" class="${cls}" value="${v}" min="0" step="0.5"${extra || ''}>`;
+  const src = t => `<span class="pc-src${/預設/.test(t) ? ' warn' : ''}">${t}</span>`;
+  const doors = pj.openings.filter(o => o.kind === 'door'), wins = pj.openings.filter(o => o.kind === 'window');
+  let html = `<div class="pc-row"><b>牆高</b>${inp('pc-H', pj.room.H)}${src(hs.Hsrc || '')}</div>`;
+  doors.forEach((o, i) => { html += `<div class="pc-row">🚪 門 ${i + 1}（${o.face} 面，距左 ${o.x}、寬 ${o.w}）　門高 ${inp('pc-door', o.h)}${src(hs.doorSrc || '')}</div>`; });
+  wins.forEach((o, i) => { html += `<div class="pc-row">🪟 窗 ${i + 1}（${o.face} 面，距左 ${o.x}、寬 ${o.w}）　窗台 ${inp('pc-sill', o.y)} 窗高 ${inp('pc-winh', o.h)}${src('網頁預設')}</div>`; });
+  (pj.ledges || []).forEach((l, i) => {
+    html += `<div class="pc-row">🧱 <label class="pc-chk"><input type="checkbox" class="pc-ledge-use" checked>半高檯 ${i + 1}</label>（${l.face} 牆，距左 ${l.x}、長 ${l.w}、深 ${l.d}）　高 ${inp('pc-ledge-h', l.h)}${src(hs.ledgeSrc || '')}
+      <label class="pc-chk"><input type="checkbox" class="pc-ledge-unfold" checked>側面攤進立面</label></div>`;
+  });
+  html += `<div class="pc-row"><b>要出的立面</b>${DXF_FACE_LETTERS.map(k => `<label class="pc-chk"><input type="checkbox" class="pc-face" data-k="${k}" checked>${k}</label>`).join('')}
+    <span class="pc-src">沒勾的那面不鋪磚、不算料</span></div>`;
+  $('planConfirmBody').innerHTML = html;
+  $('planConfirmNote').textContent = `${sheet.meta.drawingName || '房間'}：地坪 ${pj.faces.floor.fw}×${pj.faces.floor.fh}。平面看不出高度，黃色的是預設值，請照設計圖改。`;
+  $('planConfirm').style.display = 'flex';
+}
+
+function readPlanConfirm() {
+  const vals = cls => [...document.querySelectorAll('#planConfirmBody .' + cls)];
+  const v = el => parseFloat(el.value);
+  const sills = vals('pc-sill'), winh = vals('pc-winh');
+  const use = vals('pc-ledge-use'), lh = vals('pc-ledge-h'), unfold = vals('pc-ledge-unfold');
+  const faces = {};
+  vals('pc-face').forEach(el => { faces[el.dataset.k] = el.checked; });
+  return {
+    H: v(document.querySelector('#planConfirmBody .pc-H')),
+    doors: vals('pc-door').map(el => ({ h: v(el) })),
+    windows: sills.map((el, i) => ({ y: v(el), h: v(winh[i]) })),
+    ledges: use.map((el, i) => ({ use: el.checked, h: v(lh[i]), unfold: unfold[i].checked })),
+    faces
+  };
 }
 
 function pickPlanAt(px, py) {
@@ -1229,6 +1402,11 @@ function initDxfImport() {
   });
   if ($('dxfSheetCancel')) $('dxfSheetCancel').addEventListener('click', () => { $('dxfSheetPicker').style.display = 'none'; });
   if ($('planPickerCancel')) $('planPickerCancel').addEventListener('click', () => { $('planPicker').style.display = 'none'; });
+  if ($('planConfirmOk')) $('planConfirmOk').addEventListener('click', () => {
+    $('planConfirm').style.display = 'none';
+    if (planConfirmSheet) applyDxfSheet(finalizePlanSheet(planConfirmSheet, readPlanConfirm()));
+  });
+  if ($('planConfirmCancel')) $('planConfirmCancel').addEventListener('click', () => { $('planConfirm').style.display = 'none'; });
   if ($('planCanvas')) $('planCanvas').addEventListener('click', e => {
     const cv = $('planCanvas'), b = cv.getBoundingClientRect();
     pickPlanAt((e.clientX - b.left) * cv.width / b.width, (e.clientY - b.top) * cv.height / b.height);

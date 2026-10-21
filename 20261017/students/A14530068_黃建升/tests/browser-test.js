@@ -208,8 +208,14 @@ function check(name, ok, info) {
 
   // 10. 只有地坪平面：自動生成四面牆
   const fx = name => path.join(__dirname, 'fixtures', name);
+  // 只有地坪：匯入前會跳「確認高度」視窗，按確定
+  const confirmPlan = async () => {
+    await page.waitForSelector('#planConfirm[style*="flex"]', { timeout: 15000 });
+    await page.click('#planConfirmOk');
+  };
   n = errors.length;
   await page.setInputFiles('#dxfFile', asUpload(fx('plan-abcd.dxf'), 'plan-abcd.dxf', 'application/dxf'));
+  await confirmPlan();
   await page.waitForFunction(() => $('A_fh').value === '289', null, { timeout: 15000 });
   const pa2 = await page.evaluate(() => ({
     dims: ['floor', 'A', 'B', 'C', 'D'].map(k => $(k + '_fw').value + 'x' + $(k + '_fh').value).join(' '),
@@ -225,6 +231,7 @@ function check(name, ok, info) {
   await page.waitForSelector('#planPicker[style*="flex"] #planRoomList button', { timeout: 15000 });
   const roomBtns = await page.$$eval('#planRoomList button', bs => bs.map(b => b.textContent));
   await page.click('#planRoomList button >> nth=1');
+  await confirmPlan();
   const fl2 = await page.evaluate(() => $('floor_fw').value + 'x' + $('floor_fh').value);
   check(`只有地坪（兩間）：列出 ${roomBtns.length} 間（浴缸不算），選第 2 間 → 地坪 ${fl2}`, roomBtns.length === 2 && fl2 === '210x180' && errors.length === n, JSON.stringify(roomBtns));
   // 整張平面圖（沒有符號、沒有外框）→ 點在第二間裡面
@@ -234,6 +241,7 @@ function check(name, ok, info) {
   const [cpx, cpy] = await page.evaluate(() => planPick.toPx(415, 90));
   const cb = await (await page.$('#planCanvas')).boundingBox();
   await page.mouse.click(cb.x + cpx * cb.width / 960, cb.y + cpy * cb.height / 580);
+  await confirmPlan();
   const fl3 = await page.evaluate(() => ({ fl: $('floor_fw').value + 'x' + $('floor_fh').value, a: JSON.stringify(computeAll(params()).find(s => s.key === 'A').ops.map(o => [o.x, o.w])) }));
   check(`整張平面圖：點在浴室中間 → 地坪 ${fl3.fl}、A 面門 ${fl3.a}`, fl3.fl === '200x180' && fl3.a === '[[100,70]]' && errors.length === n, JSON.stringify(fl3));
   // 拖拉檔案進畫面也能匯入
@@ -244,6 +252,7 @@ function check(name, ok, info) {
     dt.items.add(new File([text], 'plan-outline.dxf'));
     document.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
   }, outlineText);
+  await confirmPlan();
   await page.waitForFunction(() => $('floor_fw').value === '240', null, { timeout: 15000 });
   const ol = await page.evaluate(() => ({ outline: $('floor_outline').value, h: $('A_fh').value }));
   check('拖拉 DXF 進畫面：L 形外框照實際形狀、牆高用網頁的 H', ol.outline.split(' ').length === 6 && errors.length === n, JSON.stringify(ol));
@@ -255,6 +264,7 @@ function check(name, ok, info) {
   const [qx, qy] = await page.evaluate(() => planPick.toPx(121, 60));
   const qb = await (await page.$('#planCanvas')).boundingBox();
   await page.mouse.click(qb.x + qx * qb.width / 960, qb.y + qy * qb.height / 580);
+  await confirmPlan();
   const dimsOf = () => page.evaluate(() => ['floor', 'A', 'B', 'C', 'D'].map(k => $(k + '_fw').value + 'x' + $(k + '_fh').value).join(' '));
   const cyanOps = await page.evaluate(() => JSON.stringify(computeAll(params()).flatMap(s => s.ops.map(o => [s.key, o.kind, o.x, o.w]))));
   await page.fill('#H', '250');
@@ -273,6 +283,26 @@ function check(name, ok, info) {
   await page.fill(`#openingsContainer .opblk >> nth=${doorIdx} >> input[data-field="x"]`, '90');
   const warn = await page.$eval(`#openingsContainer .opblk >> nth=${doorIdx}`, el => el.querySelector('.opwarn').textContent).catch(() => '');
   check(`門超出牆寬時卡片上直接警告：「${warn}」`, warn.includes('超出 C 牆寬 120') && warn.includes('30') && errors.length === n, warn + errorsSince(n));
+
+  // 12. 半高檯：平面紅線 → 確認視窗填高度、取消 D 面 → B 立面 199；半高檯卡片改「不攤」B 立面變回 193
+  n = errors.length;
+  await page.setInputFiles('#dxfFile', asUpload(fx('plan-ledge.dxf'), 'plan-ledge.dxf', 'application/dxf'));
+  await page.waitForSelector('#planPicker[style*="flex"]', { timeout: 15000 });
+  const [lx, ly] = await page.evaluate(() => planPick.toPx(117, 100));
+  const lb = await (await page.$('#planCanvas')).boundingBox();
+  await page.mouse.click(lb.x + lx * lb.width / 960, lb.y + ly * lb.height / 580);
+  await page.waitForSelector('#planConfirm[style*="flex"]', { timeout: 15000 });
+  await page.fill('#planConfirmBody .pc-H', '231');
+  await page.fill('#planConfirmBody .pc-ledge-h', '109');
+  await page.uncheck('#planConfirmBody .pc-face[data-k="D"]');
+  await page.click('#planConfirmOk');
+  await page.waitForFunction(() => $('B_fw').value === '199', null, { timeout: 15000 });
+  const lg1 = await page.evaluate(() => ({ dims: ['A', 'B', 'C', 'D'].map(k => $(k + '_fw').value).join(' '), dSkip: $('D_skip').checked,
+    cards: document.querySelectorAll('#ledgesContainer .opblk').length, voids: computeAll(params()).find(s => s.key === 'B').ops.filter(o => o.void).length }));
+  await page.selectOption('#ledgesContainer select[data-field="side"]', '');
+  const lg2 = await page.evaluate(() => $('B_fw').value);
+  check(`半高檯：匯入確認後 A/B/C/D＝${lg1.dims}、D 不鋪磚、卡片 ${lg1.cards} 個；改「不攤」B 立面 → ${lg2}`,
+    lg1.dims === '156 199 156 193' && lg1.dSkip && lg1.cards === 1 && lg1.voids === 1 && lg2 === '193' && errors.length === n, JSON.stringify(lg1) + errorsSince(n));
 
   await browser.close();
   console.log(`\n🎯 瀏覽器實測 ${passed + failed} 項，通過 ${passed}，失敗 ${failed}`);

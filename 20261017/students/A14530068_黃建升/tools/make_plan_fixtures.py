@@ -102,3 +102,19 @@ msp.add_lwpolyline([(0, 86), (15, 86), (15, 91), (0, 91)], close=True, dxfattrib
 msp.add_lwpolyline([(15, 20), (81, 20), (81, 23), (15, 23)], close=True, dxfattribs=C4)              # 門片
 msp.add_arc((15, 20), 66, 0, 90, dxfattribs=C4)
 doc.saveas(os.path.join(out, 'plan-step.dxf'))
+
+# 7. 同 6 那間，再加一個半高檯（管道間）：B 牆內側往房內 6 的紅線（色號 1），從 A 牆角到距左 123，端點有一段紅線接回牆
+#    （照使用者實際案例：檯長 123、深 6；側面朝 C 牆）
+doc = ezdxf.new('R2013'); msp = doc.modelspace()
+msp.add_lwpolyline([(229, 73), (229, 0), (0, 0), (0, 15), (136, 15), (136, 24), (214, 24), (214, 73)], dxfattribs=W)
+msp.add_lwpolyline([(214, 153), (214, 171), (21, 171), (21, 91), (0, 91), (0, 186), (229, 186), (229, 153)], dxfattribs=W)
+for y in (73, 153): msp.add_line((214, y), (229, y), dxfattribs=W)
+msp.add_lwpolyline([(229, 78), (214, 78), (214, 148), (229, 148)], close=True, dxfattribs=C4)
+for x in (219, 221.5, 224): msp.add_line((x, 78), (x, 148), dxfattribs=C4)
+msp.add_lwpolyline([(0, 15), (15, 15), (15, 20), (0, 20)], close=True, dxfattribs=C4)
+msp.add_lwpolyline([(0, 86), (15, 86), (15, 91), (0, 91)], close=True, dxfattribs=C4)
+msp.add_lwpolyline([(15, 20), (81, 20), (81, 23), (15, 23)], close=True, dxfattribs=C4)
+msp.add_arc((15, 20), 66, 0, 90, dxfattribs=C4)
+msp.add_line((21, 165), (144, 165), dxfattribs={'color': 1})
+msp.add_line((144, 165), (144, 171), dxfattribs={'color': 1})
+doc.saveas(os.path.join(out, 'plan-ledge.dxf'))

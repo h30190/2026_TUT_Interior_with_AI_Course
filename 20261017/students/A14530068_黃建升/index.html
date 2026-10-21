@@ -32,7 +32,10 @@
         <div><label title="平面看不出窗台高，找到的窗先用這個，再照實際改">窗台高</label><input id="winSill" type="number" value="90" min="0"></div>
         <div><label title="平面看不出窗高，找到的窗先用這個，再照實際改">窗高</label><input id="winH" type="number" value="120" min="10"></div>
       </div>
-      <div class="syncnote">牆高用下方「空間高度 H」；窗的左右位置與寬度從平面量</div>
+      <div class="row3" style="margin-top:4px">
+        <div><label title="平面上靠牆的紅線＝半高檯（管道間、隱藏水箱），檯高看不出來先用這個">半高檯高</label><input id="ledgeH" type="number" value="110" min="10"></div>
+      </div>
+      <div class="syncnote">牆高用下方「空間高度 H」；窗的左右位置與寬度從平面量。匯入前會跳視窗讓你確認這些高度</div>
       <div class="syncnote">DXF：AutoCAD「另存新檔」選 DXF（也可以直接把檔案拖進畫面）。有立面施工圖就照圖匯入；<b>只畫地坪平面也可以</b>——程式從平面四邊生成四面牆、找門，並自動套用最佳起磚點。資料檔（JSON）保存尺寸、起磚、紅線、門窗、材料。</div>
     </div>
 
@@ -91,6 +94,16 @@
         <button type="button" data-o="livingop">客廳：1玄關門 100×220 / 1落地窗 240×220 / 側窗 100×120（含柱）</button>
         <button type="button" data-o="bedroomop">臥室：1進門 90×210 / 1套房門 75×200 / 雙推窗 140×140</button>
       </div>
+    </div>
+
+    <!-- 🧱 半高檯（管道間、隱藏水箱、置物檯） -->
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">半高檯（管道間、隱藏水箱）</h2>
+        <button id="btnAddLedge" type="button" style="padding:4px 8px;font-size:11px;background:#b8352b;color:#fff;border:none;border-radius:4px;cursor:pointer">➕ 新增半高檯</button>
+      </div>
+      <div id="ledgesContainer"></div>
+      <div class="syncnote">檯的正面、側面跟上面的牆不在同一平面：跨過檯緣的磚會切開；包住檯角的磚算 L 型。「側面攤開」＝側面畫進這面立面（牆寬自動加檯深），攤開那條的上方沒有牆、不貼磚。</div>
     </div>
 
     <!-- 🏛️ 平面結構柱設定與立面放樣連動卡片 -->
@@ -276,6 +289,19 @@
   </div>
 </div>
 
+<!-- 📏 只有地坪平面：匯入前確認平面看不出來的高度、要出哪幾面立面 -->
+<div id="planConfirm" class="modal" style="display:none">
+  <div class="modal-box" style="width:min(820px,96vw)">
+    <h2>匯入前確認高度</h2>
+    <div class="syncnote" id="planConfirmNote"></div>
+    <div id="planConfirmBody" class="pc-body"></div>
+    <div class="row2" style="margin-top:12px">
+      <button id="planConfirmOk" type="button" class="syncbtn">✔ 確定匯入</button>
+      <button id="planConfirmCancel" type="button" class="lock-toggle-btn">取消</button>
+    </div>
+  </div>
+</div>
+
 <!-- 🖨️ 匯出 PDF 用的出圖頁（螢幕上不顯示，列印時只印這裡） -->
 <div id="printSheet"></div>
 
@@ -286,6 +312,7 @@
 <script src="js/config.js"></script>
 <script src="js/columns.js"></script>
 <script src="js/openings.js"></script>
+<script src="js/ledges.js"></script>
 <script src="js/calculator.js"></script>
 <script src="js/renderer.js"></script>
 <script src="js/project-io.js"></script>

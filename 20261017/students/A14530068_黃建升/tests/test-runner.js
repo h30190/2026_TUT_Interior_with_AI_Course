@@ -37,6 +37,7 @@ const requiredFiles = [
   'js/config.js',
   'js/columns.js',
   'js/openings.js',
+  'js/ledges.js',
   'js/calculator.js',
   'js/renderer.js',
   'js/project-io.js',
@@ -55,7 +56,7 @@ requiredFiles.forEach(file => {
 });
 
 // 檢查 JS 檔案語法 (Syntax Check)
-const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'dxf-template.js', 'dxf-export.js', 'app.js'];
+const jsFiles = ['config.js', 'columns.js', 'openings.js', 'ledges.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'dxf-template.js', 'dxf-export.js', 'app.js'];
 jsFiles.forEach(f => {
   const fPath = path.join(JS_DIR, f);
   try {
@@ -70,7 +71,7 @@ jsFiles.forEach(f => {
 
 // 檢查 index.html 模組引入順序
 const htmlContent = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
-const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'dxf-template.js', 'dxf-export.js', 'app.js'];
+const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'ledges.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'dxf-template.js', 'dxf-export.js', 'app.js'];
 let lastIdx = -1;
 let orderCorrect = true;
 scriptOrder.forEach(s => {
@@ -115,7 +116,7 @@ const vmCtx = {
   Date, Math, JSON, parseFloat, Number, isFinite
 };
 vm.createContext(vmCtx);
-['config.js', 'columns.js', 'openings.js', 'calculator.js', 'project-io.js', 'dxf-import.js', 'dxf-template.js', 'dxf-export.js'].forEach(f => {
+['config.js', 'columns.js', 'openings.js', 'ledges.js', 'calculator.js', 'project-io.js', 'dxf-import.js', 'dxf-template.js', 'dxf-export.js'].forEach(f => {
   vm.runInContext(fs.readFileSync(path.join(JS_DIR, f), 'utf8'), vmCtx, { filename: f });
 });
 const { layout, faceDims, openings, params, cfgOf, columnParams, setColumnParams,
@@ -534,6 +535,60 @@ assert('redteam', '整張平面圖：點在房間外面回「找不到」不當�
 assert('smoke', '只有地坪：天花／門高文字的各種寫法都讀得到',
   ['天花 FL+289', '天花板高 280', 'CH=280', 'C.H. 300', 'FL+289'].every(t => vm.runInContext('PLAN_TEXT_CEIL', vmCtx).test(t))
   && ['門高 239', 'DH 210', 'D.H.=200'].every(t => vm.runInContext('PLAN_TEXT_DOOR', vmCtx).test(t)));
+
+// Test S20b: 半高檯（管道間、隱藏水箱）＋凹凸牆面的轉折線＋匯入前確認高度（照使用者的 Drawing2-1 對照）
+vm.runInContext('globalThis.__setLedges = l => { ledgeList = l; };', vmCtx);
+const setLedges = vmCtx.__setLedges;
+const dLg = planDxf('plan-ledge.dxf');
+const sLg = vmCtx.buildPlanSheet(dLg, vmCtx.roomAt(dLg, 117, 100), { H: 231, doorH: 210 });
+assert('smoke', '半高檯：平面上靠 B 牆的紅線（離牆 6、端點有紅線接回牆）讀成半高檯——距左 0、長 123、深 6',
+  JSON.stringify(sLg.project.ledges.map(l => [l.face, l.x, l.w, l.d])) === '[["B",0,123,6]]', JSON.stringify(sLg.project.ledges));
+assert('smoke', '凹凸牆面：底牆往內一階 9 → C 立面 147、D 立面 78 標紅線（那一階的側面畫在 C 立面 147～156）',
+  JSON.stringify(sLg.project.faces.C.marks) === '[147]' && JSON.stringify(sLg.project.faces.D.marks) === '[78]'
+  && sLg.project.faces.A.marks.length === 0 && sLg.project.faces.B.marks.length === 0,
+  JSON.stringify(['A', 'B', 'C', 'D'].map(k => sLg.project.faces[k].marks)));
+const fLg = vmCtx.finalizePlanSheet(sLg, { H: 231, doors: [{ h: 220 }], windows: [{ y: 109, h: 119 }], ledges: [{ h: 109 }], faces: { D: false } });
+const pLg = fLg.project;
+assert('smoke', '確認高度後：B 立面＝193＋檯側面 6＝199（同使用者的圖），A、C 156，D 不出立面；門高 220、窗台 109／窗高 119、檯高 109',
+  ['A', 'B', 'C', 'D'].map(k => pLg.faces[k].fw + 'x' + pLg.faces[k].fh).join(' ') === '156x231 199x231 156x231 193x231' && pLg.faces.D.skip === true
+  && JSON.stringify(pLg.openings.map(o => [o.kind, o.face, o.x, o.w, o.y, o.h])) === '[["door","A",0,76,0,220],["window","C",18,80,109,119]]'
+  && JSON.stringify(pLg.ledges.map(l => [l.face, l.x, l.w, l.d, l.h, l.side])) === '[["B",0,123,6,109,"R"]]'
+  && fLg.heightNotes.length === 0 && fLg.warnings.some(w => w.includes('已確認高度')),
+  JSON.stringify({ faces: ['A', 'B', 'C', 'D'].map(k => pLg.faces[k].fw), ops: pLg.openings, ledges: pLg.ledges }));
+const fLgNo = vmCtx.finalizePlanSheet(sLg, { ledges: [{ unfold: false }] }), fLgOff = vmCtx.finalizePlanSheet(sLg, { ledges: [{ use: false }] });
+assert('smoke', '確認高度：側面不攤開 → B 立面維持 193；不要這個檯 → 沒有半高檯',
+  fLgNo.project.faces.B.fw === 193 && fLgNo.project.ledges[0].side === '' && fLgOff.project.ledges.length === 0);
+// 左邊那間（檯從距左 86 到 C 牆角、深 7）：側面在左邊，攤開後正面往右移，B 立面 250
+const fLeft = vmCtx.finalizePlanSheet({ warnings: [], project: { room: { H: 231 }, faces: { floor: { fw: 243, fh: 120 }, A: { fw: 120, fh: 231, marks: [] }, B: { fw: 243, fh: 231, marks: [] }, C: { fw: 120, fh: 231, marks: [] }, D: { fw: 243, fh: 231, marks: [] } },
+  openings: [], ledges: [{ face: 'B', x: 86, w: 157, d: 7, h: 110, side: '' }] } }, {});
+assert('smoke', '半高檯側面在左邊（檯從 86 到牆角）：側面 86～93 攤進 B 立面，正面變 93～250',
+  fLeft.project.faces.B.fw === 250 && JSON.stringify(fLeft.project.ledges.map(l => [l.x, l.w, l.side])) === '[[93,157,"L"]]');
+
+// 排磚：檯緣切磚、攤開側面上方不貼、被檯擋住的牆不貼、地坪被檯佔掉
+setLedges([{ id: 't1', face: 'B', x: 0, w: 123, d: 6, h: 109, side: 'R' }]);
+const dimsLg = { floor: { fw: 193, fh: 156 }, A: { fw: 156, fh: 231 }, B: { fw: 199, fh: 231 }, C: { fw: 156, fh: 231 }, D: { fw: 193, fh: 231 } };
+const vLg = vmCtx.ledgeVoids(dimsLg);
+const box = o => [o.x, o.y, o.w, o.h].map(v => Math.round(v * 10) / 10).join(',');
+assert('smoke', '半高檯不貼磚的範圍：B 攤開側面上方 123～129×109～231、A 牆右端 150～156 被檯擋住到 109、地坪 0～123×0～6',
+  vLg.B.map(box).join(' ') === '123,109,6,122' && vLg.A.map(box).join(' ') === '150,0,6,109' && vLg.floor.map(box).join(' ') === '0,0,123,6'
+  && vLg.C.length === 0 && vLg.D.length === 0, JSON.stringify(vLg));
+assert('smoke', '半高檯：立面座標換回牆上位置要扣掉攤開的側面（B 立面 150 → 牆上 144；C、D 不受影響）',
+  vmCtx.planPos('B', 150, 10, dimsLg) === 144 && vmCtx.planPos('B', 50, 10, dimsLg) === 50 && vmCtx.planPos('D', 0, 10, dimsLg) === 183);
+const pLgT = { TL: 60, TW: 30, joint: 0.2, smallTh: 5, avoidTh: 5, floorCover: 0 };
+const cfgLg = y => ({ dir: 'V', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'custom', yoff: y, ledges: vmCtx.ledgeSplitRects('B') });
+const opsLg = vmCtx.faceOps(dimsLg).B;
+const lgOff = layout(pLgT, 199, 231, cfgLg(0), opsLg, true), lgOn = layout(pLgT, 199, 231, cfgLg(48.8), opsLg, true);
+assert('smoke', '半高檯：橫縫沒對齊檯面（109）→ 跨過檯緣的磚切成上下兩塊、包住攤開側面轉角的算 L 型；橫縫對齊 109 → 沒有 L 型',
+  lgOff.tiles.some(t => Math.abs(t.y0 + t.wW - 109) < 0.01 && t.y0 > 60) && lgOff.tiles.some(t => Math.abs(t.y0 - 109) < 0.01) && lgOff.lcut > 0 && lgOn.lcut === 0,
+  JSON.stringify({ off: lgOff.lcut, on: lgOn.lcut }));
+assert('smoke', '半高檯：立面垂直尺寸鏈標檯高 109、水平標側面 123／129；自動找起磚點的候選有 109',
+  vmCtx.elevationChains(199, 231, lgOn, opsLg, [], []).v.includes(109) && JSON.stringify(vmCtx.elevationChains(199, 231, lgOn, opsLg, [], []).h.filter(v => v > 100 && v < 140)) === '[123,129]'
+  && vmCtx.wallYCands(231, 60.2, 0.2, opsLg).includes(48.8));
+const ioLg = vmCtx.validateProject({ format: 'tile-setting-out', version: 1, ledges: [{ face: 'B', x: 0, w: 123, h: 109, d: 6, side: 'R' }, { face: 'E', x: 0, w: 1, h: 1, d: 1 }, { face: 'A', x: 0, w: -5, h: 1, d: 1 }] });
+assert('redteam', '資料檔：半高檯可存可讀，面別或尺寸不對的略過並提醒',
+  ioLg.project.ledges.length === 1 && ioLg.project.ledges[0].side === 'R' && ioLg.warnings.filter(w => w.includes('半高檯')).length === 2);
+setLedges([]);
+assert('smoke', '匯入前確認：天花／門高之外，檯高文字也讀得到', ['檯高 110', '台高:95', '檯面高=85'].every(t => vm.runInContext('PLAN_TEXT_LEDGE', vmCtx).test(t)));
 
 // Test S19: 匯出 DXF（照施工圖畫法，貼回 AutoCAD）
 // 124.2×250 牆、60 磚、縫 0.2、靠左由地起：磚縫取縫中線 → 直縫 60.1、120.3；橫縫 60.1、120.3、180.5、240.7

@@ -1,5 +1,10 @@
 // 應用程式入口：UI 事件綁定、畫布滑鼠拖曳放樣、CAD 鎖點與一鍵地壁對縫
 
+// 開口名稱：門、窗；半高檯造成的空白用自己的名稱（檯側面上方、檯擋住…）
+function opLabel(o) {
+  return o.void ? o.name : (o.kind === 'door' ? '門' : '窗');
+}
+
 // 碎磚警示欄：小料片數（其中要避免的另外註明）＋包住門窗轉角的 L 型切割
 function sliverTxt(g) {
   if (!g.danger && !g.lcut) return '—';
@@ -18,7 +23,7 @@ function renderTable(rows, p) {
   for (const s of rows) {
     danger += s.r.danger; lcut += s.r.lcut || 0; opArea += s.r.opArea;
     const opTxt = s.ops.length || s.r.voidArea
-      ? s.ops.map(o => (o.kind === 'door' ? '門' : '窗') + ' ' + o.w + '×' + o.h)
+      ? s.ops.map(o => opLabel(o) + ' ' + o.w + '×' + o.h)
         .concat(s.r.voidArea > 1 ? [`外框外 ${(s.r.voidArea / 10000).toFixed(2)} m²`] : []).join('<br>')
       : '—';
     const xTxt = XALIGN_NAMES[s.cfg.xalign] + (s.cfg.xalign === 'custom' ? (' ' + s.cfg.xoff) : '');
@@ -66,13 +71,13 @@ function renderConcl(p, tot) {
   const rows = computeAll(p);
   const worst = rows.filter(s => s.r.danger > 0)
     .sort((a, b) => b.r.danger - a.r.danger);
-  const opNames = rows.flatMap(s => s.ops.map(o => `${s.name}${o.kind === 'door' ? '門' : '窗'} ${o.w}×${o.h}`));
+  const opNames = rows.flatMap(s => s.ops.map(o => `${s.name}${opLabel(o)} ${o.w}×${o.h}`));
   let txt = '【全室五面】' + tot.mats.map(m => {
     const loss = m.net > 0 ? ((m.total - m.net) / m.net * 100) : 0;
     return `${m.label} 叫料 ${fmt(m.total)} 片（整磚 ${fmt(m.full)}＋裁切 ${fmt(m.cut)}，損耗 ${loss.toFixed(1)}%）`;
   }).join('；') + '。';
   if (tot.opArea > 0) {
-    txt += ` 已扣除門窗開口 ${opNames.join('、')}（共 ${(tot.opArea / 10000).toFixed(2)} m²，不鋪磚）。`;
+    txt += ` 已扣除${rows.some(s => s.ops.some(o => o.void)) ? '門窗開口與半高檯' : '門窗開口'} ${opNames.join('、')}（共 ${(tot.opArea / 10000).toFixed(2)} m²，不鋪磚）。`;
   }
   if (tot.danger > 0) {
     const names = worst.map(s => `${s.name} ${s.r.danger} 片`).join('、');
@@ -284,6 +289,11 @@ function syncFaceDims(override, only) {
   const setW = (k, v) => { $(k + '_fw').value = v; }, setH = (k, v) => { $(k + '_fh').value = v; };
   if (!only || only === 'L') { setW('A', L); setW('C', L); setH('floor', L); }
   if (!only || only === 'W') { setW('B', W); setW('D', W); setW('floor', W); }
+  // 半高檯側面攤進立面的那幾面：立面寬＝牆長＋攤開的側面
+  for (const k of ['A', 'B', 'C', 'D']) {
+    const ret = typeof ledgeReturnTotal === 'function' ? ledgeReturnTotal(k) : 0;
+    if (ret && (!only || only === ((k === 'A' || k === 'C') ? 'L' : 'W'))) setW(k, Math.round(((k === 'A' || k === 'C' ? L : W) + ret) * 10) / 10);
+  }
   if (!only || only === 'H') ['A', 'B', 'C', 'D'].forEach(k => setH(k, H));
   if (override) {
     for (const k in override) { setW(k, override[k][0]); setH(k, override[k][1]); }
@@ -765,6 +775,9 @@ function initApp() {
   document.querySelectorAll('.presets button[data-p]').forEach(b => {
     b.addEventListener('click', () => {
       const pr = PRESETS[b.dataset.p];
+      // 內建案例沒有半高檯（先清掉，牆寬才不會多加上一張圖攤開的側面）
+      ledgeList = [];
+      renderLedgesUI();
       $('L').value = pr.L; $('W').value = pr.W; $('H').value = pr.H;
       $('TL').value = pr.TL; $('TW').value = pr.TW;
       syncFaceDims(pr.faces);
@@ -869,6 +882,7 @@ function initApp() {
   initPlanSearch();
   initColumnModule();
   initOpeningsModule();
+  initLedgesModule();
   initProjectIO();
   initDxfImport();
   initMaterials();

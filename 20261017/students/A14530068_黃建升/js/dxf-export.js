@@ -285,7 +285,7 @@ function jointLines(tiles, fw, fh, joint, ops, outline, zrects) {
 // 每種磁磚的 Hatch：此面的磚在最底層、分區依序往上蓋（同 layout），各區扣掉上層分區與門窗；地坪有外框時照外框裁
 function dxfHatches(d, s, p, map, outline, hmap, layer) {
   const { fw, fh, cfg } = s;
-  const ops = s.key === 'floor' ? [] : s.ops;
+  const ops = s.ops;
   const fp = paramsFor(p, s.key); // 該面自己的磚尺寸（例如地坪 60×120、牆 120×120）
   for (const L of zoneLayers(fw, fh, cfg.zones || [])) {
     const z = L.zone;
@@ -321,10 +321,12 @@ function dxfStartMarkV(d, y, rightX, minY, maxY) {
 }
 
 // 尺寸鏈：pts 為沿線座標；水平鏈在 y＝at，垂直鏈在 x＝at
-function dxfChain(d, pts, at, vertical, map) {
+// base：量測點在另一個方向的面座標，取靠尺寸鏈那一邊（不然尺寸界線會畫過整張立面／地坪）
+function dxfChain(d, pts, at, vertical, map, base) {
+  base = base || 0;
   for (let i = 0; i + 1 < pts.length; i++) {
-    if (vertical) d.dim(map(0, pts[i]), map(0, pts[i + 1]), [at, 0], true);
-    else d.dim(map(pts[i], 0), map(pts[i + 1], 0), [0, at], false);
+    if (vertical) d.dim(map(base, pts[i]), map(base, pts[i + 1]), [at, 0], true);
+    else d.dim(map(pts[i], base), map(pts[i + 1], base), [0, at], false);
   }
 }
 
@@ -399,7 +401,7 @@ function dxfMaterialLabels(d, r, fw, fh, map, ops, away) {
 // map(x, y)：面座標 → 圖面座標；ops 為此面門窗（立面座標）
 function dxfFace(d, s, p, map, outline, hmap) {
   const { fw, fh, cfg, r } = s;
-  const ops = s.key === 'floor' ? [] : s.ops;
+  const ops = s.ops;
   // 壁磚、地磚分開圖層；Hatch 在各自的 -HATCH 層
   const layer = s.key === 'floor' ? '地磚' : '壁磚';
   const ol = outline || [[0, 0], [fw, 0], [fw, fh], [0, fh]];
@@ -411,9 +413,11 @@ function dxfFace(d, s, p, map, outline, hmap) {
   dxfHatches(d, s, p, map, outline, hmap, layer + '-HATCH');
   const zrects = (cfg.zones || []).map(z => zoneRect(z, fw, fh));
   for (const [a, b] of jointLines(r.tiles, fw, fh, p.joint, ops, outline, zrects)) d.line(map(a[0], a[1]), map(b[0], b[1]), layer);
-  for (const o of ops) d.poly([[o.x, o.y], [o.x + o.w, o.y], [o.x + o.w, o.y + o.h], [o.x, o.y + o.h]].map(q => map(q[0], q[1])), true, '0', 4);
+  for (const o of ops) if (!o.void) d.poly([[o.x, o.y], [o.x + o.w, o.y], [o.x + o.w, o.y + o.h], [o.x, o.y + o.h]].map(q => map(q[0], q[1])), true, '0', 4);
   const ov = faceOverlays[s.key];
   dxfOverlay(d, ov, map);
+  // 半高檯外框：紅線（色號 1，同使用者畫法）；地坪有匯入平面線稿時紅線已經在線稿裡
+  if (s.key !== 'floor' || !ov) for (const [a, b] of ledgeOutlineSegs(s.key, faceDims(p))) d.line(map(a[0], a[1]), map(b[0], b[1]), '0', 1);
   // 紅線：施工圖紅線＋起磚線（跟紅線重疊就不重畫）
   const reds = (cfg.marks || []).filter(m => m > 0.5 && m < fw - 0.5);
   if (r.xBase > 0.5 && r.xBase < fw - 0.5 && !reds.some(m => Math.abs(m - r.xBase) < 0.5)) reds.push(r.xBase);
@@ -471,7 +475,7 @@ function buildDxf(p, rows) {
       const ch = elevationChains(s.fw, s.fh, s.r, s.ops, chainMarks(s.cfg), zoneYMarks(s.cfg));
       dxfChain(d, ch.h, -DXF_DIM_OFF, false, map);
       const right = ch.v.filter(v => v < s.fh - 0.5);
-      if (right.length > 1) dxfChain(d, right, ox + s.fw + 24, true, map);
+      if (right.length > 1) dxfChain(d, right, ox + s.fw + 24, true, map, s.fw);
       if (s.r.tiles.length || s.r.total) dxfStartMark(d, ox + Math.max(0, s.r.xBase), s.fh, ox - 10, ox + s.fw + 10);
     }
     dxfIndexSymbol(d, ox + s.fw / 2, -85, k);
@@ -488,8 +492,8 @@ function buildDxf(p, rows) {
   dxfCompass(d, px + fl.fw / 2, top - fl.fh / 2);
   if (!fl.cfg.skip) {
     const oe = ov ? dxfExtent(ov) : { x0: 0, y0: 0, x1: fl.fw, y1: fl.fh };
-    const fch = floorChains(fl.fw, fl.fh, fl.r, allOps, chainMarks(fl.cfg), dims);
-    dxfChain(d, fch.h, top - Math.max(fl.fh, oe.y1) - DXF_DIM_OFF, false, fmap);
+    const fch = floorChains(fl.fw, fl.fh, fl.r, Object.assign({}, allOps, { floor: fl.ops }), chainMarks(fl.cfg), dims);
+    dxfChain(d, fch.h, top - Math.max(fl.fh, oe.y1) - DXF_DIM_OFF, false, fmap, fl.fh);
     const leftX = px + Math.min(0, oe.x0) - DXF_DIM_OFF;
     dxfChain(d, fch.v, leftX, true, fmap);
     dxfStartMark(d, px + Math.max(0, fl.r.xBase), top - Math.min(0, oe.y0), px - 10, px + fl.fw + 10);
@@ -529,8 +533,9 @@ function dxfExtent(ov) {
 function dxfPlanOpenings(d, fw, fh, allOps, dims, map) {
   const C = 4;
   for (const o of allOps.B || []) {
-    if (o.kind === 'door') { d.line(map(o.x, 0), map(o.x, o.w), '0', C); d.arc(map(o.x, 0), o.w, 270, 360, '0', C); }
-    else d.poly([map(o.x, -5), map(o.x + o.w, -5), map(o.x + o.w, 5), map(o.x, 5)], true, '0', C);
+    const s = planPos('B', o.x, o.w, dims);
+    if (o.kind === 'door') { d.line(map(s, 0), map(s, o.w), '0', C); d.arc(map(s, 0), o.w, 270, 360, '0', C); }
+    else d.poly([map(s, -5), map(s + o.w, -5), map(s + o.w, 5), map(s, 5)], true, '0', C);
   }
   for (const o of allOps.D || []) {
     const s = planPos('D', o.x, o.w, dims);
@@ -543,8 +548,9 @@ function dxfPlanOpenings(d, fw, fh, allOps, dims, map) {
     else d.poly([map(-5, s), map(5, s), map(5, s + o.w), map(-5, s + o.w)], true, '0', C);
   }
   for (const o of allOps.C || []) {
-    if (o.kind === 'door') { d.line(map(fw, o.x), map(fw - o.w, o.x), '0', C); d.arc(map(fw, o.x), o.w, 180, 270, '0', C); }
-    else d.poly([map(fw - 5, o.x), map(fw + 5, o.x), map(fw + 5, o.x + o.w), map(fw - 5, o.x + o.w)], true, '0', C);
+    const s = planPos('C', o.x, o.w, dims);
+    if (o.kind === 'door') { d.line(map(fw, s), map(fw - o.w, s), '0', C); d.arc(map(fw, s), o.w, 180, 270, '0', C); }
+    else d.poly([map(fw - 5, s), map(fw + 5, s), map(fw + 5, s + o.w), map(fw - 5, s + o.w)], true, '0', C);
   }
 }
 

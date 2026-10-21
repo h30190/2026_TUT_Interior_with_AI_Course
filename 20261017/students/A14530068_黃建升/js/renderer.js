@@ -171,6 +171,7 @@ function drawOverlay(ctx, ox, oy, fw, fh, sc, ov, isElevation) {
 // 正統建築立面門窗樣式（雙線門樘、窗框、接地）
 function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
   for (const o of ops) {
+    if (o.void) continue; // 半高檯造成的空白另外畫（drawLedges）
     const px = ox + o.x * sc;
     const py = oy + (fh - (o.y + o.h)) * sc;
     const pw = o.w * sc, ph = o.h * sc;
@@ -262,6 +263,24 @@ function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
       box: [px, py, pw, ph], ox, oy, fw, fh, sc
     });
   }
+}
+
+// 半高檯：不貼磚的空白（攤開側面上方、被檯擋住的牆、地坪被檯佔掉的地方）淡灰底，檯的外框畫紅線（同使用者施工圖）
+function drawLedges(ctx, ox, oy, fw, fh, sc, faceKey, ops, p) {
+  if (typeof ledgeList === 'undefined' || !ledgeList.length) return;
+  const isElev = faceKey !== 'floor';
+  const X = x => ox + x * sc, Y = y => isElev ? oy + (fh - y) * sc : oy + y * sc;
+  ctx.save();
+  ctx.fillStyle = '#efece6';
+  for (const o of (ops || []).filter(q => q.void)) {
+    const y0 = Y(o.y), y1 = Y(o.y + o.h);
+    ctx.fillRect(X(o.x), Math.min(y0, y1), o.w * sc, Math.abs(y1 - y0));
+  }
+  ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.3;
+  for (const [a, b] of ledgeOutlineSegs(faceKey, faceDims(p))) {
+    ctx.beginPath(); ctx.moveTo(X(a[0]), Y(a[1])); ctx.lineTo(X(b[0]), Y(b[1])); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // 紅色放樣基準線 ＋ 🎯 起磚十字靶 ＋ 起磚點明確標註 ＋ CAD 鎖點
@@ -385,6 +404,7 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   if (ops && ops.length) {
     drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, opts.faceKey || 'A');
   }
+  drawLedges(ctx, ox, oy, fw, fh, sc, opts.faceKey || 'A', ops, p);
 
   // 地坪實際外框（L 形）：缺角留白，外框描粗線（有匯入牆線時牆線已經畫了）
   if (opts.faceKey === 'floor' && floorOutline && !faceOverlays.floor) {
@@ -667,7 +687,7 @@ function drawFloorPlanOpenings(ctx, px, py, pw, ph, sc, allOps, dims) {
 
   // 1. B 面（地坪上方水平牆）
   (allOps.B || []).forEach(o => {
-    const ox = px + o.x * sc, ow = o.w * sc;
+    const ox = px + planPos('B', o.x, o.w, dims) * sc, ow = o.w * sc;
     if (o.kind === 'window') {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(ox, py - wallThk / 2, ow, wallThk);
       ctx.strokeStyle = '#2b5a8c'; ctx.lineWidth = 1.4; ctx.strokeRect(ox, py - wallThk / 2, ow, wallThk);
@@ -736,7 +756,7 @@ function drawFloorPlanOpenings(ctx, px, py, pw, ph, sc, allOps, dims) {
 
   // 4. C 面（地坪右側垂直牆）
   (allOps.C || []).forEach(o => {
-    const oy = py + o.x * sc, ow = o.w * sc;
+    const oy = py + planPos('C', o.x, o.w, dims) * sc, ow = o.w * sc;
     if (o.kind === 'door') {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(px + pw - wallThk / 2, oy, wallThk, ow);
       ctx.strokeStyle = '#888888'; ctx.lineWidth = 0.8;
@@ -995,7 +1015,7 @@ function drawUnfold(p, rows) {
   const flR = byKey.floor.r;
 
   drawJointAlignmentGuide(ctx, px, py, planW, flR, facePosX.B.x, facePosX.B.y, facePosX.B.h, byKey.B.r, s);
-  drawFaceBox(ctx, px, py, Lf, Wf, s, '地坪平面', p, byKey.floor.cfg, flR, [], { detail: false, faceKey: 'floor' });
+  drawFaceBox(ctx, px, py, Lf, Wf, s, '地坪平面', p, byKey.floor.cfg, flR, byKey.floor.ops, { detail: false, faceKey: 'floor' });
   // 有匯入平面線稿時門已經畫在線稿裡，不再重畫一次
   if (!faceOverlays.floor) drawFloorPlanOpenings(ctx, px, py, planW, planH, s, allOps, dims);
   const col = columnParams();
@@ -1003,7 +1023,7 @@ function drawUnfold(p, rows) {
   drawPlanCompass(ctx, px + planW / 2, py + planH / 2);
 
   // 地坪外圍尺寸鏈與放樣起點（避開四面牆的門窗文字）
-  const fch = floorChains(Lf, Wf, flR, allOps, chainMarks(byKey.floor.cfg), dims);
+  const fch = floorChains(Lf, Wf, flR, Object.assign({}, allOps, { floor: byKey.floor.ops }), chainMarks(byKey.floor.cfg), dims);
   // 有匯入平面線稿時，尺寸鏈讓到牆線外面；沒有時讓開四面牆的門窗文字
   const ov = faceOverlays.floor;
   const oe = ov ? overlayExtent(ov) : null;

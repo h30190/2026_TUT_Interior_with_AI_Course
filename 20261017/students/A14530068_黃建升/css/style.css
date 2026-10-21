@@ -168,3 +168,15 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
 /* ✂️ 裁切清單 */
 .cut-faces{margin-top:10px;font-size:12.5px;line-height:1.9}
 .cut-size{display:inline-block;padding:0 5px;border-radius:4px;background:#f1ede5;font-variant-numeric:tabular-nums}
+
+/* 匯入前確認高度 */
+.pc-body{overflow:auto;font-size:13px}
+.pc-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid #eee8dc}
+.pc-row input[type=number]{width:72px;padding:3px 6px}
+.pc-src{font-size:11px;color:var(--muted)}
+.pc-src.warn{background:#fff3c4;color:#8a6100;padding:1px 6px;border-radius:4px}
+.pc-chk{display:inline-flex;align-items:center;gap:3px;margin-right:6px;font-weight:400;white-space:nowrap}
+/* 半高檯卡片 */
+.ledge-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.ledge-head .btn-del-op{padding:2px 8px;font-size:11px;background:#fee2e2;color:#dc2626;border:1px solid #f87171;border-radius:4px;cursor:pointer}
+.ledge-empty{text-align:center;padding:10px;color:#7a756c;font-size:12px;background:#fdfcf9;border-radius:6px;border:1px dashed #d8d3c8}

@@ -6,6 +6,19 @@ function openings(dims) {
   return typeof getOpeningsByFace === 'function' ? getOpeningsByFace(dims) : { A: [], B: [], C: [], D: [] };
 }
 
+// 排磚、算料用的「不鋪磚範圍」：門窗＋半高檯造成的空白（攤開側面上方、被檯擋住的牆、地坪被檯佔掉的地方）
+// 空白（void）沒有門窗框收邊，畫面上也不畫成門窗
+function faceOps(dims) {
+  const ops = openings(dims);
+  const out = { floor: [] };
+  for (const k of ['A', 'B', 'C', 'D']) out[k] = (ops[k] || []).slice();
+  if (typeof ledgeVoids === 'function') {
+    const v = ledgeVoids(dims);
+    for (const k in out) out[k] = out[k].concat(v[k] || []);
+  }
+  return out;
+}
+
 // ── 地坪實際外框（L 形、斜牆）：每塊磚跟外框多邊形裁切，算露出的形狀與面積 ──
 
 function polyArea(pts) {
@@ -242,14 +255,54 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
         const xs = clip.map(p => p[0]), ys = clip.map(p => p[1]);
         Object.assign(t, { poly: clip, x0: Math.min(...xs), y0: Math.min(...ys), wL: Math.max(...xs) - Math.min(...xs), wW: Math.max(...ys) - Math.min(...ys) });
       }
-      const lc = lCutOf(vx0, vy0, vx0 + wL, vy0 + wW, occ ? ops.concat(occ) : ops);
-      if (lc) { t.lcut = true; t.lc = lc; }
-      // 小料只看露出來的部分：牆底被地磚蓋住的那段當作遮住（整磚不受影響，仍算整磚）
-      const hide = th.cover && vy0 < th.cover - EPS ? ops.concat([{ x: -1e6, y: -1e6, w: 2e6, h: 1e6 + th.cover }]) : ops;
-      tiles.push(Object.assign(t, sliverOf(t, hide, th)));
+      tiles.push(finishTile(t, ops, th));
     }
   }
   return tiles;
+}
+
+// 一塊磚的範圍定了之後：判斷 L 型、小料
+function finishTile(t, ops, th) {
+  const lc = lCutOf(t.x0, t.y0, t.x0 + t.wL, t.y0 + t.wW, t.occ ? ops.concat(t.occ) : ops);
+  if (lc) { t.lcut = true; t.lc = lc; } else { delete t.lcut; delete t.lc; }
+  // 小料只看露出來的部分：牆底被地磚蓋住的那段當作遮住（整磚不受影響，仍算整磚）
+  const hide = th.cover && t.y0 < th.cover - EPS ? ops.concat([{ x: -1e6, y: -1e6, w: 2e6, h: 1e6 + th.cover }]) : ops;
+  return Object.assign(t, sliverOf(t, hide, th));
+}
+
+// 半高檯：檯的正面、攤開的側面跟上面的牆不在同一個平面，跨過檯緣的磚要切成兩塊（格線不變）
+// 切出來在檯外的那塊，檯的轉角落在裡面就是 L 型（記在 occ）
+function splitByLedges(tiles, rects, ops, th) {
+  if (!rects.length) return tiles;
+  let out = tiles;
+  for (const R of rects) {
+    const next = [];
+    for (const t of out) {
+      const x0 = t.x0, y0 = t.y0, x1 = t.x0 + t.wL, y1 = t.y0 + t.wW;
+      const ix0 = Math.max(x0, R.x), ix1 = Math.min(x1, R.x + R.w), iy0 = Math.max(y0, R.y), iy1 = Math.min(y1, R.y + R.h);
+      const hit = ix1 - ix0 > EPS && iy1 - iy0 > EPS;
+      if (!hit || (ix0 <= x0 + EPS && ix1 >= x1 - EPS && iy0 <= y0 + EPS && iy1 >= y1 - EPS)) { next.push(t); continue; }
+      const covered = (a, b, c, d) => ops.some(o => o.x <= a + EPS && o.x + o.w >= c - EPS && o.y <= b + EPS && o.y + o.h >= d - EPS);
+      const piece = (a, b, c, d, occ) => {
+        if (covered(a, b, c, d)) return;
+        const q = Object.assign({}, t, { x0: a, y0: b, wL: c - a, wW: d - b, full: false });
+        delete q.poly;
+        const keep = (t.occ || []).filter(o => o.x < c - EPS && o.x + o.w > a + EPS && o.y < d - EPS && o.y + o.h > b + EPS).concat(occ || []);
+        if (keep.length) q.occ = keep; else delete q.occ;
+        next.push(finishTile(q, ops, th));
+      };
+      piece(ix0, iy0, ix1, iy1);
+      const rest = rectMinus([x0, y0, x1, y1], [R]);
+      if (rest.length) {
+        const a = Math.min(...rest.map(q => q[0])), b = Math.min(...rest.map(q => q[1]));
+        const c = Math.max(...rest.map(q => q[2])), d = Math.max(...rest.map(q => q[3]));
+        const inside = R.x < c - EPS && R.x + R.w > a + EPS && R.y < d - EPS && R.y + R.h > b + EPS;
+        piece(a, b, c, d, inside ? [R] : null);
+      }
+    }
+    out = next;
+  }
+  return out;
 }
 
 // 起磚基準：left/bottom＝0、right/top＝從另一端倒推、center＝置中、custom＝自訂距離
@@ -351,7 +404,7 @@ function cutPieceSize(t, ops, trim) {
   let x0 = Math.max(t.x0, 0), x1 = x0 + t.wL, y0 = Math.max(t.y0, 0), y1 = y0 + t.wW;
   if (!t.poly) {
     // 門窗有框收邊，旁邊剩一點可以不切（trim）；上層分區沒有框，照實際切（0）
-    const occluders = ops.map(o => [o, trim]).concat((t.occ || []).map(o => [o, 0]));
+    const occluders = ops.map(o => [o, o.void ? 0 : trim]).concat((t.occ || []).map(o => [o, 0]));
     for (const [o, tr] of occluders) {
       const ox1 = o.x + o.w, oy1 = o.y + o.h;
       if (ox1 <= x0 || o.x >= x1 || oy1 <= y0 || o.y >= y1) continue;
@@ -541,6 +594,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
           segTiles = segTiles.concat(generateZoneTiles(fw, fh, rx0, rx1, xBase, part.base !== null ? part.base : yBase, pitchL, pitchW, tL, tW, cfg, ops, th, reg));
         }
       }
+      segTiles = splitByLedges(segTiles, cfg.ledges || [], ops, th);
       const key = z ? `z${TL}x${TW}${z.name}` : 'main';
       segTiles.forEach(t => { t.gkey = key; t.glabel = matLabel(TL, TW, z ? z.name : ''); });
       tiles = tiles.concat(segTiles);
@@ -557,6 +611,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     // 全牆連續鋪貼（若有柱線則為連動模式）
     tiles = generateZoneTiles(fw, fh, 0, fw, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
   }
+  if (!zones.length) tiles = splitByLedges(tiles, cfg.ledges || [], ops, th);
   if (!zones.length) tiles.forEach(t => { t.gkey = 'main'; t.glabel = matLabel(p.TL, p.TW); });
   if (!zones.length) addGroup('main', matLabel(p.TL, p.TW), p.TL, p.TW, tiles, areaIn(0, fw), ops.reduce((a, o) => a + o.area, 0));
 
@@ -663,7 +718,8 @@ function elevationChains(fw, fh, r, ops, marks, ymarks) {
   }
   for (const o of ops) {
     hx.push(o.x, o.x + o.w);
-    if (o.kind === 'window') vy.push(o.y, o.y + o.h);
+    if (o.void) vy.push(o.y > EPS ? o.y : o.y + o.h); // 半高檯的高
+    else if (o.kind === 'window') vy.push(o.y, o.y + o.h);
     else vy.push(o.h);
   }
   return { h: dimChainPoints(fw, hx), v: dimChainPoints(fh, vy) };
@@ -671,8 +727,11 @@ function elevationChains(fw, fh, r, ops, marks, ymarks) {
 
 // 立面是站在房間裡面向該牆看：B、C 的左邊就是平面的左／上；A、D 左右相反，要用該面寬度鏡像
 // 回傳立面 [x, x+w] 在平面邊上的起點（B/D 沿平面 X，A/C 沿平面 Y 由上量）
+// 半高檯側面攤進立面時，立面比牆長：先扣掉左邊攤開的側面，換回牆上的實際位置
 function planPos(faceKey, x, w, dims) {
-  const fwFace = dims && dims[faceKey] ? dims[faceKey].fw : 0;
+  const ret = typeof ledgeReturnTotal === 'function' ? ledgeReturnTotal(faceKey) : 0;
+  if (ret) x = ledgePlanX(faceKey, x);
+  const fwFace = dims && dims[faceKey] ? dims[faceKey].fw - ret : 0;
   return (faceKey === 'A' || faceKey === 'D') ? fwFace - x - w : x;
 }
 
@@ -681,6 +740,8 @@ function floorChains(fw, fh, r, allOps, marks, dims) {
   const hx = [r.xBase].concat(marks || []), vy = [r.yBase];
   for (const k of ['B', 'D']) for (const o of (allOps[k] || [])) { const s = planPos(k, o.x, o.w, dims); hx.push(s, s + o.w); }
   for (const k of ['A', 'C']) for (const o of (allOps[k] || [])) { const s = planPos(k, o.x, o.w, dims); vy.push(s, s + o.w); }
+  // 半高檯佔掉的範圍（allOps.floor，地坪座標）
+  for (const o of (allOps.floor || [])) { hx.push(o.x, o.x + o.w); vy.push(o.y, o.y + o.h); }
   return { h: dimChainPoints(fw, hx), v: dimChainPoints(fh, vy) };
 }
 
@@ -760,10 +821,11 @@ function fmt(n) {
 // over：暫時換掉某些面的設定（方案比較用），例如 { B: { xalign: 'custom', xoff: 30 } }
 function computeAll(p, over) {
   const dims = faceDims(p);
-  const ops = openings(dims);
+  const ops = faceOps(dims);
   const col = columnParams();
   return faces(p).map(f => {
-    const cfg = Object.assign(cfgOf(f.key), (over && over[f.key]) || {});
+    const ledges = f.key !== 'floor' && typeof ledgeSplitRects === 'function' ? ledgeSplitRects(f.key) : [];
+    const cfg = Object.assign(cfgOf(f.key), { ledges }, (over && over[f.key]) || {});
     const colInfo = (typeof getFaceColumnInfo === 'function')
       ? getFaceColumnInfo(f.key, col, dims)
       : (col.on && col.face === f.key ? col : null);
@@ -939,7 +1001,7 @@ function autoFixSlivers(faceKey) {
   const p = paramsFor(params(), faceKey);
   const d = faceDims(p)[faceKey];
   const cfg = cfgOf(faceKey);
-  const ops = openings(faceDims(p))[faceKey] || [];
+  const ops = faceOps(faceDims(p))[faceKey] || [];
   const tL = cfg.dir === 'H' ? p.TL : p.TW;
   const pitchL = tL + p.joint;
 

@@ -33,6 +33,7 @@ function collectProject() {
     tile: { TL: p.TL, TW: p.TW, jointMM: Math.round(p.joint * 100) / 10, price: p.price, smallTh: p.smallTh, avoidTh: p.avoidTh, floorCover: p.floorCover },
     faces,
     openings: openingsList.map(o => ({ kind: o.kind, name: o.name, face: o.face, w: o.w, h: o.h, x: o.x, y: o.y })),
+    ledges: (typeof ledgeList !== 'undefined' ? ledgeList : []).map(l => ({ face: l.face, x: l.x, w: l.w, h: l.h, d: l.d, side: l.side || '' })),
     column: columnParams()
   };
 }
@@ -119,6 +120,15 @@ function validateProject(obj) {
     });
   });
 
+  // 半高檯：x 可以是 0，寬、高、深要正數；側面攤開只能寫 L、R、LR 或空白
+  out.ledges = [];
+  (Array.isArray(obj.ledges) ? obj.ledges : []).forEach((l, i) => {
+    const ok = l && ['A', 'B', 'C', 'D'].includes(l.face) && Number.isFinite(l.x) && l.x >= 0
+      && [l.w, l.h, l.d].every(v => Number.isFinite(v) && v > 0) && /^(|L|R|LR)$/.test(String(l.side || ''));
+    if (!ok) { warnings.push(`第 ${i + 1} 個半高檯的面別或尺寸不正確，已略過`); return; }
+    out.ledges.push({ id: `imp_lg_${i}`, face: l.face, x: l.x, w: l.w, h: l.h, d: l.d, side: String(l.side || '') });
+  });
+
   if (obj.column && typeof obj.column === 'object') out.column = obj.column;
   out.materials = (Array.isArray(obj.materials) ? obj.materials : []).filter(m => m && typeof m.role === 'string')
     .map(m => ({
@@ -190,6 +200,7 @@ function applyProject(pj) {
   if (typeof renderMaterialsUI === 'function') renderMaterialsUI();
   openingsList = pj.openings;
   renderOpeningsUI();
+  if (typeof ledgeList !== 'undefined') { ledgeList = pj.ledges || []; renderLedgesUI(); }
   if (pj.column) setColumnParams(pj.column);
   refresh();
 }
