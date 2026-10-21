@@ -682,6 +682,66 @@ function initAutoFix() {
   });
 }
 
+// 🧠 自動找最佳起磚點：列出幾個方案比較，按「套用」改五面起磚設定
+let lastPlans = null;
+
+function renderPlans(plans) {
+  const host = $('planResults');
+  if (!host) return;
+  if (!plans) { host.style.display = 'none'; host.innerHTML = ''; return; }
+  const labels = [];
+  plans.forEach(pl => Object.keys(pl.score.byLabel).forEach(l => { if (!labels.includes(l)) labels.push(l); }));
+  const cur = plans.find(pl => pl.id === 'current');
+  const diff = (pl, l) => {
+    const d = (pl.score.byLabel[l] || 0) - (cur.score.byLabel[l] || 0);
+    return pl === cur || !d ? '' : ` <small class="muted">(${d > 0 ? '+' : ''}${d})</small>`;
+  };
+  host.style.display = 'block';
+  host.innerHTML = `<h3>🧠 起磚方案比較（先比小料片數，再比浪費面積）</h3>
+    <table><thead><tr><th>方案</th><th>說明</th><th>小料</th>${labels.map(l => `<th>${l}（片）</th>`).join('')}<th>浪費 m²</th><th></th></tr></thead><tbody>
+    ${plans.map(pl => `<tr class="${pl.best ? 'best' : ''}"><td>${pl.best ? '<span class="star">★推薦</span> ' : ''}${pl.name}</td><td class="muted">${pl.desc}</td>
+      <td>${pl.score.danger}</td>${labels.map(l => `<td>${fmt(pl.score.byLabel[l] || 0)}${diff(pl, l)}</td>`).join('')}
+      <td>${(pl.score.waste / 10000).toFixed(2)}</td>
+      <td>${pl.id === 'current' ? '<span class="muted">目前</span>' : `<button data-plan="${pl.id}">套用</button>`}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="muted" style="margin-top:6px">牆面只調水平起磚（垂直仍由地面往上排）；改了設定請再按一次重新比較。</div>`;
+  host.querySelectorAll('button[data-plan]').forEach(b => b.addEventListener('click', () => applyPlan(b.dataset.plan)));
+}
+
+function applyPlan(id) {
+  const pl = (lastPlans || []).find(x => x.id === id);
+  if (!pl) return;
+  for (const k of Object.keys(pl.over)) {
+    for (const f of ['xalign', 'xoff', 'yalign', 'yoff']) {
+      if (pl.over[k][f] !== undefined && $(k + '_' + f)) $(k + '_' + f).value = pl.over[k][f];
+    }
+  }
+  // 四面對縫方案：打開鎖定，之後動地磚牆磚會跟著
+  lockAllJoints = id === 'joint';
+  refresh();
+  lastPlans = searchPlans(params());
+  renderPlans(lastPlans);
+}
+
+function initPlanSearch() {
+  const btn = $('btnSearchPlans');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    btn.disabled = true;
+    btn.textContent = '🧠 計算中…';
+    // 讓按鈕文字先畫出來再算
+    setTimeout(() => {
+      try {
+        lastPlans = searchPlans(params());
+        renderPlans(lastPlans);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🧠 自動找最佳起磚點';
+      }
+    }, 30);
+  });
+}
+
 // 初始化與事件綁定
 function initApp() {
   buildPanels();
@@ -702,6 +762,8 @@ function initApp() {
       // 換情境＝各面設定全部回到預設（再套上案例自己的起磚點、紅線、分區），不沿用上一張圖的分區、紅線、磚尺寸
       {
         lockAllJoints = false;
+        lastPlans = null;
+        renderPlans(null);
         for (const k of FACE_KEYS) {
           const c = Object.assign({}, DEFAULT_CFG[k], (pr.cfg || {})[k] || {});
           ['dir', 'mode', 'xalign', 'yalign', 'xoff', 'yoff'].forEach(f => { $(k + '_' + f).value = c[f]; });
@@ -780,6 +842,7 @@ function initApp() {
   initCanvasInteraction();
   initCADToolbar();
   initAutoFix();
+  initPlanSearch();
   initColumnModule();
   initOpeningsModule();
   initProjectIO();

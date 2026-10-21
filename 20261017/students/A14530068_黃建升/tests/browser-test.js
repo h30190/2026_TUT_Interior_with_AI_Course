@@ -168,6 +168,21 @@ function check(name, ok, info) {
   const [png] = await Promise.all([page.waitForEvent('download'), page.click('#btnExportPng')]);
   check('下載圖片：tile-setting-out.png', png.suggestedFilename() === 'tile-setting-out.png');
 
+  // 8. 自動找最佳起磚點：比較方案、套用推薦
+  n = errors.length;
+  await page.click('button[data-p="demo"]');
+  const scoreNow = () => page.evaluate(() => { const s = planScore(computeAll(params())); return { danger: s.danger, waste: s.waste }; });
+  const before8 = await scoreNow();
+  await page.click('#btnSearchPlans');
+  await page.waitForSelector('#planResults tr.best', { timeout: 20000 });
+  const planRows = await page.$$eval('#planResults tbody tr', rs => rs.length);
+  const bestBtn = await page.$('#planResults tr.best button[data-plan]');
+  if (bestBtn) await bestBtn.click();
+  const after8 = await scoreNow();
+  check(`自動起磚點：列出 ${planRows} 個方案，套用推薦後小料 ${before8.danger} → ${after8.danger}、浪費不增加`,
+    planRows === 4 && after8.danger <= before8.danger && (after8.danger < before8.danger || after8.waste <= before8.waste + 1e-6) && errors.length === n,
+    JSON.stringify({ before8, after8, err: errorsSince(n) }));
+
   await browser.close();
   console.log(`\n🎯 瀏覽器實測 ${passed + failed} 項，通過 ${passed}，失敗 ${failed}`);
   process.exit(failed ? 1 : 0);

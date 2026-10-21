@@ -201,10 +201,12 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <h2>五面獨立排磚控制面板（地坪平面與四面立面）</h2>
         <div style="display:flex;gap:8px;align-items:center">
+          <button id="btnSearchPlans" class="plan-search-btn" title="比較幾種起磚方案：小料最少、浪費最少">🧠 自動找最佳起磚點</button>
           <button id="btnLockJointsPanel" class="lock-toggle-btn">🔒 鎖定四面對縫（壁磚自動跟隨地磚）</button>
           <button id="syncWalls" class="syncbtn" style="width:auto;padding:6px 14px">一鍵同步四面牆（A→B/C/D）</button>
         </div>
       </div>
+      <div id="planResults" class="plan-results" style="display:none"></div>
       <div id="faceCfgs" class="face-cfgs-grid"></div>
       <div class="syncnote" style="margin-top:10px">
         💡 提示：鎖定四面對縫時，A、B、C、D 四面牆的垂直起磚線將自動隨地磚縫連動；點擊「解鎖」即可獨立自由調整各面起磚點。

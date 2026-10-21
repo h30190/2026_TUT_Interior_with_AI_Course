@@ -83,6 +83,18 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
 .joint-badge{font-size:10px;padding:2px 5px;background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9;border-radius:4px;font-weight:600}
 
 /* 🔒 鎖定／解鎖四面對縫切換按鈕 */
+.plan-search-btn{padding:6px 14px;border:1px solid #6a4c93;border-radius:6px;background:#6a4c93;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+.plan-search-btn:hover{filter:brightness(1.12)}
+.plan-search-btn:disabled{opacity:.6;cursor:wait}
+.plan-results{margin-bottom:12px;padding:10px 12px;border:1px solid #d9cfe8;border-radius:8px;background:#faf8fd;font-size:12px}
+.plan-results h3{font-size:13px;color:#6a4c93;margin-bottom:6px}
+.plan-results table{width:100%;border-collapse:collapse}
+.plan-results th,.plan-results td{padding:4px 6px;border-bottom:1px solid #e6e0ee;text-align:left;vertical-align:top}
+.plan-results tr.best{background:#efe8f8}
+.plan-results .star{color:#b8352b;font-weight:700}
+.plan-results .muted{color:var(--muted)}
+.plan-results button{padding:3px 10px;border:1px solid #6a4c93;border-radius:5px;background:#fff;color:#6a4c93;font-size:12px;cursor:pointer}
+.plan-results tr.best button{background:#6a4c93;color:#fff}
 .lock-toggle-btn{padding:6px 14px;border:1px solid #3e4451;border-radius:6px;background:#fbfaf7;color:var(--ink);font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .2s}
 .lock-toggle-btn:hover{border-color:#007acc;color:#007acc}
 .lock-toggle-btn.locked{background:#2e7d32;color:#ffffff;border-color:#2e7d32;box-shadow:0 2px 6px rgba(46,125,50,0.25)}

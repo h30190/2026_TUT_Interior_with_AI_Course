@@ -154,6 +154,8 @@ function cleanOverlay(ov) {
 // 套用整理好的資料檔到畫面
 function applyProject(pj) {
   lockAllJoints = false;
+  // 換了一張圖，上一張的起磚方案比較就不適用了
+  if (typeof renderPlans === 'function') { lastPlans = null; renderPlans(null); }
   const setIf = (id, v) => { if (v !== undefined && $(id)) $(id).value = v; };
   setIf('L', pj.room.L); setIf('W', pj.room.W); setIf('H', pj.room.H);
   setIf('TL', pj.tile.TL); setIf('TW', pj.tile.TW); setIf('joint', pj.tile.jointMM); setIf('price', pj.tile.price);

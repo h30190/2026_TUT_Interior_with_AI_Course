@@ -358,6 +358,38 @@ assert('smoke', '裁切清單：門頂上方只露 1.2cm 被門框蓋住，那�
 const pcL = vmCtx.cutPieceSize({ x0: 0, y0: 29, wL: 117, wW: 60, full: false, poly: [[0, 29], [117, 29], [117, 89], [0, 89]] }, []);
 const pcS = vmCtx.cutPieceSize({ x0: 0, y0: 0, wL: 50, wW: 50, full: false, poly: [[0, 0], [50, 0], [45, 50], [0, 50]] }, []);
 assert('smoke', '裁切清單：L 形缺角是直角切不標斜切，斜牆切到才標', !pcL.slanted && pcS.slanted);
+
+// Test S18: 自動找最佳起磚點
+// 牆寬 124.2、60 磚、縫 0.2：靠左起磚 → 60、60、剩 3.8 小料；最佳起點要讓小料消失
+const pS18 = { TL: 60, TW: 60, joint: 0.2, smallTh: 5, avoidTh: 5 };
+const cfgS18 = { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', xoff: 0, yoff: 0 };
+const leftS18 = layout(pS18, 124.2, 250, cfgS18, [], true);
+const overS18 = vmCtx.bestFaceOffsets(pS18, 124.2, 250, cfgS18, [], null, false);
+const bestS18 = layout(pS18, 124.2, 250, Object.assign({}, cfgS18, overS18), [], true);
+assert('smoke', '最佳起磚點：124.2 寬牆靠左有小料，自動找的起點小料 0 片', leftS18.danger > 0 && bestS18.danger === 0 && overS18.xalign === 'custom',
+  `靠左 ${leftS18.danger}、最佳 ${bestS18.danger}（xoff ${overS18.xoff}）`);
+setInputs({ L: 207, W: 187, H: 240, TL: 60, TW: 60, joint: 2,
+  floor_fw: 207, floor_fh: 187, A_fw: 187, A_fh: 240, B_fw: 207, B_fh: 240, C_fw: 187, C_fh: 240, D_fw: 207, D_fh: 240 });
+['floor', 'A', 'B', 'C', 'D'].forEach(k => setInputs({ [k + '_dir']: 'H', [k + '_mode']: 'grid', [k + '_xalign']: 'left', [k + '_yalign']: 'bottom', [k + '_xoff']: 0, [k + '_yoff']: 0, [k + '_tile']: '', [k + '_marks']: '', [k + '_zones']: '' }));
+setOpenings([]);
+setColumnParams({ on: false });
+const tS18 = Date.now();
+const plansS18 = vmCtx.searchPlans(vmCtx.params());
+const msS18 = Date.now() - tS18;
+const curS18 = plansS18.find(x => x.id === 'current'), bestPlan = plansS18.find(x => x.best);
+assert('smoke', '方案比較：列出目前／各面最省／四面對縫／置中，且只有一個推薦',
+  ['current', 'perFace', 'joint', 'center'].every(id => plansS18.some(x => x.id === id)) && plansS18.filter(x => x.best).length === 1);
+assert('smoke', '方案比較：推薦方案不比目前設定差（小料、浪費都不會變多）',
+  bestPlan.score.danger <= curS18.score.danger && (bestPlan.score.danger < curS18.score.danger || bestPlan.score.waste <= curS18.score.waste + 1e-6),
+  `目前 ${curS18.score.danger} 片/${curS18.score.waste.toFixed(0)}，推薦 ${bestPlan.name} ${bestPlan.score.danger} 片/${bestPlan.score.waste.toFixed(0)}`);
+// 套用四面對縫方案後，牆縫要等於「鎖定四面對縫」算出來的位置
+const jointPlan = plansS18.find(x => x.id === 'joint');
+setInputs({ floor_xalign: 'custom', floor_xoff: jointPlan.over.floor.xoff, floor_yalign: 'custom', floor_yoff: jointPlan.over.floor.yoff });
+const dimsS18 = faceDims(vmCtx.params());
+assert('smoke', '方案比較：四面對縫方案的牆起點＝鎖定對縫的牆起點（套用後鎖定不會跳掉）',
+  ['A', 'B', 'C', 'D'].every(k => Math.abs(vmCtx.calcJointAlignment(vmCtx.params(), dimsS18, k) - jointPlan.over[k].xoff) < 1e-6));
+assert('smoke', `方案比較：一間浴室算完 < 3 秒（實測 ${msS18}ms）`, msS18 < 3000);
+
 const caseRows = [{ key: 'B', name: 'B立面', cfg: { dir: 'H', skip: false }, ops: [], r: zoneB }];
 const listB = vmCtx.cutListByFace(vmCtx.cutPieces(caseRows));
 assert('smoke', '裁切清單：B 面壁磚 117×120 ×2、117×48.5 ×1；主秀壁頂端 15×4 ×6（取到 0.5cm）',

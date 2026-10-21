@@ -576,7 +576,11 @@ function calcJointAlignment(p, dims, faceKey) {
   if (faceKey === 'floor') return 0;
   const flCfg = cfgOf('floor');
   const flR = layout(paramsFor(p, 'floor'), dims.floor.fw, dims.floor.fh, flCfg, []);
-  const wallCfg = cfgOf(faceKey);
+  return jointAlignedX(p, dims, faceKey, flR, cfgOf(faceKey));
+}
+
+// 給定地坪排磚結果 flR，這面牆起磚 X 要設多少，牆縫才會對齊地磚縫
+function jointAlignedX(p, dims, faceKey, flR, wallCfg) {
   const wp = paramsFor(p, faceKey);
   const tL = wallCfg.dir === 'H' ? wp.TL : wp.TW;
   const pitchL = tL + p.joint;
@@ -626,12 +630,13 @@ function fmt(n) {
   return Number.isFinite(n) ? n.toLocaleString('en-US') : '—';
 }
 
-function computeAll(p) {
+// over：暫時換掉某些面的設定（方案比較用），例如 { B: { xalign: 'custom', xoff: 30 } }
+function computeAll(p, over) {
   const dims = faceDims(p);
   const ops = openings(dims);
   const col = columnParams();
   return faces(p).map(f => {
-    const cfg = cfgOf(f.key);
+    const cfg = Object.assign(cfgOf(f.key), (over && over[f.key]) || {});
     const colInfo = (typeof getFaceColumnInfo === 'function')
       ? getFaceColumnInfo(f.key, col, dims)
       : (col.on && col.face === f.key ? col : null);
@@ -641,6 +646,106 @@ function computeAll(p) {
       : layout(paramsFor(p, f.key), f.fw, f.fh, cfg, ops[f.key] || [], f.key !== 'floor', colInfo);
     return { key: f.key, name: f.name, fw: f.fw, fh: f.fh, cfg, r, ops: ops[f.key] || [], col: colInfo };
   });
+}
+
+// ── 🧠 自動找最佳起磚點：排出幾個方案比較 ──
+
+// 方案好壞：先比小料片數，再比浪費面積（叫料磚的面積 − 實際要鋪的面積，不同尺寸的磚也能一起比）
+function planScore(rows) {
+  let danger = 0, waste = 0;
+  const byLabel = {};
+  for (const s of rows) {
+    danger += s.r.danger;
+    for (const g of s.r.groups) {
+      waste += g.total * g.TL * g.TW - Math.max(0, g.area - g.opArea);
+      byLabel[g.label] = (byLabel[g.label] || 0) + g.total;
+    }
+  }
+  return { danger, waste, byLabel };
+}
+
+function betterScore(a, b) {
+  return a.danger !== b.danger ? a.danger < b.danger : a.waste < b.waste - 1e-6;
+}
+
+function scoreOf(r) {
+  return planScore([{ r }]);
+}
+
+// 一面在一個磚距內逐步試起磚點（地坪 X、Y 都試），回傳最好的設定
+function bestFaceOffsets(p, fw, fh, cfg, ops, col, isFloor) {
+  const tL = cfg.dir === 'H' ? p.TL : p.TW, tW = cfg.dir === 'H' ? p.TW : p.TL;
+  const pitchL = tL + p.joint, pitchW = tW + p.joint;
+  const tries = isFloor ? pitchL * pitchW : pitchL;
+  const step = tries > 6000 ? 2 : 1;
+  const ys = isFloor ? Array.from({ length: Math.ceil(pitchW / step) }, (_, i) => i * step) : [null];
+  let best = null;
+  for (let x = 0; x < pitchL; x += step) {
+    for (const y of ys) {
+      const c = Object.assign({}, cfg, { xalign: 'custom', xoff: x }, y === null ? {} : { yalign: 'custom', yoff: y });
+      const sc = scoreOf(layout(p, fw, fh, c, ops, !isFloor, col));
+      if (!best || betterScore(sc, best.sc)) best = { sc, over: y === null ? { xalign: 'custom', xoff: x } : { xalign: 'custom', xoff: x, yalign: 'custom', yoff: y } };
+    }
+  }
+  return best.over;
+}
+
+function searchPlans(p) {
+  const dims = faceDims(p);
+  const ops = openings(dims);
+  const col = columnParams();
+  const rows0 = computeAll(p);
+  const plans = [];
+  const add = (id, name, desc, over) => plans.push({ id, name, desc, over, score: planScore(computeAll(p, over)) });
+
+  add('current', '目前設定', '現在畫面上的起磚點（DXF 畫的或手動調的）', {});
+
+  // 各面最省：每面自己找
+  const perFace = {};
+  for (const s of rows0) {
+    if (s.cfg.skip) continue;
+    perFace[s.key] = bestFaceOffsets(paramsFor(p, s.key), s.fw, s.fh, s.cfg, s.ops, s.col, s.key === 'floor');
+  }
+  add('perFace', '各面最省', '每面各自在一個磚距內逐公分試，小料最少、浪費最少', perFace);
+
+  // 四面對縫：試地坪起點，牆縫跟著地磚縫對齊，看全室合計
+  const fl = rows0.find(s => s.key === 'floor');
+  if (fl && !fl.cfg.skip) {
+    const fp = paramsFor(p, 'floor');
+    const tL = fl.cfg.dir === 'H' ? fp.TL : fp.TW, tW = fl.cfg.dir === 'H' ? fp.TW : fp.TL;
+    const pitchL = tL + p.joint, pitchW = tW + p.joint;
+    const step = pitchL * pitchW > 1500 ? Math.ceil(Math.sqrt(pitchL * pitchW / 1500)) : 1;
+    const wallCache = {};
+    let best = null;
+    for (let x = 0; x < pitchL; x += step) {
+      for (let y = 0; y < pitchW; y += step) {
+        const fc = Object.assign({}, fl.cfg, { xalign: 'custom', xoff: x, yalign: 'custom', yoff: y });
+        const flR = layout(fp, fl.fw, fl.fh, fc, fl.ops, false, fl.col);
+        let sc = scoreOf(flR);
+        const over = { floor: { xalign: 'custom', xoff: x, yalign: 'custom', yoff: y } };
+        for (const s of rows0) {
+          if (s.key === 'floor' || s.cfg.skip) continue;
+          const wx = jointAlignedX(p, dims, s.key, flR, s.cfg);
+          const key = s.key + ':' + wx;
+          const ws = wallCache[key] || (wallCache[key] = scoreOf(layout(paramsFor(p, s.key), s.fw, s.fh, Object.assign({}, s.cfg, { xalign: 'custom', xoff: wx }), s.ops, true, s.col)));
+          sc = { danger: sc.danger + ws.danger, waste: sc.waste + ws.waste };
+          over[s.key] = { xalign: 'custom', xoff: wx };
+        }
+        if (!best || betterScore(sc, best.sc)) best = { sc, over };
+      }
+    }
+    add('joint', '四面對縫', '地磚縫往上連到牆磚縫，再找全室最好的地坪起點', best.over);
+  }
+
+  // 置中對稱
+  const center = {};
+  for (const s of rows0) if (!s.cfg.skip) center[s.key] = s.key === 'floor' ? { xalign: 'center', yalign: 'center' } : { xalign: 'center' };
+  add('center', '置中對稱', '每面從中軸起磚，兩邊裁切一樣寬', center);
+
+  let bestIdx = 0;
+  plans.forEach((pl, i) => { if (betterScore(pl.score, plans[bestIdx].score)) bestIdx = i; });
+  plans[bestIdx].best = true;
+  return plans;
 }
 
 // ✨ 智慧消除小料演算法（尋找消除危險碎磚的最優位移偏移量）
