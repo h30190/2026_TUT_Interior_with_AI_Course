@@ -518,6 +518,18 @@ const sC = vmCtx.buildPlanSheet(dC, cyanRooms[0], { H: 231, doorH: 210, sill: 10
 assert('smoke', '青色門窗的平面：門量牆開口（門框外寬 76，不是門片 66），窗從牆斷開處＋青色窗線找到，左右位置照平面、高度用預設',
   JSON.stringify(sC.project.openings.map(o => [o.kind, o.face, o.x, o.w, o.y, o.h])) === '[["door","C",44,76,0,210],["window","A",28,80,100,90]]',
   JSON.stringify(sC.project.openings));
+// 底牆有一階、門口凹進牆裡的房間：沿牆掃出實際形狀（6 個角），門口凹進去的門檻不算
+const dS = planDxf('plan-step.dxf');
+const stepSheets = [[117, 100], [50, 40], [190, 150]].map(([x, y]) => vmCtx.buildPlanSheet(dS, vmCtx.roomAt(dS, x, y), { H: 231, doorH: 210 }));
+assert('smoke', '只有地坪（底牆有一階）：圍出 6 個角的實際形狀——左段深 156、右段深 147，點哪裡都一樣',
+  stepSheets.every(sh => JSON.stringify(sh.project.faces.floor.outline) === '[[0,156],[115,156],[115,147],[193,147],[193,0],[0,0]]'
+    && sh.project.faces.floor.fw === 193 && sh.project.faces.floor.fh === 156),
+  JSON.stringify(stepSheets.map(sh => sh.project.faces.floor.outline)));
+assert('smoke', '只有地坪（底牆有一階）：照實際形狀重新對門窗——A 面門 0／76、C 面窗 18／80',
+  JSON.stringify(stepSheets[0].project.openings.map(o => [o.kind, o.face, o.x, o.w])) === '[["door","A",0,76],["window","C",18,80]]',
+  JSON.stringify(stepSheets[0].project.openings));
+assert('smoke', '只有地坪（矩形房間）：形狀掃描不會多出外框，青色門窗那間仍是 243×120 矩形',
+  vmCtx.buildPlanSheet(dC, cyanRooms[0], {}).project.faces.floor.outline === undefined);
 assert('redteam', '整張平面圖：點在房間外面回「找不到」不當機', vmCtx.roomAt(dF, 2000, 2000) === null);
 assert('smoke', '只有地坪：天花／門高文字的各種寫法都讀得到',
   ['天花 FL+289', '天花板高 280', 'CH=280', 'C.H. 300', 'FL+289'].every(t => vm.runInContext('PLAN_TEXT_CEIL', vmCtx).test(t))

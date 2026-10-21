@@ -87,3 +87,18 @@ msp.add_lwpolyline([(X1, 71), (X1 + T, 71), (X1 + T, 76), (X1, 76)], close=True,
 msp.add_lwpolyline([(X1, 5), (X1 - 66, 5), (X1 - 66, 8), (X1, 8)], close=True, dxfattribs=C4)
 msp.add_arc((X1, 5), 66, 90, 180, dxfattribs=C4)
 doc.saveas(os.path.join(out, 'plan-cyan.dxf'))
+
+# 6. 底牆有一階、門口凹進牆裡（照使用者實際案例右邊那間）：內淨寬 193，左段深 156、右段深 147
+#    A 牆（左）下半是門口（凹進 21，青色門框），C 牆（右）有 80 寬的窗；牆用沒封閉的雙線聚合線
+doc = ezdxf.new('R2013'); msp = doc.modelspace()
+W = {'color': 256}; C4 = {'color': 4}
+msp.add_lwpolyline([(229, 73), (229, 0), (0, 0), (0, 15), (136, 15), (136, 24), (214, 24), (214, 73)], dxfattribs=W)
+msp.add_lwpolyline([(214, 153), (214, 171), (21, 171), (21, 91), (0, 91), (0, 186), (229, 186), (229, 153)], dxfattribs=W)
+for y in (73, 153): msp.add_line((214, y), (229, y), dxfattribs=W)
+msp.add_lwpolyline([(229, 78), (214, 78), (214, 148), (229, 148)], close=True, dxfattribs=C4)        # 窗
+for x in (219, 221.5, 224): msp.add_line((x, 78), (x, 148), dxfattribs=C4)
+msp.add_lwpolyline([(0, 15), (15, 15), (15, 20), (0, 20)], close=True, dxfattribs=C4)                # 門框
+msp.add_lwpolyline([(0, 86), (15, 86), (15, 91), (0, 91)], close=True, dxfattribs=C4)
+msp.add_lwpolyline([(15, 20), (81, 20), (81, 23), (15, 23)], close=True, dxfattribs=C4)              # 門片
+msp.add_arc((15, 20), 66, 0, 90, dxfattribs=C4)
+doc.saveas(os.path.join(out, 'plan-step.dxf'))

@@ -883,7 +883,9 @@ function planDoors(dxf, arcs, P, dims, doorH) {
     // 平面位置換成立面距左（A、D 左右相反）
     const x = r1((k === 'A' || k === 'D') ? fw[k] - s0 - w : s0);
     if (doors.some(d => d.face === k && Math.abs(d.x - x) < 10)) continue;
-    doors.push({ kind: 'door', face: k, w, h: doorH, x: Math.max(0, x), y: 0 });
+    // span：門在牆線上的實際範圍（圖面座標，掃房間形狀時當開口跳過）
+    const span = horiz ? { side: k, a: P.x0 + s0, b: P.x0 + s0 + w } : { side: k, a: P.y1 - s0 - w, b: P.y1 - s0 };
+    doors.push({ kind: 'door', face: k, w, h: doorH, x: Math.max(0, x), y: 0, span });
   }
   return doors.map((d, i) => Object.assign({ name: `門 ${i + 1}（${d.face} 面）` }, d));
 }
@@ -913,17 +915,119 @@ function planWindows(dxf, P, dims, doors, sill, winH) {
       const s0 = horiz ? g0 - P.x0 : P.y1 - g1;
       const x = r1((k === 'A' || k === 'D') ? dims[k] - s0 - w : s0);
       if (doors.some(d => d.face === k && x < d.x + d.w - 1 && x + w > d.x + 1)) continue; // 是門洞
-      out.push({ kind: 'window', face: k, w, h: winH, x: Math.max(0, x), y: sill });
+      out.push({ kind: 'window', face: k, w, h: winH, x: Math.max(0, x), y: sill, span: { side: k, a: g0, b: g1 } });
     }
   }
   return out.map((o, i) => Object.assign({ name: `窗 ${i + 1}（${o.face} 面）` }, o));
+}
+
+// 房間實際形狀（牆用一段段直線畫、沒有封閉外框時）：沿四面牆每 2cm 掃一條射線量牆在哪，
+// 門窗開口（spans）與穿出去的射線當開口跳過、用旁邊的牆補；再把「左右牆之間、上下牆之間」的範圍圍成多邊形
+// 回傳圖面座標的多邊形；就是矩形或量不出來回 null
+function traceRoomOutline(dxf, P, spans) {
+  const W = P.x1 - P.x0, Hh = P.y1 - P.y0;
+  const segs = planWallSegs(dxf.entities, false).filter(([x1, y1, x2, y2]) =>
+    Math.max(x1, x2) > P.x0 - W && Math.min(x1, x2) < P.x1 + W && Math.max(y1, y2) > P.y0 - Hh && Math.min(y1, y2) < P.y1 + Hh);
+  const cx = (P.x0 + P.x1) / 2, cy = (P.y0 + P.y1) / 2, STEP = 2, FAR = 150;
+  const cast = (o, dir) => {
+    let best = null;
+    for (const [x1, y1, x2, y2] of segs) {
+      if (dir === 'L' || dir === 'R') {
+        if (!(Math.min(y1, y2) <= o && o <= Math.max(y1, y2) && Math.abs(y2 - y1) > 0.05)) continue;
+        const x = x1 + (o - y1) * (x2 - x1) / (y2 - y1), d = dir === 'L' ? cx - x : x - cx;
+        if (d > 0 && (best === null || d < best.d)) best = { d, v: x };
+      } else {
+        if (!(Math.min(x1, x2) <= o && o <= Math.max(x1, x2) && Math.abs(x2 - x1) > 0.05)) continue;
+        const y = y1 + (o - x1) * (y2 - y1) / (x2 - x1), d = dir === 'B' ? cy - y : y - cy;
+        if (d > 0 && (best === null || d < best.d)) best = { d, v: y };
+      }
+    }
+    return best ? best.v : null;
+  };
+  const side = { L: 'A', R: 'C', B: 'D', T: 'B' };
+  const edge = { L: P.x0, R: P.x1, B: P.y0, T: P.y1 };
+  const out = { L: -1, R: 1, B: -1, T: 1 };
+  // 一個方向的牆位置：開口、穿出去太遠、沒打到的取樣先空著，再用最近的有效取樣補
+  const profile = (dir, lo, hi) => {
+    const pts = [];
+    for (let o = lo + 1; o < hi; o += STEP) {
+      let v = cast(o, dir);
+      if (v !== null) {
+        const beyond = (v - edge[dir]) * out[dir];
+        const inOpening = spans.some(sp => sp.side === side[dir] && o > sp.a - 1 && o < sp.b + 1);
+        if (beyond > FAR || (inOpening && beyond > 1)) v = null;
+      }
+      pts.push([o, v]);
+    }
+    const ok = pts.filter(q => q[1] !== null);
+    if (!ok.length) return null;
+    return pts.map(([o, v]) => [o, v !== null ? v : ok.reduce((b, q) => Math.abs(q[0] - o) < Math.abs(b[0] - o) ? q : b)[1]]);
+  };
+  const Bp = profile('B', P.x0, P.x1), Tp = profile('T', P.x0, P.x1);
+  if (!Bp || !Tp) return null;
+  const yLo = Math.min(...Bp.map(q => q[1])), yHi = Math.max(...Tp.map(q => q[1]));
+  const Lp = profile('L', yLo, yHi), Rp = profile('R', yLo, yHi);
+  if (!Lp || !Rp) return null;
+  const at = (prof, o) => prof.reduce((b, q) => Math.abs(q[0] - o) < Math.abs(b[0] - o) ? q : b)[1];
+  // 格線＝各段牆的實際位置（不是 2cm 取樣點），每一格看中心點在不在房間裡
+  const uniq = vals => [...new Set(vals.map(v => Math.round(v * 10) / 10))].sort((a, b) => a - b);
+  const xs = uniq([P.x0, P.x1].concat(Lp.map(q => q[1]), Rp.map(q => q[1])));
+  const ys = uniq([P.y0, P.y1].concat(Bp.map(q => q[1]), Tp.map(q => q[1])));
+  const nx = xs.length - 1, ny = ys.length - 1;
+  const inside = [];
+  for (let i = 0; i < nx; i++) {
+    inside.push([]);
+    for (let j = 0; j < ny; j++) {
+      const mx = (xs[i] + xs[i + 1]) / 2, my = (ys[j] + ys[j + 1]) / 2;
+      inside[i].push(at(Lp, my) <= mx && mx <= at(Rp, my) && at(Bp, mx) <= my && my <= at(Tp, mx));
+    }
+  }
+  const isIn = (i, j) => i >= 0 && j >= 0 && i < nx && j < ny && inside[i][j];
+  // 外框：每一格露在外面的邊（逆時針方向），接成一圈，再把同一直線上的點去掉
+  const next = new Map();
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+    if (!inside[i][j]) continue;
+    if (!isIn(i, j - 1)) next.set(`${i},${j}`, [i + 1, j]);
+    if (!isIn(i + 1, j)) next.set(`${i + 1},${j}`, [i + 1, j + 1]);
+    if (!isIn(i, j + 1)) next.set(`${i + 1},${j + 1}`, [i, j + 1]);
+    if (!isIn(i - 1, j)) next.set(`${i},${j + 1}`, [i, j]);
+  }
+  if (!next.size) return null;
+  const start = [...next.keys()][0];
+  const loop = [];
+  let k = start;
+  for (let guard = 0; guard <= next.size; guard++) {
+    const [i, j] = k.split(',').map(Number);
+    loop.push([xs[i], ys[j]]);
+    const nx2 = next.get(k);
+    if (!nx2) return null;
+    k = `${nx2[0]},${nx2[1]}`;
+    if (k === start) break;
+  }
+  const poly = loop.filter((q, idx) => {
+    const a = loop[(idx - 1 + loop.length) % loop.length], b = loop[(idx + 1) % loop.length];
+    return !((Math.abs(a[0] - q[0]) < 1e-6 && Math.abs(b[0] - q[0]) < 1e-6) || (Math.abs(a[1] - q[1]) < 1e-6 && Math.abs(b[1] - q[1]) < 1e-6));
+  });
+  if (poly.length <= 4 || next.size !== loop.length) return null; // 就是矩形，或圍出不只一塊
+  const A = polyArea(poly);
+  return A > W * Hh * 0.5 && A < W * Hh * 2 ? poly : null;
 }
 
 // 一間房間 → 施工圖資料（四面牆由地坪四邊產生）
 function buildPlanSheet(dxf, room, opts) {
   opts = opts || {};
   const warnings = [];
-  const P = { x0: room.x0, y0: room.y0, x1: room.x1, y1: room.y1 };
+  let P = { x0: room.x0, y0: room.y0, x1: room.x1, y1: room.y1 };
+  // 牆用直線畫的房間：先用矩形找門窗，再沿牆掃出實際形狀（底牆有一階、內凹…），用新範圍重新對門窗
+  let traced = null;
+  if (!room.e && !room.quad) {
+    const arcs0 = allArcs(dxf).filter(a => a.c[0] > P.x0 - 40 && a.c[0] < P.x1 + 40 && a.c[1] > P.y0 - 40 && a.c[1] < P.y1 + 40);
+    const dims0 = { A: P.y1 - P.y0, B: P.x1 - P.x0, C: P.y1 - P.y0, D: P.x1 - P.x0 };
+    const d0 = planDoors(dxf, arcs0, P, dims0, 210);
+    const spans = d0.concat(planWindows(dxf, P, dims0, d0, 90, 120)).map(o => o.span);
+    traced = traceRoomOutline(dxf, P, spans);
+    if (traced) P = bboxOf(traced);
+  }
   const fwF = r1(P.x1 - P.x0), fhF = r1(P.y1 - P.y0);
   const near = 250;
   const texts = dxf.entities.filter(e => (e.type === 'TEXT' || e.type === 'MTEXT') && e.text
@@ -936,7 +1040,10 @@ function buildPlanSheet(dxf, room, opts) {
 
   const floor = { fw: fwF, fh: fhF, dir: 'H', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0 };
   const outline = room.e ? planOutline(room.e.pts, true, P) : null;
-  if (outline && outline !== 'odd') {
+  if (traced) {
+    floor.outline = traced.map(q => [r1(q[0] - P.x0), r1(P.y1 - q[1])]);
+    warnings.push(`地坪不是矩形：照牆線圍出 ${traced.length} 個角的實際形狀算地磚；四面牆寬以外框四邊近似，門口凹進去的門檻不算`);
+  } else if (outline && outline !== 'odd') {
     floor.outline = outline;
     warnings.push('地坪不是矩形：四面牆寬以外框四邊近似（L 形的內凹牆面請另外確認）');
   } else if (room.quad) floor.outline = room.quad.map(q => [r1(q[0] - P.x0), r1(P.y1 - q[1])]);
@@ -955,7 +1062,7 @@ function buildPlanSheet(dxf, room, opts) {
   const windows = planWindows(dxf, P, dims, doors, sill, Math.min(winH, H - sill));
   if (windows.length) warnings.push(`找到 ${windows.length} 扇窗（左右位置、寬度照平面）；窗台 ${sill}、窗高 ${Math.min(winH, H - sill)} 是預設值，請照實際改`);
   else warnings.push('平面上沒找到窗；有窗請在「門窗」清單補上');
-  const openings = doors.concat(windows);
+  const openings = doors.concat(windows).map(o => { const c = Object.assign({}, o); delete c.span; return c; });
 
   const faces = { floor };
   for (const k of DXF_FACE_LETTERS) {
