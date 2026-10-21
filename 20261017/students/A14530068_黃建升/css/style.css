@@ -7,6 +7,11 @@
 body{font-family:"Segoe UI","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);padding:24px}
 h1{font-size:20px;font-weight:600;letter-spacing:.5px;margin-bottom:4px}
 .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+.steps{display:flex;gap:8px;list-style:none;counter-reset:st;margin:6px 0 18px;padding:0;flex-wrap:wrap}
+.steps li{counter-increment:st;flex:1 1 200px;display:flex;flex-direction:column;gap:2px;padding:8px 12px 8px 40px;position:relative;background:#fbfaf7;border:1px solid #e3ddd0;border-radius:8px;font-size:13px}
+.steps li::before{content:counter(st);position:absolute;left:10px;top:9px;width:22px;height:22px;border-radius:50%;background:var(--accent,#b8352b);color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center}
+.steps li span{color:var(--muted);font-size:11.5px}
+@media print{.steps{display:none}}
 .layout{display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;position:relative}
 .card h2{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--accent)}

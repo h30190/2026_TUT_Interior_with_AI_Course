@@ -24,6 +24,7 @@
 | `js/dxf-template.js` | 匯出 DXF 用的空白 R2013 圖檔骨架（**自動產生，不要手改**；改圖層／字型／尺寸樣式時改 `tools/make_dxf_template.py` 再執行，需要 `pip install ezdxf`） |
 | `js/dxf-export.js` | 匯出 DXF：照下面「匯出 DXF 畫法」把五面畫進骨架 |
 | `js/app.js` | 畫面事件、算料表、報價表、滑鼠拖曳 |
+| `操作說明.md` | 給使用者看的一頁操作說明；加功能、改規則時要一起更新 |
 | `tests/test-runner.js` | 計算邏輯測試（Node 直接跑） |
 | `tests/browser-test.js` | 瀏覽器實測（Playwright，真的按按鈕） |
 | `tests/fixtures/sample-bathroom.dxf` | 測試用 DXF（已去個資） |
