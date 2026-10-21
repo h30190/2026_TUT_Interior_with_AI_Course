@@ -1,9 +1,12 @@
 // 應用程式入口：UI 事件綁定、畫布滑鼠拖曳放樣、CAD 鎖點與一鍵地壁對縫
 
-// 碎磚警示欄：小料片數，其中要避免的另外註明
+// 碎磚警示欄：小料片數（其中要避免的另外註明）＋包住門窗轉角的 L 型切割
 function sliverTxt(g) {
-  if (!g.danger) return '—';
-  return `⚠ ${g.danger} 片` + (g.avoid ? `<br><small>避免小料 ${g.avoid}</small>` : '');
+  if (!g.danger && !g.lcut) return '—';
+  const parts = [];
+  if (g.danger) parts.push(`⚠ ${g.danger} 片` + (g.avoid ? `<br><small>避免小料 ${g.avoid}</small>` : ''));
+  if (g.lcut) parts.push(`<small>L 型切割 ${g.lcut}</small>`);
+  return parts.join('<br>');
 }
 
 function renderTable(rows, p) {
@@ -11,9 +14,9 @@ function renderTable(rows, p) {
   tb.innerHTML = '';
   const lossOf = g => g.net > 0 ? ((g.total - g.net) / g.net * 100) : 0;
   const byMat = {};
-  let danger = 0, opArea = 0;
+  let danger = 0, lcut = 0, opArea = 0;
   for (const s of rows) {
-    danger += s.r.danger; opArea += s.r.opArea;
+    danger += s.r.danger; lcut += s.r.lcut || 0; opArea += s.r.opArea;
     const opTxt = s.ops.length || s.r.voidArea
       ? s.ops.map(o => (o.kind === 'door' ? '門' : '窗') + ' ' + o.w + '×' + o.h)
         .concat(s.r.voidArea > 1 ? [`外框外 ${(s.r.voidArea / 10000).toFixed(2)} m²`] : []).join('<br>')
@@ -28,8 +31,8 @@ function renderTable(rows, p) {
     }
     // 有分區的面：每種磚各一行（不同尺寸的片數不能相加）
     s.r.groups.forEach((g, gi) => {
-      const m = byMat[g.label] || (byMat[g.label] = { net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0, TL: g.TL, TW: g.TW, name: g.name });
-      ['net', 'full', 'cut', 'total', 'danger', 'avoid'].forEach(k => { m[k] += g[k]; });
+      const m = byMat[g.label] || (byMat[g.label] = { net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0, lcut: 0, TL: g.TL, TW: g.TW, name: g.name });
+      ['net', 'full', 'cut', 'total', 'danger', 'avoid', 'lcut'].forEach(k => { m[k] += g[k] || 0; });
       const tr = document.createElement('tr');
       const multi = s.r.groups.length > 1;
       tr.innerHTML = `<td>${s.name}${multi ? `<br><small>${g.label}</small>` : ''}</td><td>${gi === 0 ? s.fw + '×' + s.fh : ''}</td>
@@ -40,7 +43,7 @@ function renderTable(rows, p) {
         <td>${gi === 0 ? opTxt : ''}</td>
         <td>${fmt(g.full)}</td><td>${fmt(g.cut)}</td><td>${fmt(g.total)}</td>
         <td>${lossOf(g).toFixed(1)}</td>
-        <td class="${g.danger > 0 ? 'danger' : ''}">${sliverTxt(g)}</td>`;
+        <td class="${g.danger > 0 || g.lcut > 0 ? 'danger' : ''}">${sliverTxt(g)}</td>`;
       tb.appendChild(tr);
     });
   }
@@ -53,10 +56,10 @@ function renderTable(rows, p) {
       <td>${i === 0 && opArea > 0 ? (opArea / 10000).toFixed(2) + ' m²' : '—'}</td>
       <td>${fmt(m.full)}</td><td>${fmt(m.cut)}</td><td>${fmt(m.total)}</td>
       <td>${lossOf(m).toFixed(1)}</td>
-      <td class="${m.danger > 0 ? 'danger' : ''}">${sliverTxt(m)}</td>`;
+      <td class="${m.danger > 0 || m.lcut > 0 ? 'danger' : ''}">${sliverTxt(m)}</td>`;
     tb.appendChild(tr);
   });
-  return { mats, danger, opArea };
+  return { mats, danger, lcut, opArea };
 }
 
 function renderConcl(p, tot) {
@@ -79,6 +82,10 @@ function renderConcl(p, tot) {
       + '，可拖曳紅線或點「✨ 智慧消滅小料」調整。';
   } else {
     txt += '  未出現危險碎磚，排磚配置安全。';
+  }
+  if (tot.lcut > 0) {
+    const names = rows.filter(s => s.r.lcut > 0).map(s => `${s.name} ${s.r.lcut} 片`).join('、');
+    txt += ` ⚠️ 有 ${tot.lcut} 片磚包住門窗轉角要切成 L 型（${names}），圖上紅圈標「避免L型」，可點「🧠 自動找最佳起磚點」找不會包轉角的起點。`;
   }
   document.getElementById('concl').textContent = txt;
 }
@@ -177,14 +184,15 @@ function refresh() {
   renderQuote(p, tot, reuse);
 
   // 碎磚警示條與智慧消滅小料按鈕聯動
-  const anyDanger = tot.danger > 0;
+  const anyDanger = tot.danger > 0 || tot.lcut > 0;
   const w = document.getElementById('warn');
   const btnAuto = document.getElementById('btnAutoFix');
   if (anyDanger) {
     w.style.display = 'flex';
     document.getElementById('warnMsg').textContent =
-      `⚠️ 存在細長碎磚（共 ${tot.danger} 片），建議用滑鼠拖曳起磚靶心 🎯，或一鍵自動優化：`;
-    if (btnAuto) btnAuto.style.display = 'inline-block';
+      `⚠️ ${[tot.danger ? `細長碎磚 ${tot.danger} 片` : '', tot.lcut ? `L 型切割 ${tot.lcut} 片` : ''].filter(Boolean).join('、')}，`
+      + (tot.danger ? '建議用滑鼠拖曳起磚靶心 🎯，或一鍵自動優化：' : '可點下方「🧠 自動找最佳起磚點」找不會包住門窗轉角的起點。');
+    if (btnAuto) btnAuto.style.display = tot.danger ? 'inline-block' : 'none';
   } else {
     w.style.display = 'none';
     if (btnAuto) btnAuto.style.display = 'none';
@@ -697,14 +705,14 @@ function renderPlans(plans) {
     return pl === cur || !d ? '' : ` <small class="muted">(${d > 0 ? '+' : ''}${d})</small>`;
   };
   host.style.display = 'block';
-  host.innerHTML = `<h3>🧠 起磚方案比較（先比小料片數，再比浪費面積）</h3>
-    <table><thead><tr><th>方案</th><th>說明</th><th>小料</th>${labels.map(l => `<th>${l}（片）</th>`).join('')}<th>浪費 m²</th><th></th></tr></thead><tbody>
+  host.innerHTML = `<h3>🧠 起磚方案比較（先比小料片數，再比 L 型切割，最後比浪費面積）</h3>
+    <table><thead><tr><th>方案</th><th>說明</th><th>小料</th><th>L 型</th>${labels.map(l => `<th>${l}（片）</th>`).join('')}<th>浪費 m²</th><th></th></tr></thead><tbody>
     ${plans.map(pl => `<tr class="${pl.best ? 'best' : ''}"><td>${pl.best ? '<span class="star">★推薦</span> ' : ''}${pl.name}</td><td class="muted">${pl.desc}</td>
-      <td>${pl.score.danger}</td>${labels.map(l => `<td>${fmt(pl.score.byLabel[l] || 0)}${diff(pl, l)}</td>`).join('')}
+      <td>${pl.score.danger}</td><td>${pl.score.lcut}</td>${labels.map(l => `<td>${fmt(pl.score.byLabel[l] || 0)}${diff(pl, l)}</td>`).join('')}
       <td>${(pl.score.waste / 10000).toFixed(2)}</td>
       <td>${pl.id === 'current' ? '<span class="muted">目前</span>' : `<button data-plan="${pl.id}">套用</button>`}</td></tr>`).join('')}
     </tbody></table>
-    <div class="muted" style="margin-top:6px">牆面只調水平起磚（垂直仍由地面往上排）；改了設定請再按一次重新比較。</div>`;
+    <div class="muted" style="margin-top:6px">牆面左右逐公分試、上下試由地起與磚縫對齊門頂／窗台；改了設定請再按一次重新比較。</div>`;
   host.querySelectorAll('button[data-plan]').forEach(b => b.addEventListener('click', () => applyPlan(b.dataset.plan)));
 }
 

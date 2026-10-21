@@ -179,6 +179,7 @@
         <span><i class="sw" style="background:var(--cut)"></i>裁切修邊磚</span>
         <span><i class="sw" style="background:#f08a7a"></i>小料（最短邊 &lt; 5cm）</span>
         <span><i class="sw" style="background:#d62f2f"></i>避免小料（紅圈，預設 &lt; 5cm）</span>
+        <span><i class="sw" style="background:#fff;border:1.5px solid #d22;border-radius:50%"></i>避免L型（磚包住門窗轉角）</span>
         <span><i class="sw" style="background:#fff;border:1px dashed #2b2b2b"></i>壁地交接折線</span>
         <span><i class="sw" style="background:#eaf2fa;border:2px solid #3a76b5"></i>門窗開口（不鋪磚，可拖曳）</span>
         <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>🎯 紅色起磚靶心（可拖曳）</span>
@@ -188,7 +189,7 @@
         <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>紅線＝放樣基準線（可拖曳）</span>
         <span><i class="sw" style="background:#fff;border-top:3px solid #7cb518"></i>綠箭頭＝由此線開始放樣</span>
         <span><i class="sw" style="background:rgba(224,69,69,0.12)"></i>淡紅＝小料（&lt; 5cm）</span>
-        <span><i class="sw" style="background:#fff;border:1.5px solid #d22;border-radius:50%"></i>紅圈＝避免小料（預設 &lt; 5cm）</span>
+        <span><i class="sw" style="background:#fff;border:1.5px solid #d22;border-radius:50%"></i>紅圈＝避免小料（預設 &lt; 5cm）／避免L型（包住門窗轉角）</span>
         <span><i class="sw" style="background:#fff;border:2px solid #18a7c9"></i>門窗開口（不鋪磚，可拖曳）</span>
       </div>
       <div id="warn" class="warn" style="display:none">
@@ -202,7 +203,7 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <h2>五面獨立排磚控制面板（地坪平面與四面立面）</h2>
         <div style="display:flex;gap:8px;align-items:center">
-          <button id="btnSearchPlans" class="plan-search-btn" title="比較幾種起磚方案：小料最少、浪費最少">🧠 自動找最佳起磚點</button>
+          <button id="btnSearchPlans" class="plan-search-btn" title="比較幾種起磚方案：小料最少、不包住門窗轉角（L 型）、浪費最少">🧠 自動找最佳起磚點</button>
           <button id="btnLockJointsPanel" class="lock-toggle-btn">🔒 鎖定四面對縫（壁磚自動跟隨地磚）</button>
           <button id="syncWalls" class="syncbtn" style="width:auto;padding:6px 14px">一鍵同步四面牆（A→B/C/D）</button>
         </div>

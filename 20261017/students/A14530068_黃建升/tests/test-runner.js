@@ -392,6 +392,25 @@ assert('smoke', '方案比較：四面對縫方案的牆起點＝鎖定對縫的
   ['A', 'B', 'C', 'D'].every(k => Math.abs(vmCtx.calcJointAlignment(vmCtx.params(), dimsS18, k) - jointPlan.over[k].xoff) < 1e-6));
 assert('smoke', `方案比較：一間浴室算完 < 3 秒（實測 ${msS18}ms）`, msS18 < 3000);
 
+// Test S18b: L 型切割（磚包住門窗轉角，再小都算）
+// #18 D 面：寬 210、高 289、120 磚、起磚線 104、門 104～190 高 239
+const pL = { TL: 120, TW: 120, joint: 0.2, smallTh: 5, avoidTh: 5 };
+const doorL = [{ kind: 'door', x: 104, y: 0, w: 86, h: 239 }];
+const cfgL = { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 104, yalign: 'bottom', yoff: 0 };
+const fromFloor = layout(pL, 210, 289, cfgL, doorL, true);
+const lTile = fromFloor.tiles.find(t => t.lcut);
+assert('smoke', 'L 型：從地面排，120.2～240.2 那排包住門右上角（門頂只多 1.2cm 也算）',
+  fromFloor.lcut === 1 && lTile && lTile.lc[0] === 190 && lTile.lc[1] === 239, JSON.stringify({ n: fromFloor.lcut, lc: lTile && lTile.lc }));
+const alignTop = layout(pL, 210, 289, Object.assign({}, cfgL, { yalign: 'custom', yoff: 239 - 120.2 }), doorL, true);
+assert('smoke', 'L 型：橫縫對齊門頂 239（像原施工圖）就沒有 L 型', alignTop.lcut === 0, String(alignTop.lcut));
+assert('smoke', 'L 型：門邊整條切（直縫剛好在門框）不算 L 型', layout(pL, 210, 289, Object.assign({}, cfgL, { yalign: 'custom', yoff: 239 - 120.2 }), doorL, true).tiles.filter(t => t.lcut).length === 0
+  && vmCtx.lCutOf(100, 0, 220, 120, [{ x: 104, y: 0, w: 86, h: 239 }]) === null && JSON.stringify(vmCtx.lCutOf(100, 200, 220, 320, [{ x: 104, y: 0, w: 86, h: 239 }])) === '[104,239]');
+const overL = vmCtx.bestFaceOffsets(pL, 210, 289, cfgL, doorL, null, false);
+const bestL = layout(pL, 210, 289, Object.assign({}, cfgL, overL), doorL, true);
+assert('smoke', 'L 型：自動找起磚點會上下移動避開 L 型，且不產生小料', bestL.lcut === 0 && bestL.danger === 0, JSON.stringify(overL));
+assert('smoke', 'L 型：方案比較先比小料、再比 L 型、最後比浪費',
+  vmCtx.betterScore({ danger: 0, lcut: 1, waste: 0 }, { danger: 1, lcut: 0, waste: 0 }) && vmCtx.betterScore({ danger: 0, lcut: 0, waste: 9 }, { danger: 0, lcut: 1, waste: 0 }));
+
 // Test S19: 匯出 DXF（照施工圖畫法，貼回 AutoCAD）
 // 124.2×250 牆、60 磚、縫 0.2、靠左由地起：磚縫取縫中線 → 直縫 60.1、120.3；橫縫 60.1、120.3、180.5、240.7
 const wallS19 = layout(pS18, 124.2, 250, cfgS18, [], true);

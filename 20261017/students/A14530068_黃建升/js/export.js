@@ -113,6 +113,7 @@ function collectAllSheets(sheets, withImages) {
     out.push({
       i, sheet: s, totals: sheetMaterialTotals(),
       danger: computeAll(params()).reduce((a, r) => a + r.r.danger, 0),
+      lcut: computeAll(params()).reduce((a, r) => a + (r.r.lcut || 0), 0),
       warnings: s.warnings,
       img: withImages ? renderHiRes(3) : null
     });
@@ -169,9 +170,9 @@ function batchExportPdf(sheets) {
           <td><b>${a.order}</b></td><td>${a.price > 0 ? fmt(a.price) : '未填'}</td><td>${a.amount !== null ? fmt(a.amount) : '—'}</td></tr>`).join('')}
           <tr class="total"><td colspan="11">全案合計${totals.some(a => a.amount === null) ? `（${totals.filter(a => a.amount === null).length} 種材料未填單價）` : ''}</td><td><b>${fmt(totals.reduce((s, a) => s + (a.amount || 0), 0))}</b></td></tr></tbody></table>
       <h2>各圖明細</h2>
-      <table class="ps-mats"><thead><tr><th>#</th><th>圖名</th><th>叫料</th><th>小料</th><th>需要確認</th></tr></thead>
+      <table class="ps-mats"><thead><tr><th>#</th><th>圖名</th><th>叫料</th><th>小料</th><th>L 型</th><th>需要確認</th></tr></thead>
         <tbody>${results.map(r => `<tr><td>${r.i + 1}</td><td>${escapeHtml(sheetName(r))}</td><td>${escapeHtml(totalsText(r))}</td>
-          <td>${r.danger || '—'}</td><td class="ps-small">${escapeHtml((r.warnings || []).join('；'))}</td></tr>`).join('')}</tbody></table>
+          <td>${r.danger || '—'}</td><td>${r.lcut || '—'}</td><td class="ps-small">${escapeHtml((r.warnings || []).join('；'))}</td></tr>`).join('')}</tbody></table>
       <p class="ps-note">叫料＝整磚＋裁切（裁切磚不回填復用），未含現場備品；請依各圖「需要確認」項目核對後再下單。</p>
     </section>`;
   const pages = results.filter(r => r.img).map(r => `

@@ -373,6 +373,16 @@ function dxfFace(d, s, p, map, outline) {
     d.line(map(toLeft ? v.cx - 6 : v.cx + 6, v.cy), e, '地磚', 1);
     d.text(e, DXF_TXT, '避免小料', toLeft ? 6 : 4, { layer: '地磚', color: 1 });
   }
+  // L 型切割：紅圈圈在包住的門窗轉角，第一個加「避免L型」
+  r.tiles.filter(t => t.lcut).forEach((t, i) => {
+    const c = map(t.lc[0], t.lc[1]);
+    d.circle(c, 6, '地磚', 1);
+    if (i) return;
+    const toLeft = t.lc[0] + 18 + dxfTextW('避免L型', DXF_TXT) > fw;
+    const e = map(toLeft ? t.lc[0] - 18 : t.lc[0] + 18, t.lc[1] + (s.key === 'floor' ? -10 : 10));
+    d.line(map(toLeft ? t.lc[0] - 6 : t.lc[0] + 6, t.lc[1]), e, '地磚', 1);
+    d.text(e, DXF_TXT, '避免L型', toLeft ? 9 : 7, { layer: '地磚', color: 1 });
+  });
   if (!ov || !ov.notes.length) dxfMaterialLabels(d, r, fw, fh, map, ops, s.key === 'floor' ? [fw / 2, fh / 2] : null);
 }
 

@@ -171,16 +171,20 @@ function check(name, ok, info) {
   // 8. 自動找最佳起磚點：比較方案、套用推薦
   n = errors.length;
   await page.click('button[data-p="demo"]');
-  const scoreNow = () => page.evaluate(() => { const s = planScore(computeAll(params())); return { danger: s.danger, waste: s.waste }; });
+  const scoreNow = () => page.evaluate(() => { const s = planScore(computeAll(params())); return { danger: s.danger, lcut: s.lcut, waste: s.waste }; });
   const before8 = await scoreNow();
+  // 示範案例 D 面從地面排會包住門右上角：算料表、結論要提醒 L 型
+  const lWarn = await page.evaluate(() => ({ concl: $('concl').textContent, warn: $('warnMsg').textContent, table: document.querySelector('#tbl').textContent }));
+  check(`L 型切割：示範案例 D 面 ${before8.lcut} 片，結論、提示列、算料表都有寫`,
+    before8.lcut > 0 && lWarn.concl.includes('L 型') && lWarn.warn.includes('L 型切割') && lWarn.table.includes('L 型切割'), JSON.stringify(lWarn).slice(0, 300));
   await page.click('#btnSearchPlans');
   await page.waitForSelector('#planResults tr.best', { timeout: 20000 });
   const planRows = await page.$$eval('#planResults tbody tr', rs => rs.length);
   const bestBtn = await page.$('#planResults tr.best button[data-plan]');
   if (bestBtn) await bestBtn.click();
   const after8 = await scoreNow();
-  check(`自動起磚點：列出 ${planRows} 個方案，套用推薦後小料 ${before8.danger} → ${after8.danger}、浪費不增加`,
-    planRows === 4 && after8.danger <= before8.danger && (after8.danger < before8.danger || after8.waste <= before8.waste + 1e-6) && errors.length === n,
+  check(`自動起磚點：列出 ${planRows} 個方案，套用推薦後小料 ${before8.danger} → ${after8.danger}、L 型 ${before8.lcut} → ${after8.lcut}`,
+    planRows === 4 && !(await page.evaluate(([a, b]) => betterScore(a, b), [before8, after8])) && errors.length === n,
     JSON.stringify({ before8, after8, err: errorsSince(n) }));
 
   // 9. 匯出 DXF（照施工圖畫法）

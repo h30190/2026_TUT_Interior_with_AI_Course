@@ -52,12 +52,12 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
     }
     if (drawStyle === 'line') {
       // 線稿：只畫磚縫，小料淡紅底提醒
-      ctx.fillStyle = t.avoid ? 'rgba(224, 69, 69, 0.30)' : (t.danger ? 'rgba(224, 69, 69, 0.12)' : '#ffffff');
+      ctx.fillStyle = t.avoid ? 'rgba(224, 69, 69, 0.30)' : (t.danger || t.lcut ? 'rgba(224, 69, 69, 0.12)' : '#ffffff');
       ctx.strokeStyle = '#8c8c8c';
       ctx.lineWidth = 0.7;
     } else {
       // 分區磚（例如主秀壁）整磚改用淡藍，一眼分得出兩種材料
-      ctx.fillStyle = t.avoid ? '#d62f2f' : t.danger ? '#f08a7a' : (t.full ? (t.zone ? '#dfe9f2' : '#efe9df') : '#f2b48c');
+      ctx.fillStyle = t.avoid ? '#d62f2f' : t.danger ? '#f08a7a' : t.lcut ? '#f3c96b' : (t.full ? (t.zone ? '#dfe9f2' : '#efe9df') : '#f2b48c');
       ctx.strokeStyle = '#d8d2c6';
       ctx.lineWidth = 0.6;
     }
@@ -309,6 +309,25 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
       ctx.fillText(label, lx, ly);
     }
   }
+  // L 型切割：紅圈圈在磚包住的門窗轉角，第一個寫「避免L型」
+  const lts = r.tiles.filter(q => q.lcut);
+  lts.forEach((q, i) => {
+    const cx = ox + q.lc[0] * sc;
+    const cy = isElevation ? oy + (fh - q.lc[1]) * sc : oy + q.lc[1] * sc;
+    ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI * 2); ctx.stroke();
+    if (i) return;
+    const label = '避免L型';
+    ctx.font = 'bold 11px sans-serif';
+    const lw = ctx.measureText(label).width;
+    const toLeft = cx + 14 + lw > ox + fw * sc;
+    const lx = toLeft ? cx - 14 - lw : cx + 14;
+    const ly = Math.max(oy + 34, Math.min(oy + fh * sc - 6, cy - 6));
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillRect(lx - 2, ly - 11, lw + 4, 14);
+    ctx.fillStyle = '#d22'; ctx.textAlign = 'left';
+    ctx.fillText(label, lx, ly);
+  });
   ctx.restore();
 }
 

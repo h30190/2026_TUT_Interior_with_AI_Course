@@ -132,6 +132,22 @@ function sliverOf(t, ops, th) {
   return { danger: visMin < th.small, avoid: visMin < th.avoid, visMin };
 }
 
+// L 型切割（依黃建升的現場經驗）：磚包住門窗轉角，要切兩刀、內角易裂、難對位，再小都要避免
+// 判斷：門窗跟這塊磚（面內露出範圍）重疊，但重疊部分寬、高都沒有佔滿整塊磚 → 有門窗轉角落在磚裡
+// 回傳落在磚裡的那個門窗轉角（標記用），沒有就回 null
+function lCutOf(vx0, vy0, vx1, vy1, ops) {
+  for (const o of ops) {
+    const ix0 = Math.max(vx0, o.x), ix1 = Math.min(vx1, o.x + o.w);
+    const iy0 = Math.max(vy0, o.y), iy1 = Math.min(vy1, o.y + o.h);
+    if (ix1 - ix0 <= EPS || iy1 - iy0 <= EPS) continue;
+    const spanX = ix0 <= vx0 + EPS && ix1 >= vx1 - EPS;
+    const spanY = iy0 <= vy0 + EPS && iy1 >= vy1 - EPS;
+    if (spanX || spanY) continue;
+    return [o.x > vx0 + EPS ? o.x : o.x + o.w, o.y > vy0 + EPS ? o.y : o.y + o.h];
+  }
+  return null;
+}
+
 // 輔助函式：計算指定區間 [xMin, xMax] 內的磁磚陣列
 function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th) {
   th = th || { small: 5, avoid: 5 };
@@ -184,6 +200,8 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
         const xs = clip.map(p => p[0]), ys = clip.map(p => p[1]);
         Object.assign(t, { poly: clip, x0: Math.min(...xs), y0: Math.min(...ys), wL: Math.max(...xs) - Math.min(...xs), wW: Math.max(...ys) - Math.min(...ys) });
       }
+      const lc = lCutOf(Math.max(x0, xMin), Math.max(y0, 0), Math.min(x1, xMax), Math.min(y1, fh), ops);
+      if (lc) { t.lcut = true; t.lc = lc; }
       tiles.push(Object.assign(t, sliverOf(t, ops, th)));
     }
   }
@@ -390,11 +408,12 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   const zones = cfg.zones || [];
   const groupMap = {};
   const addGroup = (key, label, TL, TW, segTiles, segArea, segOps, name) => {
-    const g = groupMap[key] || (groupMap[key] = { key, label, name: name || '', TL, TW, full: 0, cut: 0, danger: 0, avoid: 0, area: 0, opArea: 0 });
+    const g = groupMap[key] || (groupMap[key] = { key, label, name: name || '', TL, TW, full: 0, cut: 0, danger: 0, avoid: 0, lcut: 0, area: 0, opArea: 0 });
     g.full += segTiles.filter(t => t.full).length;
     g.cut += segTiles.filter(t => !t.full).length;
     g.danger += segTiles.filter(t => t.danger).length;
     g.avoid += segTiles.filter(t => t.avoid).length;
+    g.lcut += segTiles.filter(t => t.lcut).length;
     g.area += segArea; g.opArea += segOps;
   };
   // 開口落在 [x0, x1] 這一段的面積；可鋪面積（有地坪外框時只算外框內）
@@ -443,7 +462,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   const voidArea = cfg.poly ? fw * fh - areaIn(0, fw) : 0;
   const sum = k => groups.reduce((a, g) => a + g[k], 0);
   return {
-    tiles, groups, net: sum('net'), full: sum('full'), cut: sum('cut'), total: sum('total'), danger: sum('danger'), avoid: sum('avoid'), opArea, voidArea,
+    tiles, groups, net: sum('net'), full: sum('full'), cut: sum('cut'), total: sum('total'), danger: sum('danger'), avoid: sum('avoid'), lcut: sum('lcut'), opArea, voidArea,
     xBase, yBase, tL, tW, pitchL, pitchW, col, xBase2
   };
 }
@@ -642,7 +661,7 @@ function computeAll(p, over) {
       : (col.on && col.face === f.key ? col : null);
     // 此面不鋪磚（例如圖上沒有這一面、或是油漆牆）：不排磚、不計料
     const r = cfg.skip
-      ? { tiles: [], groups: [], net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0, opArea: 0, voidArea: 0, xBase: 0, yBase: 0 }
+      ? { tiles: [], groups: [], net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0, lcut: 0, opArea: 0, voidArea: 0, xBase: 0, yBase: 0 }
       : layout(paramsFor(p, f.key), f.fw, f.fh, cfg, ops[f.key] || [], f.key !== 'floor', colInfo);
     return { key: f.key, name: f.name, fw: f.fw, fh: f.fh, cfg, r, ops: ops[f.key] || [], col: colInfo };
   });
@@ -650,41 +669,77 @@ function computeAll(p, over) {
 
 // ── 🧠 自動找最佳起磚點：排出幾個方案比較 ──
 
-// 方案好壞：先比小料片數，再比浪費面積（叫料磚的面積 − 實際要鋪的面積，不同尺寸的磚也能一起比）
+// 方案好壞：先比小料片數，再比 L 型切割片數，最後比浪費面積（叫料磚的面積 − 實際要鋪的面積，不同尺寸的磚也能一起比）
 function planScore(rows) {
-  let danger = 0, waste = 0;
+  let danger = 0, lcut = 0, waste = 0;
   const byLabel = {};
   for (const s of rows) {
     danger += s.r.danger;
+    lcut += s.r.lcut || 0;
     for (const g of s.r.groups) {
       waste += g.total * g.TL * g.TW - Math.max(0, g.area - g.opArea);
       byLabel[g.label] = (byLabel[g.label] || 0) + g.total;
     }
   }
-  return { danger, waste, byLabel };
+  return { danger, lcut, waste, byLabel };
 }
 
 function betterScore(a, b) {
-  return a.danger !== b.danger ? a.danger < b.danger : a.waste < b.waste - 1e-6;
+  if (a.danger !== b.danger) return a.danger < b.danger;
+  if (a.lcut !== b.lcut) return a.lcut < b.lcut;
+  return a.waste < b.waste - 1e-6;
 }
 
 function scoreOf(r) {
   return planScore([{ r }]);
 }
 
-// 一面在一個磚距內逐步試起磚點（地坪 X、Y 都試），回傳最好的設定
+// 讓磚縫剛好落在某些位置（門頂、窗台、門邊…）的起磚值：磚的下緣或上緣貼齊 v
+function alignCands(pitch, joint, vals) {
+  const out = [];
+  for (const v of vals) for (const c of [v, v + joint]) {
+    const m = Math.round((((c % pitch) + pitch) % pitch) * 10) / 10;
+    if (m < pitch - 0.05 && !out.includes(m)) out.push(m);
+  }
+  return out;
+}
+
+// 牆面垂直起磚的候選：先試由地面起（0），再試磚縫對齊門頂／窗台／窗頂，最後每 10cm 粗掃（避開頂端小料）
+function wallYCands(fh, pitchW, joint, ops) {
+  const vals = [];
+  for (const o of ops) { if (o.y > EPS) vals.push(o.y); if (o.y + o.h < fh - EPS) vals.push(o.y + o.h); }
+  const out = [0];
+  for (const v of alignCands(pitchW, joint, vals).concat(Array.from({ length: Math.ceil(pitchW / 10) }, (_, i) => i * 10))) {
+    if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
+function yOver(y) {
+  return y === 0 ? { yalign: 'bottom', yoff: 0 } : { yalign: 'custom', yoff: y };
+}
+
+// 一面在一個磚距內逐步試起磚點，回傳最好的設定
+// 地坪：X、Y 都逐公分試；牆面：X 逐公分（加上對齊門窗邊），Y 試 wallYCands（L 型切割常要靠上下移動才避得開）
 function bestFaceOffsets(p, fw, fh, cfg, ops, col, isFloor) {
   const tL = cfg.dir === 'H' ? p.TL : p.TW, tW = cfg.dir === 'H' ? p.TW : p.TL;
   const pitchL = tL + p.joint, pitchW = tW + p.joint;
-  const tries = isFloor ? pitchL * pitchW : pitchL;
-  const step = tries > 6000 ? 2 : 1;
-  const ys = isFloor ? Array.from({ length: Math.ceil(pitchW / step) }, (_, i) => i * step) : [null];
+  let xs, ys;
+  if (isFloor) {
+    const step = pitchL * pitchW > 6000 ? 2 : 1;
+    xs = Array.from({ length: Math.ceil(pitchL / step) }, (_, i) => i * step);
+    ys = Array.from({ length: Math.ceil(pitchW / step) }, (_, i) => i * step);
+  } else {
+    xs = Array.from({ length: Math.ceil(pitchL) }, (_, i) => i);
+    for (const v of alignCands(pitchL, p.joint, ops.flatMap(o => [o.x, o.x + o.w]))) if (!xs.includes(v)) xs.push(v);
+    ys = wallYCands(fh, pitchW, p.joint, ops);
+  }
   let best = null;
-  for (let x = 0; x < pitchL; x += step) {
+  for (const x of xs) {
     for (const y of ys) {
-      const c = Object.assign({}, cfg, { xalign: 'custom', xoff: x }, y === null ? {} : { yalign: 'custom', yoff: y });
-      const sc = scoreOf(layout(p, fw, fh, c, ops, !isFloor, col));
-      if (!best || betterScore(sc, best.sc)) best = { sc, over: y === null ? { xalign: 'custom', xoff: x } : { xalign: 'custom', xoff: x, yalign: 'custom', yoff: y } };
+      const over = Object.assign({ xalign: 'custom', xoff: x }, isFloor ? { yalign: 'custom', yoff: y } : yOver(y));
+      const sc = scoreOf(layout(p, fw, fh, Object.assign({}, cfg, over), ops, !isFloor, col));
+      if (!best || betterScore(sc, best.sc)) best = { sc, over };
     }
   }
   return best.over;
@@ -706,7 +761,7 @@ function searchPlans(p) {
     if (s.cfg.skip) continue;
     perFace[s.key] = bestFaceOffsets(paramsFor(p, s.key), s.fw, s.fh, s.cfg, s.ops, s.col, s.key === 'floor');
   }
-  add('perFace', '各面最省', '每面各自在一個磚距內逐公分試，小料最少、浪費最少', perFace);
+  add('perFace', '各面最省', '每面各自在一個磚距內逐公分試（牆面也試上下對齊門頂、窗台），小料、L 型最少、浪費最少', perFace);
 
   // 四面對縫：試地坪起點，牆縫跟著地磚縫對齊，看全室合計
   const fl = rows0.find(s => s.key === 'floor');
@@ -727,14 +782,24 @@ function searchPlans(p) {
           if (s.key === 'floor' || s.cfg.skip) continue;
           const wx = jointAlignedX(p, dims, s.key, flR, s.cfg);
           const key = s.key + ':' + wx;
-          const ws = wallCache[key] || (wallCache[key] = scoreOf(layout(paramsFor(p, s.key), s.fw, s.fh, Object.assign({}, s.cfg, { xalign: 'custom', xoff: wx }), s.ops, true, s.col)));
-          sc = { danger: sc.danger + ws.danger, waste: sc.waste + ws.waste };
-          over[s.key] = { xalign: 'custom', xoff: wx };
+          // 牆的直縫跟著地磚；上下位置另外找（避開 L 型與頂端小料）
+          let ws = wallCache[key];
+          if (!ws) {
+            const wp = paramsFor(p, s.key);
+            const pitchW = (s.cfg.dir === 'H' ? wp.TW : wp.TL) + p.joint;
+            for (const y of wallYCands(s.fh, pitchW, p.joint, s.ops)) {
+              const sc2 = scoreOf(layout(wp, s.fw, s.fh, Object.assign({}, s.cfg, { xalign: 'custom', xoff: wx }, yOver(y)), s.ops, true, s.col));
+              if (!ws || betterScore(sc2, ws.sc)) ws = { sc: sc2, y };
+            }
+            wallCache[key] = ws;
+          }
+          sc = { danger: sc.danger + ws.sc.danger, lcut: sc.lcut + ws.sc.lcut, waste: sc.waste + ws.sc.waste };
+          over[s.key] = Object.assign({ xalign: 'custom', xoff: wx }, yOver(ws.y));
         }
         if (!best || betterScore(sc, best.sc)) best = { sc, over };
       }
     }
-    add('joint', '四面對縫', '地磚縫往上連到牆磚縫，再找全室最好的地坪起點', best.over);
+    add('joint', '四面對縫', '地磚縫往上連到牆磚縫（牆面上下另外找），再找全室最好的地坪起點', best.over);
   }
 
   // 置中對稱
