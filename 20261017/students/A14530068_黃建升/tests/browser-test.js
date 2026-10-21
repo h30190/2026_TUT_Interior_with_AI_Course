@@ -80,7 +80,9 @@ function check(name, ok, info) {
 
   // 4. 匯入範例 DXF（tests/fixtures/sample-bathroom.dxf）
   n = errors.length;
-  await page.setInputFiles('#dxfFile', asUpload(path.join(__dirname, 'fixtures', 'sample-bathroom.dxf'), 'sample-bathroom.dxf', 'application/dxf'));
+  const fixtureFile = path.join(__dirname, 'fixtures', 'sample-bathroom.dxf');
+  await page.evaluate(t => { window.__fixtureText = t; }, fs.readFileSync(fixtureFile, 'utf8'));
+  await page.setInputFiles('#dxfFile', asUpload(fixtureFile, 'sample-bathroom.dxf', 'application/dxf'));
   await page.waitForFunction(() => document.getElementById('projectMetaLine').textContent.includes('範例浴室'), null, { timeout: 15000 }).catch(() => {});
   const dxf = await page.evaluate(() => ({
     meta: document.getElementById('projectMetaLine').textContent,
@@ -93,6 +95,18 @@ function check(name, ok, info) {
   check('DXF：讀到圖名「範例浴室」與四面寬 171/207/172/210', dxf.meta.includes('範例浴室') && dxf.widths === '171/207/172/210', JSON.stringify(dxf));
   check('DXF：B 面主秀壁分區、地坪 L 形外框、備註、3 種材料', dxf.zones.includes('主秀壁') && dxf.outline.split(' ').length >= 8 && dxf.notes === 1 && dxf.mats === 3, JSON.stringify(dxf));
   check('DXF 匯入過程沒有錯誤', errors.length === n, errorsSince(n));
+
+  // 4b. 整份 DXF 總叫料表：同一張圖算兩次，材料要加倍、算完恢復原畫面
+  const beforeBatch = await state();
+  const batch = await page.evaluate(() => {
+    const sh = findDxfSheets(parseDxf(window.__fixtureText));
+    const one = batchCsvText(sh), two = batchCsvText([sh[0], sh[0]]);
+    const row = (csv, code) => csv.split('\r\n').find(l => l.startsWith('壁,' + code));
+    return { one: row(one, 'CC-REX-I120'), two: row(two, 'CC-REX-I120') };
+  });
+  check('總叫料表：兩張一樣的圖，壁 120×120 片數加倍、圖數 2 張',
+    batch.one && batch.two && +batch.two.split(',')[4] === 2 * +batch.one.split(',')[4] && batch.two.endsWith(',2'), JSON.stringify(batch));
+  check('總叫料表算完恢復原本的圖', (await state()) === beforeBatch);
 
   // 5. 換情境要清掉上一張圖的分區、紅線、各面磚尺寸
   await page.click('button[data-p="demo"]');

@@ -236,9 +236,15 @@ function chainMarks(cfg) {
 }
 
 // 材料名稱：有匯入的材料就用「壁 120×120」，否則只寫尺寸
+// 這個尺寸（分區名稱）對應到哪一筆材料；分區有名稱時先比名稱
+function matOf(TL, TW, name) {
+  const same = m => m.size && ((m.size[0] === TL && m.size[1] === TW) || (m.size[0] === TW && m.size[1] === TL));
+  return (name && projectMaterials.find(m => m.role === name && same(m))) || projectMaterials.find(same) || null;
+}
+
 function matLabel(TL, TW, name) {
   const fmt = v => String(Math.round(v * 10) / 10);
-  const m = projectMaterials.find(m => m.size && ((m.size[0] === TL && m.size[1] === TW) || (m.size[0] === TW && m.size[1] === TL)));
+  const m = matOf(TL, TW, name);
   const role = name || (m ? m.role : '');
   return `${role ? role + ' ' : ''}${fmt(Math.min(TL, TW))}×${fmt(Math.max(TL, TW))}`;
 }

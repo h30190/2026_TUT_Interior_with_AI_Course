@@ -133,4 +133,7 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
   .ps-photo img{width:20mm;height:20mm;object-fit:cover;border:1px solid #ccc}
   .ps-concl{margin-top:4mm;font-size:10pt;line-height:1.6}
   .ps-note{font-size:8.5pt;color:#666}
+  .ps-h1{font-size:20pt;margin:0 0 2mm}
+  .ps-sub{font-size:11pt;color:#555;margin-bottom:5mm}
+  .ps-small{font-size:8pt;color:#8a4b00;text-align:left}
 }

@@ -648,7 +648,10 @@ function sheetLabel(s, i) {
 }
 
 // 多張圖時讓使用者挑一張
+let lastDxfSheets = [];
+
 function chooseDxfSheet(sheets) {
+  lastDxfSheets = sheets;
   const box = $('dxfSheetPicker');
   const list = $('dxfSheetList');
   list.innerHTML = '';
