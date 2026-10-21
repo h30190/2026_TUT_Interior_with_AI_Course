@@ -267,6 +267,7 @@ function buildPanels() {
       + `<div><label>此面磚 長×寬</label><input id="${k}_tile" type="text" placeholder="空白＝共用"></div>`
       + `<div><label>紅線 X (cm)</label><input id="${k}_marks" type="text" placeholder="例 59, 142"></div>`
       + `</div>`
+      + (k === 'floor' ? '' : `<div><label title="牆面在這裡轉折（凹凸的側面、另一段牆）：不同平面，跨過的磚要切開；畫紅線">牆面轉折 X (cm)</label><input id="${k}_jogs" type="text" placeholder="例 147"></div>`)
       + `<div><label>分區磚（同一面混 2～3 種磚，分號隔開，後寫的蓋在上面）</label><input id="${k}_zones" type="text" placeholder="例 117-207: 14.8×14.8 主秀壁; 高 100-130: 15×30 腰帶"></div>`
       + (k === 'floor' ? '' : `<div class="zone-add">加入：<button type="button" data-zone="${k}" data-tpl="0-60: 30×60 分區">＋左右分區</button>`
         + `<button type="button" data-zone="${k}" data-tpl="高 0-120: 30×60 下段">＋上下分段</button>`
@@ -798,6 +799,7 @@ function initApp() {
           ['dir', 'mode', 'xalign', 'yalign', 'xoff', 'yoff'].forEach(f => { $(k + '_' + f).value = c[f]; });
           $(k + '_tile').value = c.TL ? `${c.TL}×${c.TW}` : '';
           $(k + '_marks').value = (c.marks || []).join(', ');
+          if ($(k + '_jogs')) $(k + '_jogs').value = (c.jogs || []).join(', ');
           $(k + '_zones').value = formatZones(c.zones);
           $(k + '_skip').checked = !!c.skip;
         }
@@ -816,7 +818,7 @@ function initApp() {
   ['TL', 'TW', 'joint', 'price', 'spare', 'smallTh', 'avoidTh', 'floorCover'].forEach(id => $(id).addEventListener('input', refresh));
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign', '_skip'].forEach(s => $(k + s).addEventListener('change', refresh)));
-  FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones'].forEach(s => $(k + s).addEventListener('input', refresh)));
+  FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones', '_jogs'].forEach(s => { if ($(k + s)) $(k + s).addEventListener('input', refresh); }));
   $('floor_outline').addEventListener('input', e => { floorOutline = parseOutline(e.target.value); refresh(); });
   // 分區快速加入：塞一段範本進去，數字再自己改
   document.querySelectorAll('button[data-zone]').forEach(b => b.addEventListener('click', () => {

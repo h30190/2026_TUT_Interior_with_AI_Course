@@ -544,9 +544,9 @@ const sLg = vmCtx.buildPlanSheet(dLg, vmCtx.roomAt(dLg, 117, 100), { H: 231, doo
 assert('smoke', '半高檯：平面上靠 B 牆的紅線（離牆 6、端點有紅線接回牆）讀成半高檯——距左 0、長 123、深 6',
   JSON.stringify(sLg.project.ledges.map(l => [l.face, l.x, l.w, l.d])) === '[["B",0,123,6]]', JSON.stringify(sLg.project.ledges));
 assert('smoke', '凹凸牆面：底牆往內一階 9 → C 立面 147、D 立面 78 標紅線（那一階的側面畫在 C 立面 147～156）',
-  JSON.stringify(sLg.project.faces.C.marks) === '[147]' && JSON.stringify(sLg.project.faces.D.marks) === '[78]'
-  && sLg.project.faces.A.marks.length === 0 && sLg.project.faces.B.marks.length === 0,
-  JSON.stringify(['A', 'B', 'C', 'D'].map(k => sLg.project.faces[k].marks)));
+  JSON.stringify(sLg.project.faces.C.jogs) === '[147]' && JSON.stringify(sLg.project.faces.D.jogs) === '[78]'
+  && sLg.project.faces.A.jogs.length === 0 && sLg.project.faces.B.jogs.length === 0,
+  JSON.stringify(['A', 'B', 'C', 'D'].map(k => sLg.project.faces[k].jogs)));
 const fLg = vmCtx.finalizePlanSheet(sLg, { H: 231, doors: [{ h: 220 }], windows: [{ y: 109, h: 119 }], ledges: [{ h: 109 }], faces: { D: false } });
 const pLg = fLg.project;
 assert('smoke', '確認高度後：B 立面＝193＋檯側面 6＝199（同使用者的圖），A、C 156，D 不出立面；門高 220、窗台 109／窗高 119、檯高 109',
@@ -587,6 +587,19 @@ assert('smoke', '半高檯：立面垂直尺寸鏈標檯高 109、水平標側�
 const ioLg = vmCtx.validateProject({ format: 'tile-setting-out', version: 1, ledges: [{ face: 'B', x: 0, w: 123, h: 109, d: 6, side: 'R' }, { face: 'E', x: 0, w: 1, h: 1, d: 1 }, { face: 'A', x: 0, w: -5, h: 1, d: 1 }] });
 assert('redteam', '資料檔：半高檯可存可讀，面別或尺寸不對的略過並提醒',
   ioLg.project.ledges.length === 1 && ioLg.project.ledges[0].side === 'R' && ioLg.warnings.filter(w => w.includes('半高檯')).length === 2);
+// 牆面轉折：C 立面 147 以右是底牆那一階的側面（不同平面）→ 跨過 147 的磚切成兩塊、尺寸鏈標 147
+const jogT = layout(pLgT, 156, 231, { dir: 'V', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0, jogs: [147] }, [], true);
+const noJogT = layout(pLgT, 156, 231, { dir: 'V', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0 }, [], true);
+assert('smoke', '牆面轉折：跨過轉折的磚切開（沒有一塊橫跨 147），每排多一塊；尺寸鏈有 147',
+  !jogT.tiles.some(t => t.x0 < 147 - 0.01 && t.x0 + t.wL > 147 + 0.01) && jogT.total === noJogT.total + 4
+  && vmCtx.chainMarks({ marks: [], jogs: [147], zones: [] }).includes(147), JSON.stringify([jogT.total, noJogT.total]));
+// 檯在牆中間（不碰牆角、不攤開）：沒有空白開口，自動找起磚點也要試「橫縫對齊檯面」才避得開 L 型
+setLedges([{ id: 't2', face: 'B', x: 40, w: 60, d: 10, h: 95, side: '' }]);
+const midCfg = { dir: 'V', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0, ledges: vmCtx.ledgeSplitRects('B') };
+const midOver = vmCtx.bestFaceOffsets(pLgT, 200, 231, midCfg, [], null, false);
+const midBest = layout(pLgT, 200, 231, Object.assign({}, midCfg, midOver), [], true);
+assert('smoke', '半高檯在牆中間：自動找起磚點會讓橫縫對齊檯面 95（不在每 10cm 粗掃裡），沒有 L 型',
+  layout(pLgT, 200, 231, midCfg, [], true).lcut > 0 && midBest.lcut === 0, JSON.stringify(midOver));
 setLedges([]);
 assert('smoke', '匯入前確認：天花／門高之外，檯高文字也讀得到', ['檯高 110', '台高:95', '檯面高=85'].every(t => vm.runInContext('PLAN_TEXT_LEDGE', vmCtx).test(t)));
 

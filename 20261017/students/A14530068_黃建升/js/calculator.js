@@ -85,6 +85,8 @@ function cfgOf(k) {
     xoff: num0(k + '_xoff', 0),
     yoff: num0(k + '_yoff', 0),
     marks: parseMarks($(k + '_marks') ? $(k + '_marks').value : ''),
+    // 牆面轉折（凹凸的側面跟主牆不同平面）：跨過的磚要切開
+    jogs: parseMarks($(k + '_jogs') ? $(k + '_jogs').value : ''),
     poly: k === 'floor' ? floorOutline : null,
     skip: $(k + '_skip') ? !!$(k + '_skip').checked : false,
     zones: parseZones($(k + '_zones') ? $(k + '_zones').value : '')
@@ -381,7 +383,7 @@ function zoneLayers(fw, fh, zones) {
 
 // 尺寸鏈要標的分界：紅線＋分區左右起迄（上下分段的高度另外由 zoneYMarks 標）
 function chainMarks(cfg) {
-  return (cfg.marks || []).concat(...(cfg.zones || []).filter(z => z.x0 !== undefined).map(z => [z.x0, z.x1]));
+  return (cfg.marks || []).concat(cfg.jogs || [], ...(cfg.zones || []).filter(z => z.x0 !== undefined).map(z => [z.x0, z.x1]));
 }
 
 function zoneYMarks(cfg) {
@@ -542,6 +544,8 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   let tiles = [];
   let xBase2 = 0;
   const zones = cfg.zones || [];
+  // 不同平面的分界：半高檯正面／側面、牆面轉折（整面高，轉折右邊當一個範圍）
+  const splits = (cfg.ledges || []).concat((cfg.jogs || []).filter(j => j > EPS && j < fw - EPS).map(j => ({ x: j, y: -1, w: 1e6, h: fh + 2 })));
   const groupMap = {};
   const addGroup = (key, label, TL, TW, segTiles, segArea, segOps, name) => {
     const g = groupMap[key] || (groupMap[key] = { key, label, name: name || '', TL, TW, full: 0, cut: 0, danger: 0, avoid: 0, lcut: 0, area: 0, opArea: 0 });
@@ -594,7 +598,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
           segTiles = segTiles.concat(generateZoneTiles(fw, fh, rx0, rx1, xBase, part.base !== null ? part.base : yBase, pitchL, pitchW, tL, tW, cfg, ops, th, reg));
         }
       }
-      segTiles = splitByLedges(segTiles, cfg.ledges || [], ops, th);
+      segTiles = splitByLedges(segTiles, splits, ops, th);
       const key = z ? `z${TL}x${TW}${z.name}` : 'main';
       segTiles.forEach(t => { t.gkey = key; t.glabel = matLabel(TL, TW, z ? z.name : ''); });
       tiles = tiles.concat(segTiles);
@@ -611,7 +615,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     // 全牆連續鋪貼（若有柱線則為連動模式）
     tiles = generateZoneTiles(fw, fh, 0, fw, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
   }
-  if (!zones.length) tiles = splitByLedges(tiles, cfg.ledges || [], ops, th);
+  if (!zones.length) tiles = splitByLedges(tiles, splits, ops, th);
   if (!zones.length) tiles.forEach(t => { t.gkey = 'main'; t.glabel = matLabel(p.TL, p.TW); });
   if (!zones.length) addGroup('main', matLabel(p.TL, p.TW), p.TL, p.TW, tiles, areaIn(0, fw), ops.reduce((a, o) => a + o.area, 0));
 
@@ -913,9 +917,11 @@ function bestFaceOffsets(p, fw, fh, cfg, ops, col, isFloor) {
     xs = Array.from({ length: Math.ceil(pitchL / step) }, (_, i) => i * step);
     ys = Array.from({ length: Math.ceil(pitchW / step) }, (_, i) => i * step);
   } else {
+    // 對齊候選：門窗邊、半高檯的邊與檯面、牆面轉折
+    const edges = ops.concat(cfg.ledges || []);
     xs = Array.from({ length: Math.ceil(pitchL) }, (_, i) => i);
-    for (const v of alignCands(pitchL, p.joint, ops.flatMap(o => [o.x, o.x + o.w]))) if (!xs.includes(v)) xs.push(v);
-    ys = wallYCands(fh, pitchW, p.joint, ops);
+    for (const v of alignCands(pitchL, p.joint, edges.flatMap(o => [o.x, o.x + o.w]).concat(cfg.jogs || []))) if (!xs.includes(v)) xs.push(v);
+    ys = wallYCands(fh, pitchW, p.joint, edges);
   }
   let best = null;
   for (const x of xs) {
@@ -970,7 +976,7 @@ function searchPlans(p) {
           if (!ws) {
             const wp = paramsFor(p, s.key);
             const pitchW = (s.cfg.dir === 'H' ? wp.TW : wp.TL) + p.joint;
-            for (const y of wallYCands(s.fh, pitchW, p.joint, s.ops)) {
+            for (const y of wallYCands(s.fh, pitchW, p.joint, s.ops.concat(s.cfg.ledges || []))) {
               const sc2 = scoreOf(layout(wp, s.fw, s.fh, Object.assign({}, s.cfg, { xalign: 'custom', xoff: wx }, yOver(y)), s.ops, true, s.col));
               if (!ws || betterScore(sc2, ws.sc)) ws = { sc: sc2, y };
             }

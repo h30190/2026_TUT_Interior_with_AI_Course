@@ -96,6 +96,10 @@ function validateProject(obj) {
       const okPts = Array.isArray(f.outline) && f.outline.length >= 3 && f.outline.every(p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
       if (okPts) face.outline = f.outline; else warnings.push('floor.outline 不是 3 點以上的座標，已略過（整個矩形都鋪）');
     }
+    if (f.jogs !== undefined) {
+      face.jogs = Array.isArray(f.jogs) ? f.jogs.filter(v => Number.isFinite(v) && v > 0) : [];
+      if (!Array.isArray(f.jogs) || face.jogs.length !== f.jogs.length) warnings.push(`${k}.jogs 有不是正數的值，已略過`);
+    }
     if (f.marks !== undefined) {
       face.marks = Array.isArray(f.marks) ? f.marks.filter(v => Number.isFinite(v) && v > 0) : [];
       if (!Array.isArray(f.marks) || face.marks.length !== f.marks.length) warnings.push(`${k}.marks 有不是正數的值，已略過`);
@@ -190,6 +194,7 @@ function applyProject(pj) {
     // 匯入的資料檔描述整張圖：沒寫磚尺寸／紅線就清空，不沿用上一張圖
     setIf(k + '_tile', f.TL ? `${f.TL}×${f.TW}` : '');
     setIf(k + '_marks', (f.marks || []).join(', '));
+    setIf(k + '_jogs', (f.jogs || []).join(', '));
     setIf(k + '_zones', formatZones(f.zones));
     if ($(k + '_skip')) $(k + '_skip').checked = !!f.skip;
     if (f.overlay) faceOverlays[k] = f.overlay; else delete faceOverlays[k];

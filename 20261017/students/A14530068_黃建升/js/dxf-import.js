@@ -1051,7 +1051,7 @@ function planLedges(dxf, P, dims) {
   return out;
 }
 
-// 地坪不是矩形時，每面立面上「牆面轉折」的位置（照使用者畫法標紅線）：
+// 地坪不是矩形時，每面立面上「牆面轉折」的位置（不同平面，跨過的磚要切開；畫紅線）：
 // 立面是站在房間裡往那面看，看得到的牆面（凹進去那段、凸出來的側面）都畫在同一張立面上
 // 例：底牆往內一階 9cm → C 立面 147 處一條紅線（147～156 是那一階的側面），D 立面在轉折處一條
 function outlineJogMarks(outline, fw, fh) {
@@ -1140,7 +1140,7 @@ function buildPlanSheet(dxf, room, opts) {
   const faces = { floor };
   const jogs = floor.outline ? outlineJogMarks(floor.outline, fwF, fhF) : { A: [], B: [], C: [], D: [] };
   for (const k of DXF_FACE_LETTERS) {
-    faces[k] = { fw: dims[k], fh: H, dir: 'H', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0, marks: jogs[k], zones: [] };
+    faces[k] = { fw: dims[k], fh: H, dir: 'H', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0, marks: [], jogs: jogs[k], zones: [] };
   }
   // 材料（有寫「填縫劑」的材料文字就用）
   const materials = texts.filter(t => t.text.includes('填縫')).map(t => parseMaterial(t.text)).filter(Boolean);
@@ -1202,6 +1202,7 @@ function finalizePlanSheet(sheet, ans) {
     for (const o of pj.openings) if (o.face === ev.face && o.x >= ev.pos - 0.05) o.x = r1(o.x + ev.d);
     for (const l of keep) if (l.face === ev.face && l.x >= ev.pos - 0.05) l.x = r1(l.x + ev.d);
     f.marks = (f.marks || []).map(m => m >= ev.pos - 0.05 ? r1(m + ev.d) : m);
+    f.jogs = (f.jogs || []).map(m => m >= ev.pos - 0.05 ? r1(m + ev.d) : m);
   }
   pj.ledges = keep;
   for (const k of DXF_FACE_LETTERS) if (ans.faces && ans.faces[k] === false) pj.faces[k].skip = true;

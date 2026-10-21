@@ -420,10 +420,11 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   drawOverlay(ctx, ox, oy, fw, fh, sc, faceOverlays[opts.faceKey], isElevation);
 
   // 施工圖紅線（分界、門框、對縫基準）：整面高度的紅色實線
-  if (cfg.marks && cfg.marks.length) {
+  const reds = (cfg.marks || []).concat(cfg.jogs || []);
+  if (reds.length) {
     ctx.save();
     ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.2;
-    for (const m of cfg.marks) {
+    for (const m of reds) {
       if (m <= 0 || m >= fw) continue;
       ctx.beginPath(); ctx.moveTo(ox + m * sc, oy); ctx.lineTo(ox + m * sc, oy + fh * sc); ctx.stroke();
     }

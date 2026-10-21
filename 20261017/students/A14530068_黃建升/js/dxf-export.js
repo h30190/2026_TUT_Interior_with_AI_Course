@@ -419,7 +419,7 @@ function dxfFace(d, s, p, map, outline, hmap) {
   // 半高檯外框：紅線（色號 1，同使用者畫法）；地坪有匯入平面線稿時紅線已經在線稿裡
   if (s.key !== 'floor' || !ov) for (const [a, b] of ledgeOutlineSegs(s.key, faceDims(p))) d.line(map(a[0], a[1]), map(b[0], b[1]), '0', 1);
   // 紅線：施工圖紅線＋起磚線（跟紅線重疊就不重畫）
-  const reds = (cfg.marks || []).filter(m => m > 0.5 && m < fw - 0.5);
+  const reds = (cfg.marks || []).concat(cfg.jogs || []).filter(m => m > 0.5 && m < fw - 0.5);
   if (r.xBase > 0.5 && r.xBase < fw - 0.5 && !reds.some(m => Math.abs(m - r.xBase) < 0.5)) reds.push(r.xBase);
   for (const m of reds) d.line(map(m, 0), map(m, fh), '0', 1);
   if (r.yBase > 0.5 && r.yBase < fh - 0.5) d.line(map(0, r.yBase), map(fw, r.yBase), '0', 1);
