@@ -792,7 +792,7 @@ function initApp() {
   }));
 
   $('useReuse').addEventListener('change', refresh);
-  ['TL', 'TW', 'joint', 'price', 'spare', 'smallTh', 'avoidTh'].forEach(id => $(id).addEventListener('input', refresh));
+  ['TL', 'TW', 'joint', 'price', 'spare', 'smallTh', 'avoidTh', 'floorCover'].forEach(id => $(id).addEventListener('input', refresh));
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign', '_skip'].forEach(s => $(k + s).addEventListener('change', refresh)));
   FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones'].forEach(s => $(k + s).addEventListener('input', refresh)));

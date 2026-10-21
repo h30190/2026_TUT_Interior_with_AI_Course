@@ -30,7 +30,7 @@ function collectProject() {
     materials: projectMaterials,
     pricing: { spare: p.spare, priceBook, useReuse: !!($('useReuse') && $('useReuse').checked) },
     room: { L: p.L, W: p.W, H: p.H },
-    tile: { TL: p.TL, TW: p.TW, jointMM: Math.round(p.joint * 100) / 10, price: p.price, smallTh: p.smallTh, avoidTh: p.avoidTh },
+    tile: { TL: p.TL, TW: p.TW, jointMM: Math.round(p.joint * 100) / 10, price: p.price, smallTh: p.smallTh, avoidTh: p.avoidTh, floorCover: p.floorCover },
     faces,
     openings: openingsList.map(o => ({ kind: o.kind, name: o.name, face: o.face, w: o.w, h: o.h, x: o.x, y: o.y })),
     column: columnParams()
@@ -63,6 +63,7 @@ function validateProject(obj) {
   const tile = obj.tile || {};
   ['TL', 'TW', 'jointMM', 'smallTh', 'avoidTh'].forEach(k => { if (tile[k] !== undefined) out.tile[k] = pos(tile[k], `tile.${k}`); });
   if (tile.price !== undefined) out.tile.price = nonNeg(tile.price, 'tile.price');
+  if (tile.floorCover !== undefined) out.tile.floorCover = nonNeg(tile.floorCover, 'tile.floorCover');
 
   for (const k of FACE_KEYS) {
     const f = (obj.faces || {})[k];
@@ -159,7 +160,7 @@ function applyProject(pj) {
   const setIf = (id, v) => { if (v !== undefined && $(id)) $(id).value = v; };
   setIf('L', pj.room.L); setIf('W', pj.room.W); setIf('H', pj.room.H);
   setIf('TL', pj.tile.TL); setIf('TW', pj.tile.TW); setIf('joint', pj.tile.jointMM); setIf('price', pj.tile.price);
-  setIf('smallTh', pj.tile.smallTh); setIf('avoidTh', pj.tile.avoidTh);
+  setIf('smallTh', pj.tile.smallTh); setIf('avoidTh', pj.tile.avoidTh); setIf('floorCover', pj.tile.floorCover);
   // 單價：資料檔裡有的蓋過目前的（DXF 沒有單價，就沿用已填過的）
   if (pj.pricing) {
     setIf('spare', pj.pricing.spare);

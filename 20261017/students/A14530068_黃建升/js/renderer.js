@@ -318,15 +318,14 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
 
   // 最短邊 < 避免小料門檻（預設 5cm）的磚才畫紅圈標「避免小料」（文字留在面內，不會被畫布邊緣切掉）
   if (r.avoid > 0) {
-    let t = null;
-    for (const q of r.tiles) { if (q.avoid) { t = q; break; } }
-    if (t) {
-      const vis = visiblePart(t, ops || []);
+    // 同一橫排／直排的小料只圈一次，第一個寫「避免小料」
+    sliverMarks(r.tiles, ops || []).forEach((vis, mi) => {
       const cx = ox + vis.cx * sc;
       const cy = isElevation ? oy + (fh - vis.cy) * sc : oy + vis.cy * sc;
       const rad = Math.max(6, Math.min(14, vis.minDim * sc / 2 + 3));
       ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
+      if (mi) return;
       const label = '避免小料';
       ctx.font = 'bold 11px sans-serif';
       const lw = ctx.measureText(label).width;
@@ -337,7 +336,7 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
       ctx.fillRect(lx - 2, ly - 11, lw + 4, 14);
       ctx.fillStyle = '#d22'; ctx.textAlign = 'left';
       ctx.fillText(label, lx, ly);
-    }
+    });
   }
   // L 型切割：紅圈圈在磚包住的門窗轉角，第一個寫「避免L型」
   const lts = r.tiles.filter(q => q.lcut);

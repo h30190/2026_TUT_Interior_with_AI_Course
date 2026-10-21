@@ -412,6 +412,33 @@ assert('smoke', 'L 型：方案比較先比 L 型、再比小料、最後比浪�
   vmCtx.betterScore({ danger: 1, lcut: 0, waste: 9 }, { danger: 0, lcut: 1, waste: 0 }) && vmCtx.betterScore({ danger: 0, lcut: 0, waste: 9 }, { danger: 1, lcut: 0, waste: 0 })
   && vmCtx.betterScore({ danger: 0, lcut: 0, waste: 1 }, { danger: 0, lcut: 0, waste: 2 }));
 
+// Test S18c: 牆底被地磚蓋住（地磚＋黏著層至少墊高約 1cm）
+// #11 A 面：寬 214、高 263、120 磚、門 62～142 高 241；橫縫對齊門頂 → 牆底剩 0.6cm
+const doorC = [{ kind: 'door', x: 62, y: 0, w: 80, h: 241 }];
+const cfgC = { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 22, yalign: 'custom', yoff: 0.6 };
+const noCover = layout(Object.assign({}, pL, { floorCover: 0 }), 214, 263, cfgC, doorC, true);
+const cover1 = layout(Object.assign({}, pL, { floorCover: 1 }), 214, 263, cfgC, doorC, true);
+assert('smoke', '牆底蓋住：0.6cm 的牆底切條不考慮蓋住時是小料；蓋住 1cm 就不算小料、也不用叫料',
+  noCover.danger >= 2 && cover1.danger === 0 && cover1.total < noCover.total && cover1.lcut === 0,
+  JSON.stringify({ before: [noCover.danger, noCover.total], after: [cover1.danger, cover1.total] }));
+const fullFromFloor = layout(Object.assign({}, pL, { floorCover: 1 }), 240.4, 240.4, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', xoff: 0, yoff: 0 }, [], true);
+assert('smoke', '牆底蓋住：從地面起貼的整磚底下被蓋 1cm 還是整磚（不會變成裁切）', fullFromFloor.full === 4 && fullFromFloor.cut === 0, JSON.stringify([fullFromFloor.full, fullFromFloor.cut]));
+const strip3 = layout(Object.assign({}, pL, { floorCover: 1 }), 120, 243.4, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'custom', xoff: 0, yoff: 3 }, [], true);
+assert('smoke', '牆底蓋住：跨過蓋住線的切條只看露出的部分（3cm 高、露出 2cm → 仍是小料）', strip3.danger === 1, String(strip3.danger));
+const coverIO = vmCtx.validateProject({ format: 'tile-setting-out', version: 1, tile: { floorCover: 1.5 } });
+const coverBad = vmCtx.validateProject({ format: 'tile-setting-out', version: 1, tile: { floorCover: -2 } });
+assert('redteam', '資料檔：牆底蓋住高度可存可讀，負數略過並提醒', coverIO.project.tile.floorCover === 1.5 && coverBad.project.tile.floorCover === undefined && coverBad.warnings.some(w => w.includes('floorCover')));
+
+// Test S18d: 「避免小料」同一橫排／直排只標一次
+// 90 寬、64 高牆貼 15 磚（縫 0.2）：頂端一整排只剩 3.2 → 6 片小料、1 個標記；右側再多一直排窄條 → 另 1 個
+const pM = { TL: 14.8, TW: 14.8, joint: 0.2, smallTh: 5, avoidTh: 5 };
+const rowOnly = layout(pM, 90, 63.2, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', xoff: 0, yoff: 0 }, [], true);
+const rowCol = layout(pM, 93, 63.2, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', xoff: 0, yoff: 0 }, [], true);
+const mRow = vmCtx.sliverMarks(rowOnly.tiles, []), mRowCol = vmCtx.sliverMarks(rowCol.tiles, []);
+assert('smoke', '避免小料：頂端一整排 6 片小料只圈 1 次（圈在中間），再多一直排窄條共圈 2 次；片數照算',
+  rowOnly.avoid === 6 && mRow.length === 1 && Math.abs(mRow[0].cx - 52.6) < 8 && mRowCol.length === 2 && rowCol.avoid > 6,
+  JSON.stringify({ avoid: [rowOnly.avoid, rowCol.avoid], marks: [mRow.length, mRowCol.length], cx: mRow[0] && mRow[0].cx }));
+
 // Test S19: 匯出 DXF（照施工圖畫法，貼回 AutoCAD）
 // 124.2×250 牆、60 磚、縫 0.2、靠左由地起：磚縫取縫中線 → 直縫 60.1、120.3；橫縫 60.1、120.3、180.5、240.7
 const wallS19 = layout(pS18, 124.2, 250, cfgS18, [], true);

@@ -423,11 +423,9 @@ function dxfFace(d, s, p, map, outline, hmap) {
     const cx = r.col.colX !== undefined ? r.col.colX : r.col.x;
     if (cx > 0 && cx < fw) d.line(map(cx, 0), map(cx, fh), '0', 1);
   }
-  // 小料：每塊都畫紅圈，第一塊加「避免小料」
+  // 小料：同一橫排／直排只圈一次（圈在中間那塊），第一個加「避免小料」
   let labeled = false;
-  for (const t of r.tiles) {
-    if (!t.avoid) continue;
-    const v = visiblePart(t, ops);
+  for (const v of sliverMarks(r.tiles, ops)) {
     const c = map(v.cx, v.cy);
     d.circle(c, 6, layer, 1);
     if (labeled) continue;

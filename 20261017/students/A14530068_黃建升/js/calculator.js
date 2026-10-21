@@ -57,7 +57,9 @@ function params() {
     price: num('price', 0),
     spare: num0('spare', 0),
     smallTh: num('smallTh', 5),
-    avoidTh: num('avoidTh', 5)
+    avoidTh: num('avoidTh', 5),
+    // 地磚＋黏著層至少墊高約 1cm，牆底這段被蓋住（0＝不考慮）
+    floorCover: num0('floorCover', 1)
   };
 }
 
@@ -123,6 +125,22 @@ function visiblePart(t, ops) {
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, minDim: Math.min(t.wL, t.wW) };
 }
 
+// 「避免小料」紅圈位置：同一橫排（扁的小料）或同一直排（窄的小料）只標一次，圈在那排中間那塊
+function sliverMarks(tiles, ops) {
+  const rows = {};
+  for (const t of tiles) {
+    if (!t.avoid) continue;
+    const v = visiblePart(t, ops);
+    const flat = t.wW <= t.wL; // 扁的 → 橫排；窄的 → 直排
+    const key = flat ? 'r' + Math.round(v.cy * 10) : 'c' + Math.round(v.cx * 10);
+    (rows[key] = rows[key] || []).push(Object.assign({ flat }, v));
+  }
+  return Object.values(rows).map(list => {
+    list.sort((a, b) => a.flat ? a.cx - b.cx : a.cy - b.cy);
+    return list[Math.floor(list.length / 2)];
+  });
+}
+
 // 小料判定（依黃建升的現場經驗）：只看裁切後露出部分的最短邊
 //   最短邊 < th.small（預設 5cm）＝小料，計入碎磚警示；再 < th.avoid（預設同為 5cm，可另調小）＝圖上紅圈「避免小料」
 //   磁磚本身短邊 ≤ th.small（例如小馬賽克）不列入
@@ -164,6 +182,8 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
       if (x1 <= xMin + EPS || x0 >= xMax - EPS) continue;
       const y0 = yBase + r * pitchW, y1 = y0 + tW;
       if (y1 <= EPS || y0 >= fh - EPS) continue;
+      // 牆底被地磚蓋住的切條：整條在蓋住範圍內就不用貼
+      if (th.cover && y1 <= th.cover + EPS) continue;
       const cutL = (x0 < xMin - EPS || x1 > xMax + EPS);
       const cutW = (y0 < -EPS || y1 > fh + EPS);
       let wL = Math.min(x1, xMax) - Math.max(x0, xMin);
@@ -202,7 +222,9 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
       }
       const lc = lCutOf(Math.max(x0, xMin), Math.max(y0, 0), Math.min(x1, xMax), Math.min(y1, fh), ops);
       if (lc) { t.lcut = true; t.lc = lc; }
-      tiles.push(Object.assign(t, sliverOf(t, ops, th)));
+      // 小料只看露出來的部分：牆底被地磚蓋住的那段當作遮住（整磚不受影響，仍算整磚）
+      const hide = th.cover && Math.max(y0, 0) < th.cover - EPS ? ops.concat([{ x: -1e6, y: -1e6, w: 2e6, h: 1e6 + th.cover }]) : ops;
+      tiles.push(Object.assign(t, sliverOf(t, hide, th)));
     }
   }
   return tiles;
@@ -399,7 +421,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   const tW = cfg.dir === 'H' ? p.TW : p.TL;
   const pitchL = tL + p.joint, pitchW = tW + p.joint;
   // 立面與地坪垂直起磚基準：預設由地面（Y=0）起磚向上排
-  const th = { small: p.smallTh || 5, avoid: p.avoidTh || 5 };
+  const th = { small: p.smallTh || 5, avoid: p.avoidTh || 5, cover: isElevation ? (p.floorCover || 0) : 0 };
   const xBase = startOf(fw, pitchL, tL, cfg.xalign, cfg.xoff);
   const yBase = startOf(fh, pitchW, tW, cfg.yalign, cfg.yoff);
 
