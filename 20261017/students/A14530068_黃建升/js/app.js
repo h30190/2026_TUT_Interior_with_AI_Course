@@ -654,6 +654,7 @@ function initApp() {
       projectMaterials = [];
       faceOverlays = {};
       floorOutline = pr.outline || null;
+      renderMaterialsUI();
       projectMeta = Object.assign({}, EMPTY_META);
       renderProjectMeta();
       // 案例附帶各面起磚設定：其餘欄位回到預設，避免沿用上一個情境的起磚點
@@ -738,6 +739,7 @@ function initApp() {
   initOpeningsModule();
   initProjectIO();
   initDxfImport();
+  initMaterials();
 
   refresh();
 }

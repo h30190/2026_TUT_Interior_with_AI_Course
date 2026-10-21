@@ -117,7 +117,9 @@ function validateProject(obj) {
   out.materials = (Array.isArray(obj.materials) ? obj.materials : []).filter(m => m && typeof m.role === 'string')
     .map(m => ({
       role: m.role, code: String(m.code || ''), spec: String(m.spec || ''), grout: String(m.grout || ''),
-      size: Array.isArray(m.size) && m.size.length === 2 && m.size.every(v => Number.isFinite(v) && v > 0) ? m.size : null
+      size: Array.isArray(m.size) && m.size.length === 2 && m.size.every(v => Number.isFinite(v) && v > 0) ? m.size : null,
+      // 材質照片只收圖片 data URL（上傳時已縮成 200px，太大的多半不是本程式存的）
+      photo: typeof m.photo === 'string' && /^data:image\/(png|jpeg|webp|gif);base64,/.test(m.photo) && m.photo.length < 1500000 ? m.photo : undefined
     }));
   const meta = obj.meta && typeof obj.meta === 'object' ? obj.meta : {};
   out.meta = { project: String(meta.project || ''), drawingName: String(meta.drawingName || ''), number: String(meta.number || '') };
@@ -162,6 +164,7 @@ function applyProject(pj) {
   projectMaterials = pj.materials || [];
   projectMeta = pj.meta || {};
   renderProjectMeta();
+  if (typeof renderMaterialsUI === 'function') renderMaterialsUI();
   openingsList = pj.openings;
   renderOpeningsUI();
   if (pj.column) setColumnParams(pj.column);

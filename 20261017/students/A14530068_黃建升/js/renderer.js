@@ -946,11 +946,19 @@ function drawUnfold(p, rows) {
   let ty = py + 14;
   if (projectMaterials.length) {
     for (const m of projectMaterials) {
+      // 有材質照片時畫在文字左邊（同施工圖材料表）
+      const img = typeof materialPhoto === 'function' ? materialPhoto(m) : null;
+      const tx = img ? padR + 52 : padR;
+      const top = ty;
+      if (img) {
+        const k = Math.min(46 / img.naturalWidth, 46 / img.naturalHeight);
+        ctx.drawImage(img, padR, ty - 11, img.naturalWidth * k, img.naturalHeight * k);
+      }
       ctx.fillStyle = '#c0703a'; ctx.font = 'bold 13px sans-serif';
-      ctx.fillText(m.role, padR, ty); ty += 15;
+      ctx.fillText(m.role, tx, ty); ty += 15;
       ctx.fillStyle = '#3a3a3a'; ctx.font = '10.5px sans-serif';
-      [m.code, m.spec, '填縫劑：' + (m.grout || '')].filter(t => t && t.trim()).forEach(t => { ctx.fillText(t, padR, ty); ty += 13; });
-      ty += 6;
+      [m.code, m.spec, '填縫劑：' + (m.grout || '')].filter(t => t && t.trim()).forEach(t => { ctx.fillText(t, tx, ty); ty += 13; });
+      ty = Math.max(ty, img ? top + 40 : ty) + 6;
     }
   } else {
     ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif';

@@ -25,6 +25,15 @@
       <div class="syncnote">DXF：AutoCAD「另存新檔」選 DXF，程式會找出檔案裡每張放樣施工圖讓你挑。資料檔（JSON）保存尺寸、起磚、紅線、門窗、材料。</div>
     </div>
 
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">材料</h2>
+        <button id="btnAddMaterial" type="button" style="padding:4px 8px;font-size:11px;background:#8a7f6d;color:#fff;border:none;border-radius:4px;cursor:pointer">➕ 新增材料</button>
+      </div>
+      <div id="materialsContainer"></div>
+      <input id="materialPhotoFile" type="file" accept="image/*" style="display:none">
+    </div>
+
     <div class="card">
       <h2>空間與磁磚</h2>
       <div class="row2">
@@ -234,6 +243,7 @@
 <script src="js/renderer.js"></script>
 <script src="js/project-io.js"></script>
 <script src="js/dxf-import.js"></script>
+<script src="js/materials.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

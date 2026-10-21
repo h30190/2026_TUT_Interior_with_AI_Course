@@ -41,6 +41,7 @@ const requiredFiles = [
   'js/renderer.js',
   'js/project-io.js',
   'js/dxf-import.js',
+  'js/materials.js',
   'js/app.js'
 ];
 
@@ -51,7 +52,7 @@ requiredFiles.forEach(file => {
 });
 
 // 檢查 JS 檔案語法 (Syntax Check)
-const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'app.js'];
+const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'app.js'];
 jsFiles.forEach(f => {
   const fPath = path.join(JS_DIR, f);
   try {
@@ -66,7 +67,7 @@ jsFiles.forEach(f => {
 
 // 檢查 index.html 模組引入順序
 const htmlContent = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
-const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'app.js'];
+const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'app.js'];
 let lastIdx = -1;
 let orderCorrect = true;
 scriptOrder.forEach(s => {
@@ -389,6 +390,12 @@ try {
   assert('redteam', 'DXF：空檔、亂碼、缺外框都回 0 張圖而不當機', empty.length === 0 && junk.length === 0 && onlySym.length === 0);
 } catch (e) { dxfCrash = e; }
 if (dxfCrash) assert('redteam', 'DXF：空檔、亂碼、缺外框都回 0 張圖而不當機', false, dxfCrash.message);
+
+// Test R5e: 材料照片只收圖片 data URL
+const photoChk = vmCtx.validateProject({ format: 'tile-setting-out', version: 1, materials: [
+  { role: '壁', photo: 'data:image/jpeg;base64,AAAA' }, { role: '地', photo: 'javascript:alert(1)' }, { role: '主秀壁', photo: 'http://x/y.jpg' }] });
+assert('redteam', '資料檔：材料照片只接受圖片 data URL（網址、程式碼一律丟掉）',
+  photoChk.project.materials[0].photo === 'data:image/jpeg;base64,AAAA' && photoChk.project.materials[1].photo === undefined && photoChk.project.materials[2].photo === undefined);
 
 // Test R5d: 資料檔裡的設備線稿亂寫，只留正確的部分
 const badOv = vmCtx.cleanOverlay({ polys: [{ c: 5, pts: [[0, 0], [1, 1]] }, { pts: [[0, 'x']] }, null], texts: [{ x: 1, y: 2, text: 'ok' }, { x: 'a' }], notes: 'nope' });
