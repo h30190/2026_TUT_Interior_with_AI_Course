@@ -248,6 +248,32 @@ function check(name, ok, info) {
   const ol = await page.evaluate(() => ({ outline: $('floor_outline').value, h: $('A_fh').value }));
   check('拖拉 DXF 進畫面：L 形外框照實際形狀、牆高用網頁的 H', ol.outline.split(' ').length === 6 && errors.length === n, JSON.stringify(ol));
 
+  // 11. 改空間長寬高只動相關的面，不洗掉匯入的尺寸；地坪寬＝W（B 牆）、深＝L（A 牆）
+  n = errors.length;
+  await page.setInputFiles('#dxfFile', asUpload(fx('plan-cyan.dxf'), 'plan-cyan.dxf', 'application/dxf'));
+  await page.waitForSelector('#planPicker[style*="flex"]', { timeout: 15000 });
+  const [qx, qy] = await page.evaluate(() => planPick.toPx(121, 60));
+  const qb = await (await page.$('#planCanvas')).boundingBox();
+  await page.mouse.click(qb.x + qx * qb.width / 960, qb.y + qy * qb.height / 580);
+  const dimsOf = () => page.evaluate(() => ['floor', 'A', 'B', 'C', 'D'].map(k => $(k + '_fw').value + 'x' + $(k + '_fh').value).join(' '));
+  const cyanOps = await page.evaluate(() => JSON.stringify(computeAll(params()).flatMap(s => s.ops.map(o => [s.key, o.kind, o.x, o.w]))));
+  await page.fill('#H', '250');
+  const afterH = await dimsOf();
+  await page.fill('#W', '260');
+  const afterW = await dimsOf();
+  check(`改牆高只改四面牆高、地坪不變（${afterH}）；改 W 只改 B／D 與地坪寬（${afterW}）`,
+    cyanOps === '[["A","window",28,80],["C","door",44,76]]'
+    && afterH === '243x120 120x250 243x250 120x250 243x250' && afterW === '260x120 120x250 260x250 120x250 260x250' && errors.length === n,
+    cyanOps + errorsSince(n));
+  // 門超出牆：直接在門窗卡片上警告，不再默默截掉
+  n = errors.length;
+  const doorInp = await page.$('#openingsContainer input[data-field="w"]');
+  const opsBefore = await page.evaluate(() => openingsList.map(o => o.kind + ':' + o.face));
+  const doorIdx = opsBefore.indexOf('door:C');
+  await page.fill(`#openingsContainer .opblk >> nth=${doorIdx} >> input[data-field="x"]`, '90');
+  const warn = await page.$eval(`#openingsContainer .opblk >> nth=${doorIdx}`, el => el.querySelector('.opwarn').textContent).catch(() => '');
+  check(`門超出牆寬時卡片上直接警告：「${warn}」`, warn.includes('超出 C 牆寬 120') && warn.includes('30') && errors.length === n, warn + errorsSince(n));
+
   await browser.close();
   console.log(`\n🎯 瀏覽器實測 ${passed + failed} 項，通過 ${passed}，失敗 ${failed}`);
   process.exit(failed ? 1 : 0);

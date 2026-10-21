@@ -508,6 +508,16 @@ const s1F = vmCtx.buildPlanSheet(dF, r1F, {}), s2F = vmCtx.buildPlanSheet(dF, r2
 assert('smoke', '整張平面圖：點哪間就圍哪間；隔壁房間的開門弧線不算到這間',
   vmCtx.findPlanRooms(dF).length === 0 && Math.round(r1F.x1 - r1F.x0) === 300 && s1F.project.openings.length === 0
   && Math.round(r2F.x1 - r2F.x0) === 200 && JSON.stringify(s2F.project.openings.map(o => [o.face, o.x, o.w])) === '[["A",100,70]]');
+// 照使用者實際畫法（青色門窗、窗洞讓牆斷開、門片在房內）：射線不能從窗洞穿出去、不能把門片當牆
+const dC = planDxf('plan-cyan.dxf');
+const cyanRooms = [[121, 60], [30, 20], [220, 100], [20, 100]].map(([x, y]) => vmCtx.roomAt(dC, x, y));
+assert('smoke', '青色門窗的平面：點房間任何位置都圍出 243×120（窗洞、門片都不會讓牆跑掉）',
+  cyanRooms.every(r => r && Math.round(r.x1 - r.x0) === 243 && Math.round(r.y1 - r.y0) === 120),
+  JSON.stringify(cyanRooms.map(r => r && [Math.round(r.x1 - r.x0), Math.round(r.y1 - r.y0)])));
+const sC = vmCtx.buildPlanSheet(dC, cyanRooms[0], { H: 231, doorH: 210, sill: 100, winH: 90 });
+assert('smoke', '青色門窗的平面：門量牆開口（門框外寬 76，不是門片 66），窗從牆斷開處＋青色窗線找到，左右位置照平面、高度用預設',
+  JSON.stringify(sC.project.openings.map(o => [o.kind, o.face, o.x, o.w, o.y, o.h])) === '[["door","C",44,76,0,210],["window","A",28,80,100,90]]',
+  JSON.stringify(sC.project.openings));
 assert('redteam', '整張平面圖：點在房間外面回「找不到」不當機', vmCtx.roomAt(dF, 2000, 2000) === null);
 assert('smoke', '只有地坪：天花／門高文字的各種寫法都讀得到',
   ['天花 FL+289', '天花板高 280', 'CH=280', 'C.H. 300', 'FL+289'].every(t => vm.runInContext('PLAN_TEXT_CEIL', vmCtx).test(t))

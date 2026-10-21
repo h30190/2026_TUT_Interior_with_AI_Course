@@ -27,10 +27,12 @@
       <input id="dxfFile" type="file" accept=".dxf" style="display:none">
       <input id="projectFile" type="file" accept=".json,application/json" style="display:none">
       <div id="projectMetaLine" class="syncnote" style="font-weight:600;color:var(--ink)"></div>
-      <div class="row2" style="margin-top:6px">
-        <div><label title="只給地坪平面時，平面圖上沒寫門高就用這個">只有地坪時：門高 (cm)</label><input id="doorH" type="number" value="210" min="100"></div>
-        <div class="syncnote" style="margin:auto 0">牆高用下方「空間高度 H」</div>
+      <div class="row3" style="margin-top:6px">
+        <div><label title="只給地坪平面時，平面圖上沒寫門高就用這個">只有地坪：門高</label><input id="doorH" type="number" value="210" min="100"></div>
+        <div><label title="平面看不出窗台高，找到的窗先用這個，再照實際改">窗台高</label><input id="winSill" type="number" value="90" min="0"></div>
+        <div><label title="平面看不出窗高，找到的窗先用這個，再照實際改">窗高</label><input id="winH" type="number" value="120" min="10"></div>
       </div>
+      <div class="syncnote">牆高用下方「空間高度 H」；窗的左右位置與寬度從平面量</div>
       <div class="syncnote">DXF：AutoCAD「另存新檔」選 DXF（也可以直接把檔案拖進畫面）。有立面施工圖就照圖匯入；<b>只畫地坪平面也可以</b>——程式從平面四邊生成四面牆、找門，並自動套用最佳起磚點。資料檔（JSON）保存尺寸、起磚、紅線、門窗、材料。</div>
     </div>
 

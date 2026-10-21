@@ -733,7 +733,7 @@ function jointAlignedX(p, dims, faceKey, flR, wallCfg) {
 // 五面實測尺寸：各面獨立輸入（num 防呆回退到總體 L/W/H 推導值）
 function faceDims(p) {
   return {
-    floor: { fw: num('floor_fw', p.L), fh: num('floor_fh', p.W) },
+    floor: { fw: num('floor_fw', p.W), fh: num('floor_fh', p.L) },  // 地坪寬＝B 牆（W）、深＝A 牆（L）
     A:     { fw: num('A_fw', p.L),    fh: num('A_fh', p.H) },
     B:     { fw: num('B_fw', p.W),    fh: num('B_fh', p.H) },
     C:     { fw: num('C_fw', p.L),    fh: num('C_fh', p.H) },

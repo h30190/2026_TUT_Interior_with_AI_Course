@@ -66,3 +66,24 @@ walls_lines(msp, 315, 195, 515, 400, layer='WALL', color=256)
 msp.add_arc((315, 100), 70, 0, 90)           # 第二間 A 牆上的門
 doc.saveas(os.path.join(out, 'plan-floor.dxf'))
 print('ok')
+
+# 5. 照使用者實際畫法：牆是白色雙線聚合線（沒封閉，窗洞、門洞讓牆斷開），門窗都是青色（色號 4）
+#    房間內淨 243×120；A 牆（左）窗 80 寬（離 B 牆 12），C 牆（右）門洞 76（離 B 牆 44），開門弧半徑 66
+doc = ezdxf.new('R2013'); msp = doc.modelspace()
+X0, Y0, X1, Y1, T = 0, 0, 243, 120, 15
+W = {'color': 256}; C4 = {'color': 4}
+msp.add_lwpolyline([(X0, 28), (X0, Y0), (X1 + T, Y0)], dxfattribs=W)                       # A 牆下段＋D 牆內線
+msp.add_lwpolyline([(X1, 44 + 32), (X1, Y1), (X0, Y1), (X0, 108)], dxfattribs=W)           # C 牆上段＋B 牆內線＋A 牆上段
+msp.add_lwpolyline([(X0 - T, 28), (X0 - T, Y0 - T), (X1 + T, Y0 - T), (X1 + T, Y0)], dxfattribs=W)
+msp.add_lwpolyline([(X1 + T, 76), (X1 + T, Y1 + T), (X0 - T, Y1 + T), (X0 - T, 108)], dxfattribs=W)
+for y in (28, 108): msp.add_line((X0, y), (X0 - T, y), dxfattribs=W)                      # 窗洞兩邊牆收頭
+msp.add_line((X1, 76), (X1 + T, 76), dxfattribs=W)
+# 窗：青色框與窗線
+msp.add_lwpolyline([(X0 - T, 33), (X0, 33), (X0, 103), (X0 - T, 103)], close=True, dxfattribs=C4)
+for x in (-5, -7.5, -10): msp.add_line((x, 33), (x, 103), dxfattribs=C4)
+# 門：青色門框、門片、開門弧（門軸在 C 牆內側，往房內開）
+msp.add_lwpolyline([(X1, Y0), (X1 + T, Y0), (X1 + T, 5), (X1, 5)], close=True, dxfattribs=C4)
+msp.add_lwpolyline([(X1, 71), (X1 + T, 71), (X1 + T, 76), (X1, 76)], close=True, dxfattribs=C4)
+msp.add_lwpolyline([(X1, 5), (X1 - 66, 5), (X1 - 66, 8), (X1, 8)], close=True, dxfattribs=C4)
+msp.add_arc((X1, 5), 66, 90, 180, dxfattribs=C4)
+doc.saveas(os.path.join(out, 'plan-cyan.dxf'))

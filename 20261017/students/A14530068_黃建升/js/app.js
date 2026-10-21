@@ -177,6 +177,7 @@ function refresh() {
 
   const p = params();
   const rows = computeAll(p);
+  if (typeof updateOpeningWarnings === 'function') updateOpeningWarnings(faceDims(p));
   const tot = renderTable(rows, p);
   const reuse = reuseByMaterial(rows, p);
   renderCutList(rows, reuse);
@@ -276,12 +277,16 @@ function syncOpBlocks() {
   if ($('winBlk')) $('winBlk').classList.toggle('disabled', !$('win_on').checked);
 }
 
-function syncFaceDims(override) {
+// 空間 L／W／H 帶到五面：L＝A、C 牆長（地坪深），W＝B、D 牆長（地坪寬，平面 B 在上），H＝牆高
+// only：只改動到的那一個（'L'／'W'／'H'），其他面的實測尺寸（例如 DXF 匯入的）不要被洗掉
+function syncFaceDims(override, only) {
   const L = num('L', 600), W = num('W', 400), H = num('H', 280);
-  const set = (k, fw, fh) => { $(k + '_fw').value = fw; $(k + '_fh').value = fh; };
-  set('floor', L, W); set('A', L, H); set('B', W, H); set('C', L, H); set('D', W, H);
+  const setW = (k, v) => { $(k + '_fw').value = v; }, setH = (k, v) => { $(k + '_fh').value = v; };
+  if (!only || only === 'L') { setW('A', L); setW('C', L); setH('floor', L); }
+  if (!only || only === 'W') { setW('B', W); setW('D', W); setW('floor', W); }
+  if (!only || only === 'H') ['A', 'B', 'C', 'D'].forEach(k => setH(k, H));
   if (override) {
-    for (const k in override) set(k, override[k][0], override[k][1]);
+    for (const k in override) { setW(k, override[k][0]); setH(k, override[k][1]); }
   }
 }
 
@@ -790,7 +795,7 @@ function initApp() {
   });
 
   ['L', 'W', 'H'].forEach(id => $(id).addEventListener('input', () => {
-    syncFaceDims();
+    syncFaceDims(null, id);
     refresh();
   }));
 

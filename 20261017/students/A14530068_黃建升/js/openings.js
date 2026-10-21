@@ -147,6 +147,7 @@ function renderOpeningsUI() {
           <input type="number" data-id="${op.id}" data-field="y" value="${op.y}" ${isDoor ? 'disabled title="門檻固定離地 0cm"' : ''}>
         </div>
       </div>
+      <div id="opwarn_${op.id}" class="opwarn" style="display:none"></div>
     `;
     container.appendChild(card);
   });
@@ -171,6 +172,28 @@ function renderOpeningsUI() {
       removeOpening(id);
     });
   });
+}
+
+// 門窗超出牆面時，畫面與算料只取牆內那段——要明講，不然改了門寬卻沒變會以為壞掉
+function openingWarning(o, dims) {
+  const d = dims[o.face];
+  if (!d) return '';
+  const name = ` ${o.face} 牆`;
+  if (o.x >= d.fw) return `⚠ 距左 ${o.x} 已經超過${name}寬 ${d.fw}，這樘不會畫出來`;
+  const out = [];
+  if (o.x + o.w > d.fw + 0.05) out.push(`超出${name}寬 ${d.fw}：寬只畫到 ${Math.round((d.fw - o.x) * 10) / 10}`);
+  if (o.y + o.h > d.fh + 0.05) out.push(`超出牆高 ${d.fh}：高只畫到 ${Math.round((d.fh - o.y) * 10) / 10}`);
+  return out.length ? '⚠ ' + out.join('；') + '（請改距左 X、寬度或確認牆寬）' : '';
+}
+
+function updateOpeningWarnings(dims) {
+  for (const o of openingsList) {
+    const el = $('opwarn_' + o.id);
+    if (!el) continue;
+    const txt = openingWarning(o, dims);
+    el.textContent = txt;
+    el.style.display = txt ? 'block' : 'none';
+  }
 }
 
 // 載入指定情境的開口與柱子配置

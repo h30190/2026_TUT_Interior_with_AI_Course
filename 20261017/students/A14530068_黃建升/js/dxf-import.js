@@ -457,6 +457,91 @@ function rayCastRoom(cx, cy, ents, relaxed) {
   return { x0: left, x1: right, y0: bottom, y1: top, slanted, quad: null };
 }
 
+// 只有地坪時找房間：每個方向射多條平行射線（門洞、窗洞不會讓它穿出去），只看點附近 15m 內的線
+const raySegCache = new WeakMap();
+function rayCastRoomMulti(cx, cy, ents, relaxed) {
+  let cache = raySegCache.get(ents);
+  if (!cache) raySegCache.set(ents, cache = {});
+  const key = relaxed ? 'r' : 's';
+  if (!cache[key]) cache[key] = planWallSegs(ents, relaxed);
+  const R = 1500;
+  const longSegs = cache[key].filter(([x1, y1, x2, y2]) => Math.max(x1, x2) > cx - R && Math.min(x1, x2) < cx + R && Math.max(y1, y2) > cy - R && Math.min(y1, y2) < cy + R);
+  return rayCastFrom(cx, cy, longSegs);
+}
+
+// 牆線候選：嚴格＝只認黑／白線；放寬＝非設備圖層都算，但青色（門窗）一律不是牆
+// 窗洞、門洞旁的牆可能只剩一小段（例如 12cm），太短的（< 8cm，多半是收頭或標示）才不算
+function planWallSegs(ents, relaxed) {
+  const segs = [];
+  for (const e of ents) {
+    if (relaxed ? (PLAN_SKIP_LAYER.test(e.layer) || e.color === DXF_CYAN) : (e.layer.includes('磚') || (e.color !== 0 && e.color !== 7))) continue;
+    if (e.type === 'LINE') segs.push([e.x1, e.y1, e.x2, e.y2]);
+    else if (e.type === 'LWPOLYLINE') {
+      const n = e.pts.length, m = e.closed ? n : n - 1;
+      for (let k = 0; k < m; k++) { const a = e.pts[k], b = e.pts[(k + 1) % n]; segs.push([a[0], a[1], b[0], b[1]]); }
+    }
+  }
+  return segs.filter(([x1, y1, x2, y2]) => Math.hypot(x2 - x1, y2 - y1) >= 8);
+}
+
+function rayCastFrom(cx, cy, longSegs) {
+  // 一條射線：水平射線 y=py 找左右、垂直射線 x=px 找上下，取最近的牆線（牆可能是斜的）
+  const cast = (px, py, dir) => {
+    let best = null;
+    for (const sg of longSegs) {
+      const [x1, y1, x2, y2] = sg;
+      if (dir === 'left' || dir === 'right') {
+        if (!(Math.min(y1, y2) <= py && py <= Math.max(y1, y2) && Math.abs(y2 - y1) > 0.05)) continue;
+        const x = x1 + (py - y1) * (x2 - x1) / (y2 - y1), d = dir === 'left' ? px - x : x - px;
+        if (d > 0 && (!best || d < best.d)) best = { d, v: x, sg };
+      } else {
+        if (!(Math.min(x1, x2) <= px && px <= Math.max(x1, x2) && Math.abs(x2 - x1) > 0.05)) continue;
+        const y = y1 + (px - x1) * (y2 - y1) / (x2 - x1), d = dir === 'bottom' ? py - y : y - py;
+        if (d > 0 && (!best || d < best.d)) best = { d, v: y, sg };
+      }
+    }
+    return best;
+  };
+  // 每個方向射 17 條平行線：門洞、窗洞讓一部分射線穿出去打到外牆或隔壁，
+  // 取「至少 3 條打到同一個位置」裡最近的那個＝內牆面（窗兩頭的收頭短線最多擋到 2 條）
+  const OFFS = Array.from({ length: 17 }, (_, i) => (i - 8) * 10);
+  const hit = {}, pos = {};
+  // 射線只從房間裡面發射：上下方向限在左右牆之間、左右方向限在上下牆之間（第一輪還不知道，先全用，第二輪再收窄）
+  const inside = (dir, o) => dir === 'left' || dir === 'right'
+    ? pos.bottom === undefined || (cy + o > pos.bottom + 1 && cy + o < pos.top - 1)
+    : pos.left === undefined || (cx + o > pos.left + 1 && cx + o < pos.right - 1);
+  for (const dir of ['left', 'right', 'bottom', 'top', 'left', 'right']) {
+    const hits = OFFS.filter(o => o === 0 || inside(dir, o))
+      .map(o => dir === 'left' || dir === 'right' ? cast(cx, cy + o, dir) : cast(cx + o, cy, dir)).filter(Boolean);
+    if (!hits.length) return null;
+    const groups = {};
+    for (const h of hits) (groups[Math.round(h.v * 2) / 2] = groups[Math.round(h.v * 2) / 2] || []).push(h);
+    const near = Object.values(groups).filter(g => g.length >= 3).sort((p, q) => p[0].d - q[0].d)[0];
+    // 斜牆每條射線的位置都不同（沒有一組 3 條以上）：用中心那條
+    const pick = near ? near[0] : (cast(cx, cy, dir) || hits.sort((p, q) => p.d - q.d)[0]);
+    hit[dir] = pick.sg; pos[dir] = pick.v;
+  }
+  const { left, right, bottom, top } = pos;
+  const slanted = ['left', 'right'].some(k => Math.abs(hit[k][0] - hit[k][2]) > 0.5) || ['top', 'bottom'].some(k => Math.abs(hit[k][1] - hit[k][3]) > 0.5);
+  // 四面牆延長線兩兩相交＝房間四個角（斜牆的梯形房間也圍得出來）
+  const cross = (a, b) => {
+    const [x1, y1, x2, y2] = a, [x3, y3, x4, y4] = b;
+    const d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(d) < 1e-9) return null;
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d;
+    return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)];
+  };
+  const quad = [cross(hit.left, hit.top), cross(hit.top, hit.right), cross(hit.right, hit.bottom), cross(hit.bottom, hit.left)];
+  if (slanted && quad.every(Boolean)) {
+    const b = bboxOf(quad);
+    // 角落離射線點太遠（例如牆線很短、延長線幾乎平行）就不用四邊形
+    if (b.x1 - b.x0 < (right - left) * 1.5 && b.y1 - b.y0 < (top - bottom) * 1.5) {
+      return { x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y1, slanted, quad };
+    }
+  }
+  return { x0: left, x1: right, y0: bottom, y1: top, slanted, quad: null };
+}
+
 // 找出檔案裡每一張放樣施工圖
 function findDxfSheets(dxf) {
   const ents = dxf.entities;
@@ -682,12 +767,16 @@ function roomAt(dxf, x, y) {
   const area = r => (r.x1 - r.x0) * (r.y1 - r.y0);
   const polys = dxf.entities.filter(e => e.type === 'LWPOLYLINE' && e.pts.length >= 4 && !PLAN_SKIP_LAYER.test(e.layer) && pointInPoly([x, y], e.pts))
     .map(e => Object.assign(bboxOf(e.pts), { e })).filter(roomSized).sort((a, b) => area(a) - area(b));
-  // 射線可能剛好從門洞穿出去：中心附近多試幾個點，取圍出來最小的那個；黑白牆線找不到再放寬
+  // 點的附近多試幾個點，取最多個點圍出同一個範圍的那個（同票數取小的）；黑白牆線找不到再放寬
   const offs = [[0, 0], [30, 0], [-30, 0], [0, 30], [0, -30], [30, 30], [-30, -30], [30, -30], [-30, 30]];
   let ray = null;
   for (const relaxed of [false, true]) {
-    ray = offs.map(([dx, dy]) => rayCastRoom(x + dx, y + dy, dxf.entities, relaxed)).filter(r => r && roomSized(r))
-      .sort((a, b) => area(a) - area(b))[0] || null;
+    const found = offs.map(([dx, dy]) => rayCastRoomMulti(x + dx, y + dy, dxf.entities, relaxed))
+      .filter(r => r && roomSized(r) && r.x0 < x && x < r.x1 && r.y0 < y && y < r.y1);
+    const key = r => [r.x0, r.y0, r.x1, r.y1].map(v => Math.round(v)).join(',');
+    const votes = {};
+    for (const r of found) (votes[key(r)] = votes[key(r)] || []).push(r);
+    ray = Object.values(votes).sort((p, q) => q.length - p.length || area(p[0]) - area(q[0])).map(v => v[0])[0] || null;
     if (ray) break;
   }
   const poly = polys.find(q => !ray || area(q) <= area(ray) * 2.2);
@@ -733,12 +822,14 @@ function allArcs(dxf) {
 function axisSegs(dxf) {
   if (dxf.axisSegs) return dxf.axisSegs;
   const out = [];
+  let cyan = false; // 青色（色號 4）＝門窗框、窗線（使用者的畫法），不是牆
   const add = (x1, y1, x2, y2) => {
-    if (Math.abs(y1 - y2) < 0.05) out.push({ h: true, c: y1, a: Math.min(x1, x2), b: Math.max(x1, x2) });
-    else if (Math.abs(x1 - x2) < 0.05) out.push({ h: false, c: x1, a: Math.min(y1, y2), b: Math.max(y1, y2) });
+    if (Math.abs(y1 - y2) < 0.05) out.push({ h: true, c: y1, a: Math.min(x1, x2), b: Math.max(x1, x2), cyan });
+    else if (Math.abs(x1 - x2) < 0.05) out.push({ h: false, c: x1, a: Math.min(y1, y2), b: Math.max(y1, y2), cyan });
   };
   for (const e of dxf.entities) {
-    if (PLAN_SKIP_LAYER.test(e.layer)) continue;
+    cyan = e.color === DXF_CYAN || /WINDOW|窗/i.test(e.layer);
+    if (PLAN_SKIP_LAYER.test(e.layer) && !cyan) continue;
     if (e.type === 'LINE') add(e.x1, e.y1, e.x2, e.y2);
     else if (e.type === 'LWPOLYLINE') {
       const n = e.pts.length, m = e.closed ? n : n - 1;
@@ -748,9 +839,9 @@ function axisSegs(dxf) {
   return (dxf.axisSegs = out);
 }
 
-// 門洞實際開口：沿牆線（c）找 [s0, s1] 附近沒有牆線的那段；找不到合理的就回 null
+// 門洞實際開口（牆到牆，跟立面上畫的門框外寬一樣）：沿牆線（c）找 [s0, s1] 附近沒有牆線的那段；青色門框不算牆
 function wallGap(dxf, horiz, c, s0, s1, lo, hi) {
-  const segs = axisSegs(dxf).filter(q => q.h === horiz && Math.abs(q.c - c) < 3 && q.b > lo - 1 && q.a < hi + 1);
+  const segs = axisSegs(dxf).filter(q => !q.cyan && q.h === horiz && Math.abs(q.c - c) < 3 && q.b > lo - 1 && q.a < hi + 1);
   const left = Math.max(lo, ...segs.filter(q => q.b <= s0 + 3).map(q => q.b));
   const right = Math.min(hi, ...segs.filter(q => q.a >= s1 - 3).map(q => q.a));
   if (segs.some(q => q.a < right - 1 && q.b > left + 1)) return null; // 中間還有牆線，不是門洞
@@ -797,6 +888,37 @@ function planDoors(dxf, arcs, P, dims, doorH) {
   return doors.map((d, i) => Object.assign({ name: `門 ${i + 1}（${d.face} 面）` }, d));
 }
 
+// 平面上的窗：牆線在某段斷開，斷開的地方牆厚範圍內有青色（或窗圖層）的平行線
+// 左右位置、寬度量得出來；窗台與窗高平面看不出來，用預設值
+function planWindows(dxf, P, dims, doors, sill, winH) {
+  const out = [];
+  const sides = [['B', true, P.y1, 1], ['D', true, P.y0, -1], ['A', false, P.x0, -1], ['C', false, P.x1, 1]];
+  const all = axisSegs(dxf);
+  for (const [k, horiz, line, outward] of sides) {
+    const lo = horiz ? P.x0 : P.y0, hi = horiz ? P.x1 : P.y1;
+    const wall = all.filter(q => !q.cyan && q.h === horiz && Math.abs(q.c - line) < 3 && q.b > lo - 1 && q.a < hi + 1)
+      .map(q => [Math.max(lo, q.a), Math.min(hi, q.b)]).sort((a, b) => a[0] - b[0]);
+    // 牆線沒蓋到的段落＝開口
+    const gaps = [];
+    let cur = lo;
+    for (const [a, b] of wall) { if (a - cur >= 30) gaps.push([cur, a]); cur = Math.max(cur, b); }
+    if (hi - cur >= 30) gaps.push([cur, hi]);
+    for (const [g0, g1] of gaps) {
+      // 開口外側牆厚範圍（40 內）要有平行的窗線，蓋過開口八成以上
+      const marks = all.filter(q => q.cyan && q.h === horiz && (q.c - line) * outward >= -1 && (q.c - line) * outward <= 40
+        && Math.min(q.b, g1) - Math.max(q.a, g0) >= (g1 - g0) * 0.8);
+      if (!marks.length) continue;
+      const w = r1(g1 - g0);
+      // 平面座標換成立面距左：B 由左、C 由上（B 那頭）、A 與 D 左右相反
+      const s0 = horiz ? g0 - P.x0 : P.y1 - g1;
+      const x = r1((k === 'A' || k === 'D') ? dims[k] - s0 - w : s0);
+      if (doors.some(d => d.face === k && x < d.x + d.w - 1 && x + w > d.x + 1)) continue; // 是門洞
+      out.push({ kind: 'window', face: k, w, h: winH, x: Math.max(0, x), y: sill });
+    }
+  }
+  return out.map((o, i) => Object.assign({ name: `窗 ${i + 1}（${o.face} 面）` }, o));
+}
+
 // 一間房間 → 施工圖資料（四面牆由地坪四邊產生）
 function buildPlanSheet(dxf, room, opts) {
   opts = opts || {};
@@ -827,9 +949,13 @@ function buildPlanSheet(dxf, room, opts) {
   floor.overlay = collectOverlay(dxf, flatCache, PB, q => [q[0] - P.x0, P.y1 - q[1]], skip);
   const arcs = allArcs(dxf).filter(a => a.c[0] > PB.x0 && a.c[0] < PB.x1 && a.c[1] > PB.y0 && a.c[1] < PB.y1);
   const dims = { A: fhF, B: fwF, C: fhF, D: fwF };
-  const openings = planDoors(dxf, arcs, P, dims, doorH);
-  if (!openings.length) warnings.push('平面上沒找到開門弧線，請在「門窗」清單加入門');
-  warnings.push('窗戶在平面圖看不出高度，有窗請在「門窗」清單補上');
+  const doors = planDoors(dxf, arcs, P, dims, doorH);
+  if (!doors.length) warnings.push('平面上沒找到開門弧線，請在「門窗」清單加入門');
+  const sill = opts.sill || 90, winH = opts.winH || 120;
+  const windows = planWindows(dxf, P, dims, doors, sill, Math.min(winH, H - sill));
+  if (windows.length) warnings.push(`找到 ${windows.length} 扇窗（左右位置、寬度照平面）；窗台 ${sill}、窗高 ${Math.min(winH, H - sill)} 是預設值，請照實際改`);
+  else warnings.push('平面上沒找到窗；有窗請在「門窗」清單補上');
+  const openings = doors.concat(windows);
 
   const faces = { floor };
   for (const k of DXF_FACE_LETTERS) {
@@ -897,7 +1023,7 @@ function applyDxfSheet(s) {
 let planPick = null;
 
 function planOpts() {
-  return { H: num('H', 280), doorH: num('doorH', 210) };
+  return { H: num('H', 280), doorH: num('doorH', 210), sill: num('winSill', 90), winH: num('winH', 120) };
 }
 
 function planRoomLabel(dxf, r, i) {
