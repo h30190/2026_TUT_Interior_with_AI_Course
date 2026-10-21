@@ -12,6 +12,10 @@ doc.header['$INSUNITS'] = 4
 doc.header['$MEASUREMENT'] = 1
 # 圖層名稱跟施工圖一樣，插入原圖時會併到原本的圖層
 doc.layers.add('地磚', color=8)
+doc.layers.add('壁磚', color=8)
+# 每種磁磚的 Hatch 另外一層，在 AutoCAD 可以單獨關掉／凍結
+doc.layers.add('壁磚-HATCH', color=8)
+doc.layers.add('地磚-HATCH', color=8)
 doc.layers.add('T-DIM', color=8)
 doc.layers.add('標註', color=4)
 doc.styles.add('AEK', font='arial.ttf')
@@ -34,6 +38,6 @@ text = '\n'.join(lines)
 out = os.path.join(here, '..', 'js', 'dxf-template.js')
 with open(out, 'w', encoding='utf-8', newline='\n') as f:
     f.write('// 自動產生，請勿手改：python tools/make_dxf_template.py\n')
-    f.write('// 匯出 DXF 用的空白 R2013 圖檔（圖層 地磚／T-DIM／標註、字型 AEK、尺寸樣式「複本 ISO-25」）\n')
+    f.write('// 匯出 DXF 用的空白 R2013 圖檔（圖層 地磚／壁磚／HATCH／T-DIM／標註、字型 AEK、尺寸樣式「複本 ISO-25」）\n')
     f.write('const DXF_TEMPLATE = ' + json.dumps(text, ensure_ascii=False) + ';\n')
 print('wrote', out, len(text), 'chars')

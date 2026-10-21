@@ -705,10 +705,10 @@ function renderPlans(plans) {
     return pl === cur || !d ? '' : ` <small class="muted">(${d > 0 ? '+' : ''}${d})</small>`;
   };
   host.style.display = 'block';
-  host.innerHTML = `<h3>🧠 起磚方案比較（先比小料片數，再比 L 型切割，最後比浪費面積）</h3>
-    <table><thead><tr><th>方案</th><th>說明</th><th>小料</th><th>L 型</th>${labels.map(l => `<th>${l}（片）</th>`).join('')}<th>浪費 m²</th><th></th></tr></thead><tbody>
+  host.innerHTML = `<h3>🧠 起磚方案比較（先比 L 型切割，再比小料片數，最後比浪費面積）</h3>
+    <table><thead><tr><th>方案</th><th>說明</th><th>L 型</th><th>小料</th>${labels.map(l => `<th>${l}（片）</th>`).join('')}<th>浪費 m²</th><th></th></tr></thead><tbody>
     ${plans.map(pl => `<tr class="${pl.best ? 'best' : ''}"><td>${pl.best ? '<span class="star">★推薦</span> ' : ''}${pl.name}</td><td class="muted">${pl.desc}</td>
-      <td>${pl.score.danger}</td><td>${pl.score.lcut}</td>${labels.map(l => `<td>${fmt(pl.score.byLabel[l] || 0)}${diff(pl, l)}</td>`).join('')}
+      <td>${pl.score.lcut}</td><td>${pl.score.danger}</td>${labels.map(l => `<td>${fmt(pl.score.byLabel[l] || 0)}${diff(pl, l)}</td>`).join('')}
       <td>${(pl.score.waste / 10000).toFixed(2)}</td>
       <td>${pl.id === 'current' ? '<span class="muted">目前</span>' : `<button data-plan="${pl.id}">套用</button>`}</td></tr>`).join('')}
     </tbody></table>

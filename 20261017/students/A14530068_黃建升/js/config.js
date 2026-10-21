@@ -3,6 +3,15 @@ const $ = id => (typeof document !== 'undefined' ? document.getElementById(id) :
 const EPS = 1e-6;
 // 切磚機鋸路寬（cm）：剩料回收時每切一刀要扣掉
 const SAW_KERF = 0.3;
+// 每種磁磚的 Hatch（依出現順序套用）：照施工圖習慣用 ANSI31（色號 2 黃）、色號 41 橘…；
+// 每種樣式也不同，黑白列印分得出來。畫面線稿、PDF、匯出 DXF 共用這張表
+const HATCH_STYLES = [
+  { pat: 'ANSI31', aci: 2 },
+  { pat: 'ANSI34', aci: 41 },
+  { pat: 'ANSI37', aci: 3 },
+  { pat: 'ANSI32', aci: 4 },
+  { pat: 'NET', aci: 6 }
+];
 // 畫布邏輯尺寸（繪圖與滑鼠座標換算共用）
 const CANVAS_W = 1240, CANVAS_H = 820;
 

@@ -434,7 +434,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
         segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
       }
       const key = seg.zone ? `z${TL}x${TW}${seg.zone.name}` : 'main';
-      segTiles.forEach(t => { t.gkey = key; });
+      segTiles.forEach(t => { t.gkey = key; t.glabel = matLabel(TL, TW, seg.zone ? seg.zone.name : ''); });
       tiles = tiles.concat(segTiles);
       addGroup(key, matLabel(TL, TW, seg.zone ? seg.zone.name : ''), TL, TW, segTiles, areaIn(seg.x0, seg.x1), opsAreaIn(seg.x0, seg.x1), seg.zone ? seg.zone.name : '');
     }
@@ -449,7 +449,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     // 全牆連續鋪貼（若有柱線則為連動模式）
     tiles = generateZoneTiles(fw, fh, 0, fw, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
   }
-  if (!zones.length) tiles.forEach(t => { t.gkey = 'main'; });
+  if (!zones.length) tiles.forEach(t => { t.gkey = 'main'; t.glabel = matLabel(p.TL, p.TW); });
   if (!zones.length) addGroup('main', matLabel(p.TL, p.TW), p.TL, p.TW, tiles, areaIn(0, fw), ops.reduce((a, o) => a + o.area, 0));
 
   // 每種材料各自算理論片數與損耗（不同尺寸的磚不能混在一起加）
@@ -669,7 +669,8 @@ function computeAll(p, over) {
 
 // ── 🧠 自動找最佳起磚點：排出幾個方案比較 ──
 
-// 方案好壞：先比小料片數，再比 L 型切割片數，最後比浪費面積（叫料磚的面積 − 實際要鋪的面積，不同尺寸的磚也能一起比）
+// 方案好壞：先比 L 型切割片數，再比小料片數，最後比浪費面積（叫料磚的面積 − 實際要鋪的面積，不同尺寸的磚也能一起比）
+// L 型優先：使用者確認牆底一點點小料會被地磚蓋住，包住門窗轉角的 L 型才是現場真正的麻煩
 function planScore(rows) {
   let danger = 0, lcut = 0, waste = 0;
   const byLabel = {};
@@ -685,9 +686,21 @@ function planScore(rows) {
 }
 
 function betterScore(a, b) {
-  if (a.danger !== b.danger) return a.danger < b.danger;
   if (a.lcut !== b.lcut) return a.lcut < b.lcut;
+  if (a.danger !== b.danger) return a.danger < b.danger;
   return a.waste < b.waste - 1e-6;
+}
+
+// 每種磁磚用哪一組 Hatch（HATCH_STYLES 的序號）：依 A、B、C、D、地坪出現順序，同一種磚每一面都一樣
+function hatchIndexMap(rows) {
+  const map = {};
+  const order = ['A', 'B', 'C', 'D', 'floor'];
+  for (const k of order) {
+    const s = rows.find(r => r.key === k);
+    if (!s || s.cfg.skip) continue;
+    for (const g of s.r.groups) if (!(g.label in map)) map[g.label] = Object.keys(map).length % HATCH_STYLES.length;
+  }
+  return map;
 }
 
 function scoreOf(r) {
@@ -761,7 +774,7 @@ function searchPlans(p) {
     if (s.cfg.skip) continue;
     perFace[s.key] = bestFaceOffsets(paramsFor(p, s.key), s.fw, s.fh, s.cfg, s.ops, s.col, s.key === 'floor');
   }
-  add('perFace', '各面最省', '每面各自在一個磚距內逐公分試（牆面也試上下對齊門頂、窗台），小料、L 型最少、浪費最少', perFace);
+  add('perFace', '各面最省', '每面各自在一個磚距內逐公分試（牆面也試上下對齊門頂、窗台），L 型、小料最少、浪費最少', perFace);
 
   // 四面對縫：試地坪起點，牆縫跟著地磚縫對齊，看全室合計
   const fl = rows0.find(s => s.key === 'floor');

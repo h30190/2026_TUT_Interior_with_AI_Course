@@ -408,8 +408,9 @@ assert('smoke', 'L 型：門邊整條切（直縫剛好在門框）不算 L 型'
 const overL = vmCtx.bestFaceOffsets(pL, 210, 289, cfgL, doorL, null, false);
 const bestL = layout(pL, 210, 289, Object.assign({}, cfgL, overL), doorL, true);
 assert('smoke', 'L 型：自動找起磚點會上下移動避開 L 型，且不產生小料', bestL.lcut === 0 && bestL.danger === 0, JSON.stringify(overL));
-assert('smoke', 'L 型：方案比較先比小料、再比 L 型、最後比浪費',
-  vmCtx.betterScore({ danger: 0, lcut: 1, waste: 0 }, { danger: 1, lcut: 0, waste: 0 }) && vmCtx.betterScore({ danger: 0, lcut: 0, waste: 9 }, { danger: 0, lcut: 1, waste: 0 }));
+assert('smoke', 'L 型：方案比較先比 L 型、再比小料、最後比浪費（牆底一點小料會被地磚蓋住，L 型優先避開）',
+  vmCtx.betterScore({ danger: 1, lcut: 0, waste: 9 }, { danger: 0, lcut: 1, waste: 0 }) && vmCtx.betterScore({ danger: 0, lcut: 0, waste: 9 }, { danger: 1, lcut: 0, waste: 0 })
+  && vmCtx.betterScore({ danger: 0, lcut: 0, waste: 1 }, { danger: 0, lcut: 0, waste: 2 }));
 
 // Test S19: 匯出 DXF（照施工圖畫法，貼回 AutoCAD）
 // 124.2×250 牆、60 磚、縫 0.2、靠左由地起：磚縫取縫中線 → 直縫 60.1、120.3；橫縫 60.1、120.3、180.5、240.7
@@ -442,9 +443,25 @@ const reS19 = vmCtx.parseDxf(dxfS19);
 const cnt = (t, l, c) => reS19.entities.filter(e => e.type === t && (!l || e.layer === l) && (c === undefined || e.color === c)).length;
 // 匯入程式不讀尺寸物件，直接數檔案裡 T-DIM 層的 DIMENSION
 const dimsS19 = (dxfS19.match(/ {2}0\r\nDIMENSION\r\n(?:.*\r\n){6} {2}8\r\nT-DIM\r\n/g) || []).length;
-assert('smoke', '匯出 DXF：自己的 DXF 讀得回來——地磚層磚縫、T-DIM 尺寸、紅線、青色門框都在',
-  cnt('LINE', '地磚') > 10 && dimsS19 >= 8 && cnt('LINE', '0', 1) >= 1 && cnt('LWPOLYLINE', '0', 4) === 1,
-  JSON.stringify({ joints: cnt('LINE', '地磚'), dims: dimsS19, red: cnt('LINE', '0', 1), door: cnt('LWPOLYLINE', '0', 4) }));
+assert('smoke', '匯出 DXF：自己的 DXF 讀得回來——壁磚層／地磚層磚縫分開、T-DIM 尺寸、紅線、青色門框都在',
+  cnt('LINE', '壁磚') > 10 && cnt('LINE', '地磚') > 0 && dimsS19 >= 8 && cnt('LINE', '0', 1) >= 1 && cnt('LWPOLYLINE', '0', 4) === 1,
+  JSON.stringify({ wall: cnt('LINE', '壁磚'), floor: cnt('LINE', '地磚'), dims: dimsS19, red: cnt('LINE', '0', 1), door: cnt('LWPOLYLINE', '0', 4) }));
+// Hatch：壁磚、地磚各在自己的 -HATCH 層，不同尺寸的磚用不同樣式（這間牆 60×60、地 60×60 同一種 → 同樣式）
+const hatchS19 = [...dxfS19.matchAll(/ {2}0\r\nHATCH\r\n(?:.*\r\n){6} {2}8\r\n(.*)\r\n 62\r\n(\d+)\r\n100\r\nAcDbHatch\r\n(?:.*\r\n){12} {2}2\r\n(.*)\r\n/g)].map(m => m.slice(1).join('|'));
+assert('smoke', '匯出 DXF：每面都有 Hatch，壁磚在「壁磚-HATCH」、地磚在「地磚-HATCH」，同一種磚同一個樣式',
+  hatchS19.filter(h => h.startsWith('壁磚-HATCH|2|ANSI31')).length === 4 && hatchS19.filter(h => h.startsWith('地磚-HATCH|2|ANSI31')).length === 1,
+  JSON.stringify(hatchS19));
+// 地坪換成自己的磚（60×120）：地坪 Hatch 要用地磚那一組，不能跟牆一樣
+setInputs({ floor_tile: '60×120' });
+const dxfS19b = vmCtx.buildDxf(vmCtx.params(), vmCtx.computeAll(vmCtx.params()));
+const hatchS19b = [...dxfS19b.matchAll(/ {2}0\r\nHATCH\r\n(?:.*\r\n){6} {2}8\r\n(.*)\r\n 62\r\n(\d+)\r\n100\r\nAcDbHatch\r\n(?:.*\r\n){12} {2}2\r\n(.*)\r\n/g)].map(m => m.slice(1).join('|'));
+assert('smoke', '匯出 DXF：牆、地不同磚時，地坪 Hatch 換另一組樣式',
+  hatchS19b.some(h => h === '地磚-HATCH|41|ANSI34') && !hatchS19b.some(h => h.startsWith('地磚-HATCH|2|')), JSON.stringify(hatchS19b));
+setInputs({ floor_tile: '' });
+const hm = vmCtx.hatchIndexMap([{ key: 'A', cfg: {}, r: { groups: [{ label: '壁 120×120' }] } }, { key: 'B', cfg: {}, r: { groups: [{ label: '壁 120×120' }, { label: '主秀壁 14.8×14.8' }] } },
+  { key: 'floor', cfg: {}, r: { groups: [{ label: '地 60×120' }] } }]);
+assert('smoke', 'Hatch：每種磚依出現順序配一組樣式（壁→主秀壁→地各不同），同一種磚每面一樣',
+  hm['壁 120×120'] === 0 && hm['主秀壁 14.8×14.8'] === 1 && hm['地 60×120'] === 2);
 assert('smoke', '匯出 DXF：有「由此線開始放樣」（色號 62）與尺寸樣式「複本 ISO-25」',
   dxfS19.includes('由此線開始放樣') && reS19.entities.some(e => e.type === 'MTEXT' && e.color === 62) && dxfS19.includes('複本 ISO-25'));
 setOpenings([]);

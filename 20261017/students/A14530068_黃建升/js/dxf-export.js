@@ -10,6 +10,15 @@ const DXF_DIM_OFF = 30;     // 尺寸線離面 30
 const DXF_TXT = 10;         // 字高 10
 const DXF_FONT = '\\fMicrosoft JhengHei|b0|i0|c136|p34;';
 const DXF_DIMSTYLE = '複本 ISO-25';
+// Hatch 樣式定義（acadiso.pat，比例 1）：[角度, 基準點, 間距位移, 虛線段]
+const DXF_PATTERNS = {
+  ANSI31: [[45, [0, 0], [-2.2450640303, 2.2450640303], []]],
+  ANSI32: [[45, [0, 0], [-6.7351920908, 6.7351920908], []], [45, [4.490128053, 0], [-6.7351920908, 6.7351920908], []]],
+  ANSI34: [[45, [0, 0], [-13.4703841816, 13.4703841816], []], [45, [4.490128053, 0], [-13.4703841816, 13.4703841816], []],
+    [45, [8.9802561314, 0], [-13.4703841816, 13.4703841816], []], [45, [13.4703841844, 0], [-13.4703841816, 13.4703841816], []]],
+  ANSI37: [[45, [0, 0], [-2.2450640303, 2.2450640303], []], [135, [0, 0], [-2.2450640303, -2.2450640303], []]],
+  NET: [[0, [0, 0], [0, 3.175], []], [90, [0, 0], [-3.175, 0], []]]
+};
 
 // ── 寫 DXF 的小工具：往骨架（DXF_TEMPLATE）裡加圖元 ──
 function dxfDoc() {
@@ -60,6 +69,25 @@ function dxfDoc() {
           [91, 1], [92, 3], [72, 1], [73, 1], [93, pts.length]);
         for (const p of pts) out.push([10, n(p[0])], [20, n(p[1])], [42, n(p[2] || 0)]);
         out.push([97, 0], [75, 0], [76, 1], [98, 0]);
+      },
+      // 圖案填充：polys＝一個或多個封閉外框（各自填滿），pat＝DXF_PATTERNS 的名稱
+      hatch(polys, pat, layer, color) {
+        polys = polys.filter(q => q.length >= 3);
+        if (!polys.length) return;
+        head('HATCH', layer, color);
+        out.push([100, 'AcDbHatch'], [10, 0], [20, 0], [30, 0], [210, 0], [220, 0], [230, 1], [2, pat], [70, 0], [71, 0], [91, polys.length]);
+        for (const q of polys) {
+          out.push([92, 3], [72, 0], [73, 1], [93, q.length]);
+          for (const pt of q) out.push([10, n(pt[0])], [20, n(pt[1])]);
+          out.push([97, 0]);
+        }
+        const def = DXF_PATTERNS[pat];
+        out.push([75, 1], [76, 1], [52, 0], [41, 1], [77, 0], [78, def.length]);
+        for (const [ang, base, off, dash] of def) {
+          out.push([53, ang], [43, n(base[0])], [44, n(base[1])], [45, n(off[0])], [46, n(off[1])], [79, dash.length]);
+          for (const d of dash) out.push([49, n(d)]);
+        }
+        out.push([98, 0]);
       },
       // 多行文字：attach 1 左上、4 左中、5 正中、6 右中、7 左下、8 中下、9 右下
       text(p, h, str, attach, opts) {
@@ -237,6 +265,39 @@ function jointLines(tiles, fw, fh, joint, ops, outline) {
   return lines.concat(slant);
 }
 
+// 一段面（x0～x1、高 fh）扣掉門窗後切成幾個長方形，給 Hatch 當外框（門窗裡面不填）
+function hatchRects(x0, x1, fh, ops) {
+  const xs = [x0, x1];
+  for (const o of ops) for (const v of [o.x, o.x + o.w]) if (v > x0 + EPS && v < x1 - EPS) xs.push(v);
+  xs.sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const a = xs[i], b = xs[i + 1];
+    if (b - a <= EPS) continue;
+    const holes = ops.filter(o => o.x < b - EPS && o.x + o.w > a + EPS).map(o => [Math.max(0, o.y), Math.min(fh, o.y + o.h)]).sort((p, q) => p[0] - q[0]);
+    let y = 0;
+    for (const [h0, h1] of holes) { if (h0 - y > EPS) out.push([[a, y], [b, y], [b, h0], [a, h0]]); y = Math.max(y, h1); }
+    if (fh - y > EPS) out.push([[a, y], [b, y], [b, fh], [a, fh]]);
+  }
+  return out;
+}
+
+// 每種磁磚的 Hatch：依分區切段（同 layout），段內扣掉門窗；地坪有外框時照外框裁
+function dxfHatches(d, s, p, map, outline, hmap, layer) {
+  const { fw, fh, cfg } = s;
+  const ops = s.key === 'floor' ? [] : s.ops;
+  const segs = (cfg.zones || []).length ? splitByZones(fw, cfg.zones) : [{ x0: 0, x1: fw, zone: null }];
+  const fp = paramsFor(p, s.key); // 該面自己的磚尺寸（例如地坪 60×120、牆 120×120）
+  for (const seg of segs) {
+    const label = seg.zone ? matLabel(seg.zone.TL, seg.zone.TW, seg.zone.name) : matLabel(fp.TL, fp.TW);
+    const st = HATCH_STYLES[hmap[label] || 0];
+    const polys = outline
+      ? [clipPolygonRect(outline, seg.x0, 0, seg.x1, fh)]
+      : hatchRects(seg.x0, seg.x1, fh, ops);
+    d.hatch(polys.map(q => q.map(pt => map(pt[0], pt[1]))), st.pat, layer, st.aci);
+  }
+}
+
 // 「由此線開始放樣」：線頂往上 25 的 T 形標記＋兩端箭頭＋文字（色號 62）
 function dxfStartMark(d, x, top, minX, maxX) {
   const ay = top + 25, lx = Math.max(minX, x - 50), rx = Math.min(maxX, x + 50);
@@ -337,16 +398,19 @@ function dxfMaterialLabels(d, r, fw, fh, map, ops, away) {
 
 // 一面（立面或地坪）：外框、磚縫、門窗、設備、紅線、小料、材料
 // map(x, y)：面座標 → 圖面座標；ops 為此面門窗（立面座標）
-function dxfFace(d, s, p, map, outline) {
+function dxfFace(d, s, p, map, outline, hmap) {
   const { fw, fh, cfg, r } = s;
   const ops = s.key === 'floor' ? [] : s.ops;
+  // 壁磚、地磚分開圖層；Hatch 在各自的 -HATCH 層
+  const layer = s.key === 'floor' ? '地磚' : '壁磚';
   const ol = outline || [[0, 0], [fw, 0], [fw, fh], [0, fh]];
   d.poly(ol.map(q => map(q[0], q[1])), true, '0');
   if (cfg.skip) {
     d.text(map(fw / 2, fh / 2), DXF_TXT, '不鋪磚', 5);
     return;
   }
-  for (const [a, b] of jointLines(r.tiles, fw, fh, p.joint, ops, outline)) d.line(map(a[0], a[1]), map(b[0], b[1]), '地磚');
+  dxfHatches(d, s, p, map, outline, hmap, layer + '-HATCH');
+  for (const [a, b] of jointLines(r.tiles, fw, fh, p.joint, ops, outline)) d.line(map(a[0], a[1]), map(b[0], b[1]), layer);
   for (const o of ops) d.poly([[o.x, o.y], [o.x + o.w, o.y], [o.x + o.w, o.y + o.h], [o.x, o.y + o.h]].map(q => map(q[0], q[1])), true, '0', 4);
   const ov = faceOverlays[s.key];
   dxfOverlay(d, ov, map);
@@ -365,23 +429,23 @@ function dxfFace(d, s, p, map, outline) {
     if (!t.avoid) continue;
     const v = visiblePart(t, ops);
     const c = map(v.cx, v.cy);
-    d.circle(c, 6, '地磚', 1);
+    d.circle(c, 6, layer, 1);
     if (labeled) continue;
     labeled = true;
     const toLeft = v.cx + 6 + 12 + dxfTextW('避免小料', DXF_TXT) > fw;
     const e = map(toLeft ? v.cx - 18 : v.cx + 18, v.cy);
-    d.line(map(toLeft ? v.cx - 6 : v.cx + 6, v.cy), e, '地磚', 1);
-    d.text(e, DXF_TXT, '避免小料', toLeft ? 6 : 4, { layer: '地磚', color: 1 });
+    d.line(map(toLeft ? v.cx - 6 : v.cx + 6, v.cy), e, layer, 1);
+    d.text(e, DXF_TXT, '避免小料', toLeft ? 6 : 4, { layer, color: 1 });
   }
   // L 型切割：紅圈圈在包住的門窗轉角，第一個加「避免L型」
   r.tiles.filter(t => t.lcut).forEach((t, i) => {
     const c = map(t.lc[0], t.lc[1]);
-    d.circle(c, 6, '地磚', 1);
+    d.circle(c, 6, layer, 1);
     if (i) return;
     const toLeft = t.lc[0] + 18 + dxfTextW('避免L型', DXF_TXT) > fw;
     const e = map(toLeft ? t.lc[0] - 18 : t.lc[0] + 18, t.lc[1] + (s.key === 'floor' ? -10 : 10));
-    d.line(map(toLeft ? t.lc[0] - 6 : t.lc[0] + 6, t.lc[1]), e, '地磚', 1);
-    d.text(e, DXF_TXT, '避免L型', toLeft ? 9 : 7, { layer: '地磚', color: 1 });
+    d.line(map(toLeft ? t.lc[0] - 6 : t.lc[0] + 6, t.lc[1]), e, layer, 1);
+    d.text(e, DXF_TXT, '避免L型', toLeft ? 9 : 7, { layer, color: 1 });
   });
   if (!ov || !ov.notes.length) dxfMaterialLabels(d, r, fw, fh, map, ops, s.key === 'floor' ? [fw / 2, fh / 2] : null);
 }
@@ -392,6 +456,7 @@ function buildDxf(p, rows) {
   const byKey = {}; rows.forEach(s => byKey[s.key] = s);
   const dims = faceDims(p);
   const allOps = openings(dims);
+  const hmap = hatchIndexMap(rows);
   const order = ['A', 'B', 'C', 'D'];
   const pos = {};
   let x = 0, prevH = null;
@@ -400,7 +465,7 @@ function buildDxf(p, rows) {
     const ox = x;
     pos[k] = ox;
     const map = (fx, fy) => [ox + fx, fy];
-    dxfFace(d, s, p, map);
+    dxfFace(d, s, p, map, null, hmap);
     // 照施工圖：牆高只標在第一面左側（之後牆高不同才再標）；門窗高、起磚高標在該面右側
     if (prevH === null || Math.abs(s.fh - prevH) > 0.5) dxfChain(d, [0, s.fh], ox - DXF_DIM_OFF, true, map);
     prevH = s.fh;
@@ -419,7 +484,7 @@ function buildDxf(p, rows) {
   const fl = byKey.floor;
   const px = pos.B, top = -DXF_PLAN_GAP;
   const fmap = (fx, fy) => [px + fx, top - fy];
-  dxfFace(d, fl, p, fmap, floorOutline);
+  dxfFace(d, fl, p, fmap, floorOutline, hmap);
   const ov = faceOverlays.floor;
   if (!ov) dxfPlanOpenings(d, fl.fw, fl.fh, allOps, dims, fmap);
   dxfCompass(d, px + fl.fw / 2, top - fl.fh / 2);
@@ -432,7 +497,25 @@ function buildDxf(p, rows) {
     dxfStartMark(d, px + Math.max(0, fl.r.xBase), top - Math.min(0, oe.y0), px - 10, px + fl.fw + 10);
     dxfStartMarkV(d, top - Math.max(0, fl.r.yBase), leftX - 20, top - fl.fh - 10, top + 10);
   }
+  dxfHatchLegend(d, hmap, px + fl.fw + 120, top);
   return d.toString();
+}
+
+// 圖例：每種磁磚一個 Hatch 小方塊＋材料名稱（有匯入材料時寫型號與規格）
+function dxfHatchLegend(d, hmap, x, y) {
+  const labels = Object.keys(hmap);
+  if (!labels.length) return;
+  d.text([x, y + 6], 12, '磁磚圖例', 7);
+  labels.forEach((label, i) => {
+    const st = HATCH_STYLES[hmap[label]];
+    const y0 = y - 30 - i * 32;
+    const box = [[x, y0], [x + 40, y0], [x + 40, y0 + 20], [x, y0 + 20]];
+    d.hatch([box], st.pat, '0', st.aci);
+    d.poly(box, true, '0');
+    const sz = label.match(/([\d.]+)×([\d.]+)/);
+    const m = sz ? matOf(parseFloat(sz[1]), parseFloat(sz[2]), label.replace(/\s*[\d.]+×[\d.]+$/, '').trim()) : null;
+    d.text([x + 50, y0 + 10], DXF_TXT, m ? `${label}　${m.code || ''} ${m.spec || ''}`.trim() : label, 4);
+  });
 }
 
 // 匯入線稿的範圍（地坪座標，含面本身），尺寸鏈要讓到牆線外面

@@ -29,6 +29,34 @@ function setupHiDPICanvas(cv) {
   return { ctx, dpr, width: cssW, height: cssH };
 }
 
+// 施工線稿的磁磚 Hatch（對照 DXF 的 HATCH_STYLES：ANSI31 斜線、ANSI34 粗細組、ANSI37 交叉、ANSI32 雙線、NET 方格）
+const hatchCache = new WeakMap();
+function hatchPattern(ctx, idx) {
+  let byCtx = hatchCache.get(ctx);
+  if (!byCtx) hatchCache.set(ctx, byCtx = {});
+  if (byCtx[idx]) return byCtx[idx];
+  const st = HATCH_STYLES[idx] || HATCH_STYLES[0];
+  const S = 12;
+  const c = document.createElement('canvas');
+  c.width = S; c.height = S;
+  const g = c.getContext('2d');
+  g.strokeStyle = aciColor(st.aci); g.globalAlpha = 0.75; g.lineWidth = 0.8;
+  const diag = (off, dir) => {
+    // 45° 線（dir 1 ／、-1 ＼），畫三段讓接縫連續
+    for (const k of [-S, 0, S]) {
+      g.beginPath();
+      if (dir > 0) { g.moveTo(k + off, S); g.lineTo(k + off + S, 0); } else { g.moveTo(k + off, 0); g.lineTo(k + off + S, S); }
+      g.stroke();
+    }
+  };
+  if (st.pat === 'ANSI31') diag(0, 1);
+  else if (st.pat === 'ANSI34') { diag(0, 1); diag(2.5, 1); }
+  else if (st.pat === 'ANSI37') { diag(0, 1); diag(0, -1); }
+  else if (st.pat === 'ANSI32') { diag(0, 1); diag(6, 1); }
+  else { g.beginPath(); g.moveTo(0, 0.5); g.lineTo(S, 0.5); g.moveTo(0.5, 0); g.lineTo(0.5, S); g.stroke(); }
+  return (byCtx[idx] = ctx.createPattern(c, 'repeat'));
+}
+
 // 繪製磁磚網格
 function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
   for (const t of tiles) {
@@ -52,7 +80,9 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
     }
     if (drawStyle === 'line') {
       // 線稿：只畫磚縫，小料淡紅底提醒
-      ctx.fillStyle = t.avoid ? 'rgba(224, 69, 69, 0.30)' : (t.danger || t.lcut ? 'rgba(224, 69, 69, 0.12)' : '#ffffff');
+      // 每種磚不同 Hatch；小料、L 型改淡紅底提醒
+      ctx.fillStyle = t.avoid ? 'rgba(224, 69, 69, 0.30)' : (t.danger || t.lcut ? 'rgba(224, 69, 69, 0.12)'
+        : (t.hatch !== undefined ? hatchPattern(ctx, t.hatch) : '#ffffff'));
       ctx.strokeStyle = '#8c8c8c';
       ctx.lineWidth = 0.7;
     } else {
@@ -1010,6 +1040,22 @@ function drawUnfold(p, rows) {
       '對縫：地磚縫垂直向上連通 B/D 壁磚',
       '收邊：轉角陽角處倒 45 度背切收邊'
     ].forEach((t, i) => ctx.fillText(t, padR, py + 14 + i * 16));
+    ty = py + 14 + 5 * 16;
+  }
+  // 施工線稿：磁磚 Hatch 圖例（同匯出 DXF）
+  if (drawStyle === 'line') {
+    const hmap = hatchIndexMap(rows);
+    ty += 6;
+    ctx.fillStyle = '#3a3a3a'; ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('磁磚圖例', padR, ty); ty += 6;
+    for (const label of Object.keys(hmap)) {
+      ctx.fillStyle = hatchPattern(ctx, hmap[label]);
+      ctx.fillRect(padR, ty, 26, 14);
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 0.8; ctx.strokeRect(padR, ty, 26, 14);
+      ctx.fillStyle = '#3a3a3a'; ctx.font = '10.5px sans-serif';
+      ctx.fillText(label, padR + 32, ty + 11);
+      ty += 20;
+    }
   }
   ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif';
 
@@ -1118,6 +1164,9 @@ function drawActiveDragGuide(ctx) {
 function draw(p, rows) {
   p = p || params();
   rows = rows || computeAll(p);
+  // 每塊磚記下用哪一組 Hatch（施工線稿與圖例用）
+  const hmap = hatchIndexMap(rows);
+  for (const s of rows) for (const t of s.r.tiles) t.hatch = hmap[t.glabel];
   if (view === 'unfold') drawUnfold(p, rows);
   else drawSingle(p, rows);
 
