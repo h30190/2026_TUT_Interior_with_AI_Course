@@ -307,7 +307,15 @@ function flattenEntity(e, dxf, tf, inherit, depth, out) {
     const n = e.pts.length, segs = e.closed ? n : n - 1;
     for (let k = 0; k < segs; k++) pts.push(...bulgePts(e.pts[k], e.pts[(k + 1) % n], e.bulges[k]));
     poly(pts);
-  } else if (e.type === 'ARC' || e.type === 'CIRCLE') poly(arcPts(e.cx, e.cy, e.r, e.a0, e.a1));
+  } else if (e.type === 'ARC' || e.type === 'CIRCLE') {
+    poly(arcPts(e.cx, e.cy, e.r, e.a0, e.a1));
+    // 平面找門用：開門弧線的圓心（門軸）、半徑（門寬）、兩端點
+    if (e.type === 'ARC' && out.arcs) {
+      const at = a => tf([e.cx + e.r * Math.cos(a * Math.PI / 180), e.cy + e.r * Math.sin(a * Math.PI / 180)]);
+      const c = tf([e.cx, e.cy]), p0 = at(e.a0), p1 = at(e.a1);
+      out.arcs.push({ c, r: Math.hypot(p0[0] - c[0], p0[1] - c[1]), p0, p1, sweep: ((e.a1 - e.a0) % 360 + 360) % 360 });
+    }
+  }
   else if (e.type === 'ELLIPSE') {
     let t1 = e.t1; while (t1 <= e.t0) t1 += 2 * Math.PI;
     const n = Math.max(8, Math.ceil((t1 - e.t0) / (Math.PI / 18))), pts = [];
@@ -399,10 +407,12 @@ function planOutline(pts, closed, P) {
 }
 
 // 從 (cx, cy) 往四個方向找最近的牆線（黑／白線、直線或聚合線的水平垂直段，排除磚縫與標示）
-function rayCastRoom(cx, cy, ents) {
+// relaxed：整張平面圖的牆不一定是黑白線，改成排除設備、標註、文字類圖層
+const PLAN_SKIP_LAYER = /磚|DIM|標註|TEXT|HATCH|TOILET|FUR|設備|傢俱|家具|衛浴|檯面|DOOR|門|WINDOW|窗|AXIS|軸/i;
+function rayCastRoom(cx, cy, ents, relaxed) {
   const segs = [];
   for (const e of ents) {
-    if (e.layer.includes('磚') || (e.color !== 0 && e.color !== 7)) continue;
+    if (relaxed ? PLAN_SKIP_LAYER.test(e.layer) : (e.layer.includes('磚') || (e.color !== 0 && e.color !== 7))) continue;
     if (e.type === 'LINE') segs.push([e.x1, e.y1, e.x2, e.y2]);
     else if (e.type === 'LWPOLYLINE') {
       const n = e.pts.length, m = e.closed ? n : n - 1;
@@ -641,6 +651,208 @@ function buildSheet(g, dxf, rects, symbols) {
   return { box: area, meta, materials, warnings, project, faceKeys: Object.keys(g.faces).sort() };
 }
 
+// ── 只有地坪平面：自動生成四面牆 ──
+// 天花／門高寫在圖上就用圖上的，例如「天花 FL+289」「CH=280」「門高 239」「DH 210」
+const PLAN_TEXT_CEIL = /(?:天花板?高?|C\.?H\.?|FL\s*\+)\s*[:：=]?\s*(?:FL\s*\+\s*)?(\d{3}(?:\.\d+)?)/i;
+const PLAN_TEXT_DOOR = /(?:門高|D\.?H\.?)\s*[:：=]?\s*(\d{3}(?:\.\d+)?)/i;
+const ROOM_MIN = 60, ROOM_MAX = 1000;
+
+function closedPts(e) {
+  if (e.type !== 'LWPOLYLINE' || e.pts.length < 3) return null;
+  const a = e.pts[0], b = e.pts[e.pts.length - 1];
+  if (!e.closed && Math.hypot(a[0] - b[0], a[1] - b[1]) > 0.5) return null;
+  return e.pts;
+}
+
+function pointInPoly(p, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+const roomSized = b => b.x1 - b.x0 >= ROOM_MIN && b.y1 - b.y0 >= ROOM_MIN && b.x1 - b.x0 <= ROOM_MAX && b.y1 - b.y0 <= ROOM_MAX;
+
+// (x, y) 所在的房間：圍住它的最小聚合線（沒封閉的當作補起來，L 形內牆常這樣畫），跟往四周找牆線圍出來的比：
+// 聚合線沒有比牆線圍的大太多就用聚合線（射線可能被 L 形內凹、檯面擋住而偏小）；
+// 大很多多半是外面的圖框或平面區塊框（牆用直線畫時圍住中心的只有這種框）
+function roomAt(dxf, x, y) {
+  const area = r => (r.x1 - r.x0) * (r.y1 - r.y0);
+  const polys = dxf.entities.filter(e => e.type === 'LWPOLYLINE' && e.pts.length >= 4 && !PLAN_SKIP_LAYER.test(e.layer) && pointInPoly([x, y], e.pts))
+    .map(e => Object.assign(bboxOf(e.pts), { e })).filter(roomSized).sort((a, b) => area(a) - area(b));
+  // 射線可能剛好從門洞穿出去：中心附近多試幾個點，取圍出來最小的那個；黑白牆線找不到再放寬
+  const offs = [[0, 0], [30, 0], [-30, 0], [0, 30], [0, -30], [30, 30], [-30, -30], [30, -30], [-30, 30]];
+  let ray = null;
+  for (const relaxed of [false, true]) {
+    ray = offs.map(([dx, dy]) => rayCastRoom(x + dx, y + dy, dxf.entities, relaxed)).filter(r => r && roomSized(r))
+      .sort((a, b) => area(a) - area(b))[0] || null;
+    if (ray) break;
+  }
+  const poly = polys.find(q => !ray || area(q) <= area(ray) * 2.2);
+  if (poly) return poly;
+  return ray ? Object.assign(ray, { e: null }) : null;
+}
+
+// 檔案裡的每一間：有 ABCD 視角符號就一個符號一間；沒有就找像房間的封閉外框
+// （牆畫成雙線時外圈只比內圈大一點 → 取內圈；房間裡的浴缸、檯面外框 → 不算一間）
+function findPlanRooms(dxf) {
+  const rooms = [];
+  const same = (a, b) => Math.abs(a.x0 - b.x0) < 1 && Math.abs(a.y0 - b.y0) < 1 && Math.abs(a.x1 - b.x1) < 1 && Math.abs(a.y1 - b.y1) < 1;
+  const symbols = dxf.entities.filter(e => e.type === 'INSERT' && e.name === 'ABCD').map(e => symbolCenter(e, dxf.blocks));
+  for (const [x, y] of symbols) {
+    const r = roomAt(dxf, x, y);
+    if (r && !rooms.some(q => same(q, r))) rooms.push(Object.assign(r, { seed: [x, y] }));
+  }
+  if (rooms.length) return rooms;
+  const cand = dxf.entities.map(e => ({ e, pts: closedPts(e) })).filter(q => q.pts && !PLAN_SKIP_LAYER.test(q.e.layer))
+    .map(q => Object.assign(bboxOf(q.pts), { e: q.e, pts: q.pts })).filter(b => roomSized(b) && b.x1 - b.x0 >= 80 && b.y1 - b.y0 >= 80);
+  const w = b => b.x1 - b.x0, h = b => b.y1 - b.y0;
+  const inside = (big, small) => big !== small && small.x0 >= big.x0 - 0.5 && small.x1 <= big.x1 + 0.5 && small.y0 >= big.y0 - 0.5 && small.y1 <= big.y1 + 0.5;
+  const keep = cand.filter(c => {
+    // 房間裡比自己小很多的東西（浴缸…）：自己是房間，那個不是
+    if (cand.some(big => inside(big, c) && (w(big) - w(c) > 80 || h(big) - h(c) > 80))) return false;
+    // 裡面有只小一圈的外框：自己是牆的外線
+    if (cand.some(small => inside(c, small) && w(c) - w(small) <= 80 && h(c) - h(small) <= 80 && (w(c) - w(small) > 1 || h(c) - h(small) > 1))) return false;
+    return true;
+  });
+  for (const c of keep) if (!rooms.some(q => same(q, c))) rooms.push(Object.assign(c, { seed: [(c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2] }));
+  return rooms.sort((a, b) => (b.y1 - a.y1) || (a.x0 - b.x0));
+}
+
+// 整份檔案的弧線（含圖塊裡的門）展開一次存起來；圖塊基準點常在遠處，不能用插入點篩選
+function allArcs(dxf) {
+  if (dxf.arcs) return dxf.arcs;
+  const fl = { polys: [], texts: [], notes: [], arcs: [] };
+  for (const e of dxf.entities) if (e.type === 'ARC' || e.type === 'INSERT') flattenEntity(e, dxf, q => q, undefined, 0, fl);
+  return (dxf.arcs = fl.arcs);
+}
+
+// 牆線（水平、垂直段）只整理一次：量門洞開口用
+function axisSegs(dxf) {
+  if (dxf.axisSegs) return dxf.axisSegs;
+  const out = [];
+  const add = (x1, y1, x2, y2) => {
+    if (Math.abs(y1 - y2) < 0.05) out.push({ h: true, c: y1, a: Math.min(x1, x2), b: Math.max(x1, x2) });
+    else if (Math.abs(x1 - x2) < 0.05) out.push({ h: false, c: x1, a: Math.min(y1, y2), b: Math.max(y1, y2) });
+  };
+  for (const e of dxf.entities) {
+    if (PLAN_SKIP_LAYER.test(e.layer)) continue;
+    if (e.type === 'LINE') add(e.x1, e.y1, e.x2, e.y2);
+    else if (e.type === 'LWPOLYLINE') {
+      const n = e.pts.length, m = e.closed ? n : n - 1;
+      for (let k = 0; k < m; k++) { const a = e.pts[k], b = e.pts[(k + 1) % n]; add(a[0], a[1], b[0], b[1]); }
+    }
+  }
+  return (dxf.axisSegs = out);
+}
+
+// 門洞實際開口：沿牆線（c）找 [s0, s1] 附近沒有牆線的那段；找不到合理的就回 null
+function wallGap(dxf, horiz, c, s0, s1, lo, hi) {
+  const segs = axisSegs(dxf).filter(q => q.h === horiz && Math.abs(q.c - c) < 3 && q.b > lo - 1 && q.a < hi + 1);
+  const left = Math.max(lo, ...segs.filter(q => q.b <= s0 + 3).map(q => q.b));
+  const right = Math.min(hi, ...segs.filter(q => q.a >= s1 - 3).map(q => q.a));
+  if (segs.some(q => q.a < right - 1 && q.b > left + 1)) return null; // 中間還有牆線，不是門洞
+  const w = right - left;
+  return w >= (s1 - s0) - 2 && w <= (s1 - s0) + 25 ? [left, right] : null;
+}
+
+// 平面上的門：約 90° 的開門弧線，圓心（門軸）貼著某面牆，弧的另一端在牆上＝門寬
+function planDoors(dxf, arcs, P, dims, doorH) {
+  const doors = [];
+  const fw = { A: dims.A, B: dims.B, C: dims.C, D: dims.D };
+  for (const a of arcs) {
+    if (a.sweep < 70 || a.sweep > 110 || a.r < 50 || a.r > 150) continue;
+    const [cx, cy] = a.c;
+    // 開門弧線要在這間房裡（門向內開）；隔壁房間的門弧線在牆另一邊，不算
+    const mx = (a.p0[0] + a.p1[0]) / 2 - cx, my = (a.p0[1] + a.p1[1]) / 2 - cy, ml = Math.hypot(mx, my) || 1;
+    const mid = [cx + mx / ml * a.r * 0.7, cy + my / ml * a.r * 0.7];
+    if (!(mid[0] > P.x0 && mid[0] < P.x1 && mid[1] > P.y0 && mid[1] < P.y1)) continue;
+    const near = [
+      ['B', Math.abs(cy - P.y1), cx > P.x0 - 5 && cx < P.x1 + 5],
+      ['D', Math.abs(cy - P.y0), cx > P.x0 - 5 && cx < P.x1 + 5],
+      ['A', Math.abs(cx - P.x0), cy > P.y0 - 5 && cy < P.y1 + 5],
+      ['C', Math.abs(cx - P.x1), cy > P.y0 - 5 && cy < P.y1 + 5]
+    ].filter(n => n[1] <= 35 && n[2]).sort((p, q) => p[1] - q[1])[0];
+    if (!near) continue;
+    const k = near[0], horiz = k === 'B' || k === 'D';
+    // 弧上比較貼牆的那一端是另一邊門框
+    const along = q => horiz ? Math.abs(q[1] - cy) : Math.abs(q[0] - cx);
+    const jamb = along(a.p0) < along(a.p1) ? a.p0 : a.p1;
+    let s0 = horiz ? Math.min(cx, jamb[0]) - P.x0 : P.y1 - Math.max(cy, jamb[1]);
+    let w = r1(Math.abs(horiz ? jamb[0] - cx : jamb[1] - cy));
+    // 弧線半徑是門片寬；牆線有缺口就用缺口（門框開口），比較接近立面上畫的門
+    const line = { B: P.y1, D: P.y0, A: P.x0, C: P.x1 }[k];
+    const gap = horiz
+      ? wallGap(dxf, true, line, Math.min(cx, jamb[0]), Math.max(cx, jamb[0]), P.x0, P.x1)
+      : wallGap(dxf, false, line, Math.min(cy, jamb[1]), Math.max(cy, jamb[1]), P.y0, P.y1);
+    if (gap) { w = r1(gap[1] - gap[0]); s0 = horiz ? gap[0] - P.x0 : P.y1 - gap[1]; }
+    if (w < 50) continue;
+    // 平面位置換成立面距左（A、D 左右相反）
+    const x = r1((k === 'A' || k === 'D') ? fw[k] - s0 - w : s0);
+    if (doors.some(d => d.face === k && Math.abs(d.x - x) < 10)) continue;
+    doors.push({ kind: 'door', face: k, w, h: doorH, x: Math.max(0, x), y: 0 });
+  }
+  return doors.map((d, i) => Object.assign({ name: `門 ${i + 1}（${d.face} 面）` }, d));
+}
+
+// 一間房間 → 施工圖資料（四面牆由地坪四邊產生）
+function buildPlanSheet(dxf, room, opts) {
+  opts = opts || {};
+  const warnings = [];
+  const P = { x0: room.x0, y0: room.y0, x1: room.x1, y1: room.y1 };
+  const fwF = r1(P.x1 - P.x0), fhF = r1(P.y1 - P.y0);
+  const near = 250;
+  const texts = dxf.entities.filter(e => (e.type === 'TEXT' || e.type === 'MTEXT') && e.text
+    && e.x > P.x0 - near && e.x < P.x1 + near && e.y > P.y0 - near && e.y < P.y1 + near);
+  const pick = re => { for (const t of texts) { const m = t.text.match(re); if (m) return parseFloat(m[1]); } return null; };
+  const ceilTxt = pick(PLAN_TEXT_CEIL), doorTxt = pick(PLAN_TEXT_DOOR);
+  const H = r1(ceilTxt || opts.H || 280), doorH = r1(Math.min(H, doorTxt || opts.doorH || 210));
+  warnings.push(`只有地坪平面：四面牆由地坪四邊產生（B、D 寬 ${fwF}，A、C 寬 ${fhF}），牆高 ${H}${ceilTxt ? '（圖上文字）' : '（網頁「空間高度 H」）'}`
+    + `、門高 ${doorH}${doorTxt ? '（圖上文字）' : '（網頁「門高預設」）'}，請確認`);
+
+  const floor = { fw: fwF, fh: fhF, dir: 'H', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0 };
+  const outline = room.e ? planOutline(room.e.pts, true, P) : null;
+  if (outline && outline !== 'odd') {
+    floor.outline = outline;
+    warnings.push('地坪不是矩形：四面牆寬以外框四邊近似（L 形的內凹牆面請另外確認）');
+  } else if (room.quad) floor.outline = room.quad.map(q => [r1(q[0] - P.x0), r1(P.y1 - q[1])]);
+
+  // 設備線稿與門：房間範圍放寬到牆厚
+  const PB = { x0: P.x0 - 40, y0: P.y0 - 40, x1: P.x1 + 40, y1: P.y1 + 40 };
+  const flatCache = dxf.flatCache || (dxf.flatCache = new Map());
+  const skip = e => (e.layer.includes('磚') && ['LINE', 'LWPOLYLINE', 'INSERT'].includes(e.type)) || (e.type === 'INSERT' && e.name === 'ABCD')
+    || ((e.type === 'TEXT' || e.type === 'MTEXT') && (OVERLAY_SKIP_TEXT.test(e.text) || PLAN_TEXT_CEIL.test(e.text) || PLAN_TEXT_DOOR.test(e.text)));
+  floor.overlay = collectOverlay(dxf, flatCache, PB, q => [q[0] - P.x0, P.y1 - q[1]], skip);
+  const arcs = allArcs(dxf).filter(a => a.c[0] > PB.x0 && a.c[0] < PB.x1 && a.c[1] > PB.y0 && a.c[1] < PB.y1);
+  const dims = { A: fhF, B: fwF, C: fhF, D: fwF };
+  const openings = planDoors(dxf, arcs, P, dims, doorH);
+  if (!openings.length) warnings.push('平面上沒找到開門弧線，請在「門窗」清單加入門');
+  warnings.push('窗戶在平面圖看不出高度，有窗請在「門窗」清單補上');
+
+  const faces = { floor };
+  for (const k of DXF_FACE_LETTERS) {
+    faces[k] = { fw: dims[k], fh: H, dir: 'H', mode: 'grid', xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0, marks: [], zones: [] };
+  }
+  // 材料（有寫「填縫劑」的材料文字就用）
+  const materials = texts.filter(t => t.text.includes('填縫')).map(t => parseMaterial(t.text)).filter(Boolean);
+  const wall = pickMaterial(materials, 'wall'), flm = pickMaterial(materials, 'floor');
+  if (flm && (!wall || flm.size[0] !== wall.size[0] || flm.size[1] !== wall.size[1])) {
+    faces.floor.TL = Math.max(...flm.size); faces.floor.TW = Math.min(...flm.size);
+  }
+  // 圖名：房間裡寫的空間名稱（例如「浴室」「主臥衛浴」）
+  const nameTxt = texts.find(t => /浴|廁|衛|WC|BATH/i.test(t.text) && t.x > P.x0 && t.x < P.x1 && t.y > P.y0 && t.y < P.y1);
+  const meta = { project: '', drawingName: nameTxt ? nameTxt.text.split('\n')[0].trim() : '', number: '' };
+  const project = {
+    format: PROJECT_FORMAT, version: PROJECT_VERSION, meta,
+    room: { L: fhF, W: fwF, H },
+    tile: wall ? { TL: Math.max(...wall.size), TW: Math.min(...wall.size) } : {},
+    faces, openings, materials, column: { on: false }
+  };
+  return { box: PB, meta, materials, warnings, project, faceKeys: DXF_FACE_LETTERS.slice(), planOnly: true };
+}
+
 function sheetLabel(s, i) {
   const dims = s.faceKeys.map(k => `${k}=${s.project.faces[k].fw}`).join('／');
   const name = [s.meta.project, s.meta.drawingName].filter(Boolean).join('｜') || '（無圖名）';
@@ -669,17 +881,98 @@ function applyDxfSheet(s) {
   const res = validateProject(JSON.parse(JSON.stringify(s.project)));
   if (res.errors.length) { alert('這張圖無法匯入：\n' + res.errors.join('\n')); return; }
   applyProject(res.project);
+  // 只有地坪：四面牆是程式生成的，直接套用最佳起磚點（方案比較表留著，可以改選）
+  if (s.planOnly && typeof searchPlans === 'function') {
+    lastPlans = searchPlans(params());
+    const best = lastPlans.find(pl => pl.best);
+    if (best && best.id !== 'current') applyPlan(best.id); else renderPlans(lastPlans);
+  }
   const notes = s.warnings.concat(res.warnings);
   alert(`已匯入：${sheetLabel(s, 0).replace(/^#1\s*/, '')}\n`
     + `材料：${s.materials.map(m => `${m.role} ${m.spec}`).join('、') || '無'}`
     + (notes.length ? '\n\n請確認：\n・' + notes.join('\n・') : ''));
 }
 
+// ── 只有地坪平面的選房間視窗 ──
+let planPick = null;
+
+function planOpts() {
+  return { H: num('H', 280), doorH: num('doorH', 210) };
+}
+
+function planRoomLabel(dxf, r, i) {
+  const s = buildPlanSheet(dxf, r, planOpts());
+  return `#${i + 1}　${s.meta.drawingName || '房間'}　${s.project.faces.floor.fw}×${s.project.faces.floor.fh}　門 ${s.project.openings.length} 樘`;
+}
+
+// 畫出整張平面（每個圖元展開成線），標出找到的房間；點一下就用那間
+function showPlanPicker(dxf, rooms) {
+  const cv = $('planCanvas'), g = cv.getContext('2d');
+  if (!dxf.flatAll) {
+    const fl = { polys: [], texts: [], notes: [] };
+    for (const e of dxf.entities) flattenEntity(e, dxf, q => q, undefined, 0, fl);
+    dxf.flatAll = fl;
+  }
+  // 範圍取 1%～99%（遠處的圖塊基準點、零星圖元不要把圖縮得太小）
+  const xs = [], ys = [];
+  for (const pl of dxf.flatAll.polys) for (const q of pl.pts) { xs.push(q[0]); ys.push(q[1]); }
+  xs.sort((a, b) => a - b); ys.sort((a, b) => a - b);
+  const qt = (arr, f) => arr[Math.min(arr.length - 1, Math.max(0, Math.floor(arr.length * f)))];
+  let x0 = qt(xs, 0.01), x1 = qt(xs, 0.99), y0 = qt(ys, 0.01), y1 = qt(ys, 0.99);
+  for (const r of rooms) { x0 = Math.min(x0, r.x0); x1 = Math.max(x1, r.x1); y0 = Math.min(y0, r.y0); y1 = Math.max(y1, r.y1); }
+  const pad = 20, sc = Math.min((cv.width - pad * 2) / (x1 - x0 || 1), (cv.height - pad * 2) / (y1 - y0 || 1));
+  const P = q => [pad + (q[0] - x0) * sc, cv.height - pad - (q[1] - y0) * sc];
+  g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+  g.lineWidth = 0.6;
+  for (const pl of dxf.flatAll.polys) {
+    g.strokeStyle = typeof aciColor === 'function' ? aciColor(pl.c) : '#555';
+    g.beginPath(); pl.pts.forEach((q, i) => { const [x, y] = P(q); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.stroke();
+  }
+  rooms.forEach((r, i) => {
+    const [ax, ay] = P([r.x0, r.y1]), [bx, by] = P([r.x1, r.y0]);
+    g.fillStyle = 'rgba(221, 34, 34, 0.08)'; g.fillRect(ax, ay, bx - ax, by - ay);
+    g.strokeStyle = '#d22'; g.lineWidth = 2; g.strokeRect(ax, ay, bx - ax, by - ay);
+    g.fillStyle = '#d22'; g.font = 'bold 14px sans-serif'; g.fillText('#' + (i + 1), ax + 4, ay + 16);
+  });
+  planPick = { dxf, rooms, toDxf: (px, py) => [x0 + (px - pad) / sc, y0 + (cv.height - pad - py) / sc], toPx: (x, y) => P([x, y]) };
+  $('planPickerNote').textContent = rooms.length
+    ? `找到 ${rooms.length} 間（紅框）。點紅框或下面的按鈕；不對的話直接點在浴室中間。`
+    : '沒有自動找到房間：請點在要做的浴室中間，程式會往四周找牆線。';
+  const list = $('planRoomList');
+  list.innerHTML = '';
+  rooms.forEach((r, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = planRoomLabel(dxf, r, i);
+    b.addEventListener('click', () => usePlanRoom(r));
+    list.appendChild(b);
+  });
+  $('planPicker').style.display = 'flex';
+}
+
+function usePlanRoom(room) {
+  $('planPicker').style.display = 'none';
+  applyDxfSheet(buildPlanSheet(planPick.dxf, room, planOpts()));
+}
+
+function pickPlanAt(px, py) {
+  if (!planPick) return;
+  const [x, y] = planPick.toDxf(px, py);
+  const hit = planPick.rooms.filter(r => x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1)
+    .sort((a, b) => (a.x1 - a.x0) * (a.y1 - a.y0) - (b.x1 - b.x0) * (b.y1 - b.y0))[0];
+  const room = hit || roomAt(planPick.dxf, x, y);
+  if (!room) { alert('這裡找不到圍起來的房間：請點在浴室中間（離牆遠一點、不要點在設備上）。'); return; }
+  usePlanRoom(room);
+}
+
 function importDxfText(text) {
   const t0 = Date.now();
-  const sheets = findDxfSheets(parseDxf(text));
+  const dxf = parseDxf(text);
+  const sheets = findDxfSheets(dxf);
   if (!sheets.length) {
-    alert('沒有找到放樣施工圖：需要立面外框下方有 A/B/C/D 索引圖塊。');
+    // 沒有立面施工圖：當成只有地坪平面
+    const rooms = findPlanRooms(dxf);
+    console.log(`DXF 解析 ${Date.now() - t0}ms，只有平面，找到 ${rooms.length} 間`);
+    if (rooms.length === 1) { planPick = { dxf, rooms }; usePlanRoom(rooms[0]); } else showPlanPicker(dxf, rooms);
     return;
   }
   console.log(`DXF 解析 ${Date.now() - t0}ms，找到 ${sheets.length} 張`);
@@ -702,4 +995,19 @@ function initDxfImport() {
     inp.value = '';
   });
   if ($('dxfSheetCancel')) $('dxfSheetCancel').addEventListener('click', () => { $('dxfSheetPicker').style.display = 'none'; });
+  if ($('planPickerCancel')) $('planPickerCancel').addEventListener('click', () => { $('planPicker').style.display = 'none'; });
+  if ($('planCanvas')) $('planCanvas').addEventListener('click', e => {
+    const cv = $('planCanvas'), b = cv.getBoundingClientRect();
+    pickPlanAt((e.clientX - b.left) * cv.width / b.width, (e.clientY - b.top) * cv.height / b.height);
+  });
+  // 檔案直接拖進畫面：.dxf 當施工圖／平面圖，.json 當資料檔
+  document.addEventListener('dragover', e => { e.preventDefault(); });
+  document.addEventListener('drop', e => {
+    const f = e.dataTransfer && e.dataTransfer.files[0];
+    if (!f) return;
+    e.preventDefault();
+    if (/\.dxf$/i.test(f.name)) f.text().then(importDxfText);
+    else if (/\.json$/i.test(f.name) && typeof importProjectText === 'function') f.text().then(importProjectText);
+    else alert('只能拖 .dxf（施工圖或平面圖）或 .json（資料檔）進來。');
+  });
 }

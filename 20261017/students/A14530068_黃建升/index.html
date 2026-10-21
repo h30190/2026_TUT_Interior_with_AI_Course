@@ -22,7 +22,11 @@
       <input id="dxfFile" type="file" accept=".dxf" style="display:none">
       <input id="projectFile" type="file" accept=".json,application/json" style="display:none">
       <div id="projectMetaLine" class="syncnote" style="font-weight:600;color:var(--ink)"></div>
-      <div class="syncnote">DXF：AutoCAD「另存新檔」選 DXF，程式會找出檔案裡每張放樣施工圖讓你挑。資料檔（JSON）保存尺寸、起磚、紅線、門窗、材料。</div>
+      <div class="row2" style="margin-top:6px">
+        <div><label title="只給地坪平面時，平面圖上沒寫門高就用這個">只有地坪時：門高 (cm)</label><input id="doorH" type="number" value="210" min="100"></div>
+        <div class="syncnote" style="margin:auto 0">牆高用下方「空間高度 H」</div>
+      </div>
+      <div class="syncnote">DXF：AutoCAD「另存新檔」選 DXF（也可以直接把檔案拖進畫面）。有立面施工圖就照圖匯入；<b>只畫地坪平面也可以</b>——程式從平面四邊生成四面牆、找門，並自動套用最佳起磚點。資料檔（JSON）保存尺寸、起磚、紅線、門窗、材料。</div>
     </div>
 
     <div class="card" style="margin-bottom:16px">
@@ -251,6 +255,17 @@
     </div>
     <div id="dxfSheetList" class="sheet-list"></div>
     <button id="dxfSheetCancel" type="button" class="lock-toggle-btn" style="margin-top:12px">取消</button>
+  </div>
+</div>
+
+<!-- 🏠 只有地坪平面：點選要做的浴室 -->
+<div id="planPicker" class="modal" style="display:none">
+  <div class="modal-box" style="width:min(1000px,96vw)">
+    <h2>只有地坪平面：點一下要做的浴室</h2>
+    <div class="syncnote" id="planPickerNote">紅框是程式找到的房間，點紅框或點在浴室中間都可以。</div>
+    <canvas id="planCanvas" width="960" height="580" style="width:100%;border:1px solid #d9d2c3;border-radius:6px;cursor:crosshair;background:#fff"></canvas>
+    <div id="planRoomList" class="sheet-list" style="margin-top:8px"></div>
+    <button id="planPickerCancel" type="button" class="lock-toggle-btn" style="margin-top:12px">取消</button>
   </div>
 </div>
 

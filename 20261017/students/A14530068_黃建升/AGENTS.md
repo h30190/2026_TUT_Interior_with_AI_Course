@@ -27,6 +27,7 @@
 | `tests/test-runner.js` | 計算邏輯測試（Node 直接跑） |
 | `tests/browser-test.js` | 瀏覽器實測（Playwright，真的按按鈕） |
 | `tests/fixtures/sample-bathroom.dxf` | 測試用 DXF（已去個資） |
+| `tests/fixtures/plan-*.dxf` | 只有地坪平面的測試 DXF（`tools/make_plan_fixtures.py` 產生，不含業主資料）：ABCD＋雙線牆＋門圖塊、L 形外框、兩間雙線聚合線＋浴缸、整張平面（點選） |
 | `revit-addin/` | Revit 2024 外掛（C#，.NET Framework 4.8）：選房間匯出資料檔；`RoomExportModel.cs` 是不依賴 Revit 的換算，改資料檔格式時要一起改，並更新 `tests/fixtures/revit-sample.json` |
 
 新增 JS 檔要同時改：`index.html` 的 `<script>`、`tests/test-runner.js` 的 `requiredFiles`／`jsFiles`／`scriptOrder`。
@@ -50,6 +51,15 @@
 - 主秀壁分區＝紅線切出的區段裡，磚縫間距符合另一種材料尺寸。
 - 設備（馬桶、臉盆、門）與多重引線備註照原座標搬過來畫。
 - 圖上沒有的立面 → 設成「此面不鋪磚」，不要沿用上一張圖。
+
+### 只有地坪平面（`findDxfSheets` 找不到立面時）
+
+- 找房間 `findPlanRooms`：有 `ABCD` 視角符號 → 一個符號一間；沒有 → 像房間的封閉外框（雙線牆取內圈、房間裡的浴缸不算）；都沒有 → 跳「選房間」視窗，使用者點在浴室中間（`roomAt`）。
+- `roomAt`：圍住該點的最小聚合線（沒封閉的當補起來）跟往四周找牆線（`rayCastRoom`，中心附近多點試，避免從門洞穿出去；黑白線找不到再放寬到非設備圖層）比，聚合線不超過射線圍的 2.2 倍就用聚合線（射線可能被 L 形內凹擋住），大很多是圖框。
+- 四面牆：B、D 寬＝地坪寬，A、C 寬＝地坪深；牆高讀圖上「天花／CH／FL+」文字，沒有就用網頁 H；門高讀「門高／DH」，沒有用網頁「門高」預設 210。
+- 門：約 90° 的開門弧線（含圖塊裡的），圓心離某面牆 ≤ 35、弧的中間在這間房裡（向內開；隔壁的門不算）；牆線有缺口就用缺口當門框開口，不然用弧半徑（門片寬）。窗看不出來，提醒使用者自己加。
+- 匯入後自動套用最佳起磚點（`searchPlans` 推薦），方案比較表留著可改選。
+- 用使用者真實施工圖的平面部分測過：18 間有 12 間地坪尺寸完全一樣；牆線顏色混雜、房內有磚縫線的平面會抓偏，所以一定要讓使用者在選房間視窗確認。
 
 ## 匯出 DXF 畫法（`dxf-export.js`，對照使用者的施工圖）
 

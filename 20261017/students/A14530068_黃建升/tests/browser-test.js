@@ -206,6 +206,48 @@ function check(name, ok, info) {
     dxfDl.suggestedFilename() === 'tile-setting-out.dxf' && dxfText.includes('AC1027') && dxfText.includes('\r\n  8\r\n地磚\r\n')
     && dxfText.includes('T-DIM') && dxfText.includes('由此線開始放樣') && errors.length === n, errorsSince(n));
 
+  // 10. 只有地坪平面：自動生成四面牆
+  const fx = name => path.join(__dirname, 'fixtures', name);
+  n = errors.length;
+  await page.setInputFiles('#dxfFile', asUpload(fx('plan-abcd.dxf'), 'plan-abcd.dxf', 'application/dxf'));
+  await page.waitForFunction(() => $('A_fh').value === '289', null, { timeout: 15000 });
+  const pa2 = await page.evaluate(() => ({
+    dims: ['floor', 'A', 'B', 'C', 'D'].map(k => $(k + '_fw').value + 'x' + $(k + '_fh').value).join(' '),
+    name: projectMeta.drawingName, door: JSON.stringify(computeAll(params()).find(s => s.key === 'D').ops.map(o => [o.x, o.w, o.h])),
+    lcut: planScore(computeAll(params())).lcut, plans: !!document.querySelector('#planResults tr.best')
+  }));
+  check('只有地坪（ABCD）：生成四面牆 207/187×289、D 面門 101/86/239、名稱「主臥浴室」、已套用最佳起磚點',
+    pa2.dims === '207x187 187x289 207x289 187x289 207x289' && pa2.door === '[[101,86,239]]' && pa2.name === '主臥浴室' && pa2.plans && pa2.lcut === 0 && errors.length === n,
+    JSON.stringify(pa2) + errorsSince(n));
+  // 兩間房 → 選房間視窗，按第二個
+  n = errors.length;
+  await page.setInputFiles('#dxfFile', asUpload(fx('plan-rooms.dxf'), 'plan-rooms.dxf', 'application/dxf'));
+  await page.waitForSelector('#planPicker[style*="flex"] #planRoomList button', { timeout: 15000 });
+  const roomBtns = await page.$$eval('#planRoomList button', bs => bs.map(b => b.textContent));
+  await page.click('#planRoomList button >> nth=1');
+  const fl2 = await page.evaluate(() => $('floor_fw').value + 'x' + $('floor_fh').value);
+  check(`只有地坪（兩間）：列出 ${roomBtns.length} 間（浴缸不算），選第 2 間 → 地坪 ${fl2}`, roomBtns.length === 2 && fl2 === '210x180' && errors.length === n, JSON.stringify(roomBtns));
+  // 整張平面圖（沒有符號、沒有外框）→ 點在第二間裡面
+  n = errors.length;
+  await page.setInputFiles('#dxfFile', asUpload(fx('plan-floor.dxf'), 'plan-floor.dxf', 'application/dxf'));
+  await page.waitForSelector('#planPicker[style*="flex"]', { timeout: 15000 });
+  const [cpx, cpy] = await page.evaluate(() => planPick.toPx(415, 90));
+  const cb = await (await page.$('#planCanvas')).boundingBox();
+  await page.mouse.click(cb.x + cpx * cb.width / 960, cb.y + cpy * cb.height / 580);
+  const fl3 = await page.evaluate(() => ({ fl: $('floor_fw').value + 'x' + $('floor_fh').value, a: JSON.stringify(computeAll(params()).find(s => s.key === 'A').ops.map(o => [o.x, o.w])) }));
+  check(`整張平面圖：點在浴室中間 → 地坪 ${fl3.fl}、A 面門 ${fl3.a}`, fl3.fl === '200x180' && fl3.a === '[[100,70]]' && errors.length === n, JSON.stringify(fl3));
+  // 拖拉檔案進畫面也能匯入
+  n = errors.length;
+  const outlineText = fs.readFileSync(fx('plan-outline.dxf'), 'utf8');
+  await page.evaluate(text => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([text], 'plan-outline.dxf'));
+    document.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }, outlineText);
+  await page.waitForFunction(() => $('floor_fw').value === '240', null, { timeout: 15000 });
+  const ol = await page.evaluate(() => ({ outline: $('floor_outline').value, h: $('A_fh').value }));
+  check('拖拉 DXF 進畫面：L 形外框照實際形狀、牆高用網頁的 H', ol.outline.split(' ').length === 6 && errors.length === n, JSON.stringify(ol));
+
   await browser.close();
   console.log(`\n🎯 瀏覽器實測 ${passed + failed} 項，通過 ${passed}，失敗 ${failed}`);
   process.exit(failed ? 1 : 0);

@@ -475,6 +475,34 @@ assert('smoke', '避免小料：頂端一整排 6 片小料只圈 1 次（圈在
   rowOnly.avoid === 6 && mRow.length === 1 && Math.abs(mRow[0].cx - 52.6) < 8 && mRowCol.length === 2 && rowCol.avoid > 6,
   JSON.stringify({ avoid: [rowOnly.avoid, rowCol.avoid], marks: [mRow.length, mRowCol.length], cx: mRow[0] && mRow[0].cx }));
 
+// Test S20: 只有地坪平面 → 自動生成四面牆
+const planDxf = n => vmCtx.parseDxf(fs.readFileSync(path.join(ROOT_DIR, 'tests', 'fixtures', n), 'utf8'));
+const dA = planDxf('plan-abcd.dxf'), dO = planDxf('plan-outline.dxf'), dR = planDxf('plan-rooms.dxf'), dF = planDxf('plan-floor.dxf');
+const rA = vmCtx.findPlanRooms(dA), sA = rA[0] && vmCtx.buildPlanSheet(dA, rA[0], { H: 280, doorH: 210 });
+assert('smoke', '只有地坪（ABCD）：沒有立面也找得到房間 207×187（門洞正對中心也不會穿出去）',
+  vmCtx.findDxfSheets(dA).length === 0 && rA.length === 1 && sA.project.faces.floor.fw === 207 && sA.project.faces.floor.fh === 187);
+assert('smoke', '只有地坪：四面牆 B/D＝地坪寬、A/C＝地坪深，牆高與門高讀圖上「天花 FL+289」「門高 239」',
+  sA.project.faces.B.fw === 207 && sA.project.faces.A.fw === 187 && sA.project.faces.C.fh === 289 && sA.project.room.H === 289
+  && JSON.stringify(sA.project.openings.map(o => [o.face, o.x, o.w, o.h])) === '[["D",101,86,239]]', JSON.stringify(sA.project.openings));
+assert('smoke', '只有地坪：材料文字（壁 120*120、地 60*120）照樣讀，地坪換成地磚尺寸；房間名稱當圖名',
+  sA.project.tile.TL === 120 && sA.project.faces.floor.TL === 120 && sA.project.faces.floor.TW === 60 && sA.meta.drawingName === '主臥浴室');
+const sO = vmCtx.buildPlanSheet(dO, vmCtx.findPlanRooms(dO)[0], { H: 250, doorH: 200 });
+assert('smoke', '只有地坪（一條 L 形外框）：照外框裁地磚；圖上沒寫高度就用網頁的 H 250、門高 200；A 面門距左 30 寬 80',
+  sO.project.faces.floor.outline.length === 6 && sO.project.room.H === 250 && JSON.stringify(sO.project.openings.map(o => [o.face, o.x, o.w, o.h])) === '[["A",30,80,200]]',
+  JSON.stringify(sO.project.openings));
+const rR = vmCtx.findPlanRooms(dR);
+assert('smoke', '只有地坪（兩間、雙線牆）：取內圈當房間、浴缸外框不算一間',
+  rR.length === 2 && rR.every(r => !r.e || !(r.x1 - r.x0 === 70)) && rR.map(r => Math.round(r.x1 - r.x0) + 'x' + Math.round(r.y1 - r.y0)).sort().join(',') === '180x240,210x180');
+const r1F = vmCtx.roomAt(dF, 150, 200), r2F = vmCtx.roomAt(dF, 415, 90);
+const s1F = vmCtx.buildPlanSheet(dF, r1F, {}), s2F = vmCtx.buildPlanSheet(dF, r2F, {});
+assert('smoke', '整張平面圖：點哪間就圍哪間；隔壁房間的開門弧線不算到這間',
+  vmCtx.findPlanRooms(dF).length === 0 && Math.round(r1F.x1 - r1F.x0) === 300 && s1F.project.openings.length === 0
+  && Math.round(r2F.x1 - r2F.x0) === 200 && JSON.stringify(s2F.project.openings.map(o => [o.face, o.x, o.w])) === '[["A",100,70]]');
+assert('redteam', '整張平面圖：點在房間外面回「找不到」不當機', vmCtx.roomAt(dF, 2000, 2000) === null);
+assert('smoke', '只有地坪：天花／門高文字的各種寫法都讀得到',
+  ['天花 FL+289', '天花板高 280', 'CH=280', 'C.H. 300', 'FL+289'].every(t => vm.runInContext('PLAN_TEXT_CEIL', vmCtx).test(t))
+  && ['門高 239', 'DH 210', 'D.H.=200'].every(t => vm.runInContext('PLAN_TEXT_DOOR', vmCtx).test(t)));
+
 // Test S19: 匯出 DXF（照施工圖畫法，貼回 AutoCAD）
 // 124.2×250 牆、60 磚、縫 0.2、靠左由地起：磚縫取縫中線 → 直縫 60.1、120.3；橫縫 60.1、120.3、180.5、240.7
 const wallS19 = layout(pS18, 124.2, 250, cfgS18, [], true);
