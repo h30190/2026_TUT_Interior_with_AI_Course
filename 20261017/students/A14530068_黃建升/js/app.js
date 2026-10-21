@@ -14,10 +14,9 @@ function renderTable(rows, p) {
   let danger = 0, opArea = 0;
   for (const s of rows) {
     danger += s.r.danger; opArea += s.r.opArea;
-    const realOps = s.ops.filter(o => o.kind !== 'void');
-    const opTxt = realOps.length || s.r.voidArea
-      ? realOps.map(o => (o.kind === 'door' ? '門' : '窗') + ' ' + o.w + '×' + o.h)
-        .concat(s.r.voidArea ? [`缺角 ${(s.r.voidArea / 10000).toFixed(2)} m²`] : []).join('<br>')
+    const opTxt = s.ops.length || s.r.voidArea
+      ? s.ops.map(o => (o.kind === 'door' ? '門' : '窗') + ' ' + o.w + '×' + o.h)
+        .concat(s.r.voidArea > 1 ? [`外框外 ${(s.r.voidArea / 10000).toFixed(2)} m²`] : []).join('<br>')
       : '—';
     const xTxt = XALIGN_NAMES[s.cfg.xalign] + (s.cfg.xalign === 'custom' ? (' ' + s.cfg.xoff) : '');
     const yTxt = YALIGN_NAMES[s.cfg.yalign] + (s.cfg.yalign === 'custom' ? (' ' + s.cfg.yoff) : '');
@@ -67,7 +66,7 @@ function renderConcl(p, tot) {
   const rows = computeAll(p);
   const worst = rows.filter(s => s.r.danger > 0)
     .sort((a, b) => b.r.danger - a.r.danger);
-  const opNames = rows.flatMap(s => s.ops.filter(o => o.kind !== 'void').map(o => `${s.name}${o.kind === 'door' ? '門' : '窗'} ${o.w}×${o.h}`));
+  const opNames = rows.flatMap(s => s.ops.map(o => `${s.name}${o.kind === 'door' ? '門' : '窗'} ${o.w}×${o.h}`));
   let txt = '【全室五面】' + tot.mats.map(m => {
     const loss = m.net > 0 ? ((m.total - m.net) / m.net * 100) : 0;
     return `${m.label} 叫料 ${fmt(m.total)} 片（整磚 ${fmt(m.full)}＋裁切 ${fmt(m.cut)}，損耗 ${loss.toFixed(1)}%）`;

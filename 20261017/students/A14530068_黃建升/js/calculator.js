@@ -1,40 +1,49 @@
 // 磁磚排磚放樣幾何核心、開口扣除與算料演算法
 // 基礎工具函式（$、EPS、num、num0）已於 config.js 全域宣告提供
 
-// 門窗開口：直接透過 openings 模組取得，支援任意多個門窗扣除；地坪外框以外的缺角當成不鋪磚區（kind: 'void'）
+// 門窗開口：直接透過 openings 模組取得，支援任意多個門窗扣除
 function openings(dims) {
-  const byFace = typeof getOpeningsByFace === 'function' ? getOpeningsByFace(dims) : { A: [], B: [], C: [], D: [] };
-  byFace.floor = floorOutline && dims.floor ? floorVoids(floorOutline, dims.floor.fw, dims.floor.fh) : [];
-  return byFace;
+  return typeof getOpeningsByFace === 'function' ? getOpeningsByFace(dims) : { A: [], B: [], C: [], D: [] };
 }
 
-function pointInPolygon(x, y, poly) {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, yi] = poly[i], [xj, yj] = poly[j];
-    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
+// ── 地坪實際外框（L 形、斜牆）：每塊磚跟外框多邊形裁切，算露出的形狀與面積 ──
+
+function polyArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }
+  return Math.abs(a) / 2;
 }
 
-// L 形等直角外框：用頂點的 x、y 把矩形切格，格子中心在外框外面的就是缺角（同一列相鄰的合併）
-function floorVoids(outline, fw, fh) {
-  const uniq = a => [...new Set(a.map(v => Math.round(v * 10) / 10))].sort((p, q) => p - q);
-  const xs = uniq([0, fw].concat(outline.map(p => Math.max(0, Math.min(fw, p[0])))));
-  const ys = uniq([0, fh].concat(outline.map(p => Math.max(0, Math.min(fh, p[1])))));
-  const out = [];
-  for (let j = 0; j < ys.length - 1; j++) {
-    let run = null;
-    for (let i = 0; i < xs.length - 1; i++) {
-      const outside = !pointInPolygon((xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2, outline);
-      if (outside && run) run.w = xs[i + 1] - run.x;
-      else if (outside) run = { x: xs[i], y: ys[j], w: xs[i + 1] - xs[i], h: ys[j + 1] - ys[j] };
-      if (!outside && run) { out.push(run); run = null; }
+// 多邊形裁到矩形 [x0, y0, x1, y1] 內（Sutherland–Hodgman，四條邊各裁一次）
+function clipPolygonRect(poly, x0, y0, x1, y1) {
+  const edges = [
+    [p => p[0] >= x0, (p, q) => [x0, p[1] + (q[1] - p[1]) * (x0 - p[0]) / (q[0] - p[0])]],
+    [p => p[0] <= x1, (p, q) => [x1, p[1] + (q[1] - p[1]) * (x1 - p[0]) / (q[0] - p[0])]],
+    [p => p[1] >= y0, (p, q) => [p[0] + (q[0] - p[0]) * (y0 - p[1]) / (q[1] - p[1]), y0]],
+    [p => p[1] <= y1, (p, q) => [p[0] + (q[0] - p[0]) * (y1 - p[1]) / (q[1] - p[1]), y1]]
+  ];
+  let out = poly;
+  for (const [inside, cross] of edges) {
+    const src = out; out = [];
+    for (let i = 0; i < src.length; i++) {
+      const p = src[i], q = src[(i + 1) % src.length];
+      if (inside(q)) { if (!inside(p)) out.push(cross(p, q)); out.push(q); }
+      else if (inside(p)) out.push(cross(p, q));
     }
-    if (run) out.push(run);
+    if (!out.length) break;
   }
-  return out.filter(r => r.w > EPS && r.h > EPS)
-    .map(r => ({ kind: 'void', name: '缺角', face: 'floor', x: r.x, y: r.y, w: r.w, h: r.h, area: r.w * r.h }));
+  return out;
+}
+
+// 裁切後形狀的「最短邊」：外接框寬高與 2×面積÷最長邊取小（細長三角形也量得出窄的那一邊）
+function polyMinDim(pts) {
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  let longest = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    longest = Math.max(longest, Math.hypot(q[0] - p[0], q[1] - p[1]));
+  }
+  return Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), longest ? 2 * polyArea(pts) / longest : 0);
 }
 
 function params() {
@@ -60,6 +69,7 @@ function cfgOf(k) {
     xoff: num0(k + '_xoff', 0),
     yoff: num0(k + '_yoff', 0),
     marks: parseMarks($(k + '_marks') ? $(k + '_marks').value : ''),
+    poly: k === 'floor' ? floorOutline : null,
     skip: $(k + '_skip') ? !!$(k + '_skip').checked : false,
     zones: parseZones($(k + '_zones') ? $(k + '_zones').value : '')
   };
@@ -117,7 +127,7 @@ function visiblePart(t, ops) {
 //   磁磚本身短邊 ≤ th.small（例如小馬賽克）不列入
 function sliverOf(t, ops, th) {
   if (t.full || Math.min(t.tL, t.tW) <= th.small) return { danger: false, avoid: false, visMin: null };
-  const visMin = visiblePart(t, ops).minDim;
+  const visMin = t.poly ? Math.min(polyMinDim(t.poly), visiblePart(t, ops).minDim) : visiblePart(t, ops).minDim;
   return { danger: visMin < th.small, avoid: visMin < th.avoid, visMin };
 }
 
@@ -142,6 +152,16 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
       let wL = Math.min(x1, xMax) - Math.max(x0, xMin);
       let wW = Math.min(y1, fh) - Math.max(y0, 0);
 
+      // 地坪外框（L 形、斜牆）：裁掉外框外的部分；整塊在外面的不計料
+      let clip = null;
+      if (cfg.poly) {
+        const ax0 = Math.max(x0, xMin), ay0 = Math.max(y0, 0);
+        const shape = clipPolygonRect(cfg.poly, ax0, ay0, ax0 + wL, ay0 + wW);
+        const A = shape.length >= 3 ? polyArea(shape) : 0;
+        if (A <= 0.01) continue;
+        if (A < wL * wW - 0.01) clip = shape;
+      }
+
       // 開口遮蔽扣除：部分覆蓋者扣掉重疊面積，完全覆蓋者不計料
       let covered = false, cutOp = false;
       let wA = wL * wW;
@@ -156,8 +176,13 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
       }
       if (covered) continue;
 
-      const full = !cutL && !cutW && !cutOp;
+      const full = !cutL && !cutW && !cutOp && !clip;
       const t = { x0: Math.max(x0, xMin), y0, wL, wW, full, tL, tW };
+      if (clip) {
+        // 被斜牆／缺角切到：記下實際形狀，外接框當作這塊磚的範圍
+        const xs = clip.map(p => p[0]), ys = clip.map(p => p[1]);
+        Object.assign(t, { poly: clip, x0: Math.min(...xs), y0: Math.min(...ys), wL: Math.max(...xs) - Math.min(...xs), wW: Math.max(...ys) - Math.min(...ys) });
+      }
       tiles.push(Object.assign(t, sliverOf(t, ops, th)));
     }
   }
@@ -244,8 +269,9 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     g.avoid += segTiles.filter(t => t.avoid).length;
     g.area += segArea; g.opArea += segOps;
   };
-  // 開口落在 [x0, x1] 這一段的面積
+  // 開口落在 [x0, x1] 這一段的面積；可鋪面積（有地坪外框時只算外框內）
   const opsAreaIn = (x0, x1) => ops.reduce((a, o) => a + Math.max(0, Math.min(x1, o.x + o.w) - Math.max(x0, o.x)) * o.h, 0);
+  const areaIn = (x0, x1) => cfg.poly ? polyArea(clipPolygonRect(cfg.poly, x0, 0, x1, fh)) : (x1 - x0) * fh;
 
   if (zones.length) {
     for (const seg of splitByZones(fw, zones)) {
@@ -262,7 +288,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
       }
       tiles = tiles.concat(segTiles);
       const key = seg.zone ? `z${TL}x${TW}${seg.zone.name}` : 'main';
-      addGroup(key, matLabel(TL, TW, seg.zone ? seg.zone.name : ''), TL, TW, segTiles, (seg.x1 - seg.x0) * fh, opsAreaIn(seg.x0, seg.x1));
+      addGroup(key, matLabel(TL, TW, seg.zone ? seg.zone.name : ''), TL, TW, segTiles, areaIn(seg.x0, seg.x1), opsAreaIn(seg.x0, seg.x1));
     }
   } else if (col && col.on && col.mode === 'independent' && col.x > 5 && col.x < fw - 5) {
     // 判斷是否啟用柱子獨立起磚模式：柱左側區間 [0, col.x]
@@ -275,16 +301,16 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     // 全牆連續鋪貼（若有柱線則為連動模式）
     tiles = generateZoneTiles(fw, fh, 0, fw, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
   }
-  if (!zones.length) addGroup('main', matLabel(p.TL, p.TW), p.TL, p.TW, tiles, fw * fh, ops.reduce((a, o) => a + o.area, 0));
+  if (!zones.length) addGroup('main', matLabel(p.TL, p.TW), p.TL, p.TW, tiles, areaIn(0, fw), ops.reduce((a, o) => a + o.area, 0));
 
   // 每種材料各自算理論片數與損耗（不同尺寸的磚不能混在一起加）
   const groups = Object.values(groupMap).map(g => {
     const net = Math.ceil(Math.max(0, g.area - g.opArea) / (g.TL * g.TW));
     return Object.assign(g, { net, total: g.full + g.cut });
   });
-  // 門窗扣除只算門窗；地坪缺角另計（兩者都不鋪磚）
-  const opArea = ops.filter(o => o.kind !== 'void').reduce((a, o) => a + o.area, 0);
-  const voidArea = ops.filter(o => o.kind === 'void').reduce((a, o) => a + o.area, 0);
+  // 門窗扣除只算門窗；地坪外框外（缺角、斜牆外）另計，兩者都不鋪磚
+  const opArea = ops.reduce((a, o) => a + o.area, 0);
+  const voidArea = cfg.poly ? fw * fh - areaIn(0, fw) : 0;
   const sum = k => groups.reduce((a, g) => a + g[k], 0);
   return {
     tiles, groups, net: sum('net'), full: sum('full'), cut: sum('cut'), total: sum('total'), danger: sum('danger'), avoid: sum('avoid'), opArea, voidArea,
@@ -302,7 +328,7 @@ function getSnapPoints(p, dims, faceKey, ops) {
   snaps.push({ type: 'center', axis: 'Y', val: fh / 2, label: '牆面垂直中軸' });
 
   // 2. 開口鎖點（門窗左右邊界、中軸、窗台高度、門頂高）
-  for (const o of (ops[faceKey] || []).filter(o => o.kind !== 'void')) {
+  for (const o of (ops[faceKey] || [])) {
     snaps.push({ type: 'opening', axis: 'X', val: o.x, label: `${o.kind === 'door' ? '門' : '窗'}左緣` });
     snaps.push({ type: 'opening', axis: 'X', val: o.x + o.w, label: `${o.kind === 'door' ? '門' : '窗'}右緣` });
     snaps.push({ type: 'opening', axis: 'X', val: o.x + o.w / 2, label: `${o.kind === 'door' ? '門' : '窗'}中軸` });

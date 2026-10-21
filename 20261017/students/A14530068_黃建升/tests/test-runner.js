@@ -293,15 +293,27 @@ assert('smoke', '線稿：聚合線 bulge＝1 是半圓，終點正確且弧在�
 
 // Test S13: L 形地坪（DXF 平面內框沒封閉，補直角取面積小的那種，門檻不算地坪）
 const ol = fz && fz.floor.outline;
-const voids = ol && vmCtx.floorVoids(ol, 207, 187);
-assert('smoke', 'L 形：缺角＝左上 117×29、左下 20×60、門檻 207×15',
-  voids && JSON.stringify(voids.map(o => [o.x, o.y, o.w, o.h])) === '[[0,0,117,29],[0,112,20,60],[0,172,207,15]]',
-  voids && JSON.stringify(voids.map(o => [o.x, o.y, o.w, o.h])));
-const rL = voids && layout({ TL: 120, TW: 60, joint: 0.2, smallTh: 5, avoidTh: 3 }, 207, 187,
-  { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 117, yalign: 'custom', yoff: 172 }, voids);
-assert('smoke', 'L 形：地磚只算外框內（6 片、理論 5 片），缺角不算門窗扣除',
-  rL && rL.total === 6 && rL.net === 5 && rL.opArea === 0 && rL.voidArea === 7698, rL && `total=${rL.total} net=${rL.net}`);
-assert('smoke', 'L 形：矩形外框不產生缺角', vmCtx.floorVoids([[0, 0], [100, 0], [100, 50], [0, 50]], 100, 50).length === 0);
+const flCfgL = { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 117, yalign: 'custom', yoff: 172, poly: ol };
+const rL = ol && layout({ TL: 120, TW: 60, joint: 0.2, smallTh: 5, avoidTh: 5 }, 207, 187, flCfgL, []);
+assert('smoke', 'L 形：外框外（左上 117×29、左下 20×60、門檻 207×15）共 7698 cm² 不鋪',
+  rL && Math.abs(rL.voidArea - 7698) < 0.5, rL && `voidArea=${rL.voidArea}`);
+assert('smoke', 'L 形：地磚只算外框內（6 片、理論 5 片），外框外不算門窗扣除',
+  rL && rL.total === 6 && rL.net === 5 && rL.opArea === 0, rL && `total=${rL.total} net=${rL.net}`);
+const rRect = layout({ TL: 50, TW: 50, joint: 0, smallTh: 5, avoidTh: 5 }, 100, 50, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', poly: [[0, 0], [100, 0], [100, 50], [0, 50]] }, []);
+assert('smoke', '外框：矩形外框跟沒有外框一樣（2 片整磚）', rRect.full === 2 && rRect.cut === 0 && rRect.voidArea === 0);
+
+// Test S13b: 斜牆地坪（右牆由上 x=100 斜到下 x=90）
+const trap = [[0, 0], [100, 0], [90, 100], [0, 100]];
+const rT = layout({ TL: 50, TW: 50, joint: 0, smallTh: 5, avoidTh: 5 }, 100, 100, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', poly: trap }, []);
+assert('smoke', '斜牆：左排 2 片整磚、右排 2 片斜切，理論片數照實際面積 9500 算 4 片',
+  rT.full === 2 && rT.cut === 2 && rT.net === 4 && Math.abs(rT.voidArea - 500) < 0.01 && rT.tiles.filter(t => t.poly).length === 2);
+assert('smoke', '斜牆：斜切的磚記下實際形狀（梯形 4 點，右邊界在牆上）',
+  rT.tiles.filter(t => t.poly).every(t => t.poly.length === 4 && Math.max(...t.poly.map(p => p[0])) <= 100 + 1e-9));
+const sliverPoly = [[0, 0], [63, 0], [62, 100], [0, 100]];
+const rS = layout({ TL: 60, TW: 60, joint: 0, smallTh: 5, avoidTh: 5 }, 100, 100, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', poly: sliverPoly }, []);
+assert('smoke', '斜牆：牆邊剩 2～3cm 的細長條判成小料並紅圈', rS.danger === 2 && rS.avoid === 2, `danger=${rS.danger}`);
+assert('smoke', '裁切：多邊形裁到矩形的面積正確（三角形一半在框內）',
+  Math.abs(vmCtx.polyArea(vmCtx.clipPolygonRect([[0, 0], [10, 0], [0, 10]], 0, 0, 5, 10)) - 37.5) < 1e-9);
 
 // Test S14: 立面與平面的左右關係（站在房間裡面向牆看：A、D 跟平面左右相反）
 const dimsCase = { floor: { fw: 207, fh: 187 }, A: { fw: 171 }, B: { fw: 207 }, C: { fw: 172 }, D: { fw: 210 } };

@@ -38,20 +38,30 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
       : oy + Math.max(t.y0, 0) * sc;
     const pw = t.wL * sc, ph = t.wW * sc;
 
+    // 被地坪外框（斜牆、缺角）切到的磚畫實際形狀，其餘畫矩形
+    ctx.beginPath();
+    if (t.poly) {
+      t.poly.forEach((q, i) => {
+        const x = ox + q[0] * sc, y = isElevation ? oy + (fh - q[1]) * sc : oy + q[1] * sc;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      });
+      ctx.closePath();
+    } else {
+      ctx.rect(px, py, pw, ph);
+    }
     if (drawStyle === 'line') {
       // 線稿：只畫磚縫，小料淡紅底提醒
       ctx.fillStyle = t.avoid ? 'rgba(224, 69, 69, 0.30)' : (t.danger ? 'rgba(224, 69, 69, 0.12)' : '#ffffff');
-      ctx.fillRect(px, py, pw, ph);
       ctx.strokeStyle = '#8c8c8c';
       ctx.lineWidth = 0.7;
     } else {
       // 分區磚（例如主秀壁）整磚改用淡藍，一眼分得出兩種材料
       ctx.fillStyle = t.avoid ? '#d62f2f' : t.danger ? '#f08a7a' : (t.full ? (t.zone ? '#dfe9f2' : '#efe9df') : '#f2b48c');
-      ctx.fillRect(px, py, pw, ph);
       ctx.strokeStyle = '#d8d2c6';
       ctx.lineWidth = 0.6;
     }
-    ctx.strokeRect(px, py, pw, ph);
+    ctx.fill();
+    ctx.stroke();
 
     interactiveTargets.push({
       type: 'tile',
@@ -124,7 +134,7 @@ function drawOverlay(ctx, ox, oy, fw, fh, sc, ov, isElevation) {
 
 // 正統建築立面門窗樣式（雙線門樘、窗框、接地）
 function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
-  for (const o of ops.filter(o => o.kind !== 'void')) {
+  for (const o of ops) {
     const px = ox + o.x * sc;
     const py = oy + (fh - (o.y + o.h)) * sc;
     const pw = o.w * sc, ph = o.h * sc;

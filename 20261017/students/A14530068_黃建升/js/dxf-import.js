@@ -384,12 +384,6 @@ function collectOverlay(dxf, cache, box, toLocal, skip) {
   return ov;
 }
 
-function polyArea(pts) {
-  let a = 0;
-  for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }
-  return Math.abs(a) / 2;
-}
-
 // 平面外框轉成地坪座標（x 由左、y 由上量）；外框就是整個矩形時回 null
 function planOutline(pts, closed, P) {
   let poly = pts.map(p => [r1(p[0] - P.x0), r1(P.y1 - p[1])]);
@@ -400,9 +394,8 @@ function planOutline(pts, closed, P) {
   }
   const W = P.x1 - P.x0, H = P.y1 - P.y0;
   if (polyArea(poly) > W * H - 1) return null;
-  // 只處理直角外框；有斜邊或補起來的形狀太怪（面積不到一半）就用矩形，交給使用者確認
-  const ortho = poly.every((p, i) => { const q = poly[(i + 1) % poly.length]; return Math.abs(p[0] - q[0]) < 0.1 || Math.abs(p[1] - q[1]) < 0.1; });
-  return ortho && polyArea(poly) >= W * H * 0.5 ? poly : 'slanted';
+  // 補起來的形狀太怪（面積不到外框一半）多半是抓錯線，交給使用者確認
+  return polyArea(poly) >= W * H * 0.5 ? poly : 'odd';
 }
 
 // 從 (cx, cy) 往四個方向找最近的牆線（黑／白線、直線或聚合線的水平垂直段，排除磚縫與標示）
@@ -418,20 +411,40 @@ function rayCastRoom(cx, cy, ents) {
   }
   // 牆可能是斜的：水平射線 y=cy、垂直射線 x=cx 跟每條牆線求交點，取最近的
   let left = -Infinity, right = Infinity, bottom = -Infinity, top = Infinity, slanted = false;
-  for (const [x1, y1, x2, y2] of segs) {
+  const hit = {};
+  for (const sg of segs) {
+    const [x1, y1, x2, y2] = sg;
     if (Math.hypot(x2 - x1, y2 - y1) < 30) continue;
     if (Math.min(y1, y2) <= cy && cy <= Math.max(y1, y2) && Math.abs(y2 - y1) > 0.05) {
       const x = x1 + (cy - y1) * (x2 - x1) / (y2 - y1);
-      if (x < cx && x > left) { left = x; slanted = slanted || Math.abs(x1 - x2) > 0.5; }
-      if (x > cx && x < right) { right = x; slanted = slanted || Math.abs(x1 - x2) > 0.5; }
+      if (x < cx && x > left) { left = x; hit.left = sg; }
+      if (x > cx && x < right) { right = x; hit.right = sg; }
     }
     if (Math.min(x1, x2) <= cx && cx <= Math.max(x1, x2) && Math.abs(x2 - x1) > 0.05) {
       const y = y1 + (cx - x1) * (y2 - y1) / (x2 - x1);
-      if (y < cy && y > bottom) { bottom = y; slanted = slanted || Math.abs(y1 - y2) > 0.5; }
-      if (y > cy && y < top) { top = y; slanted = slanted || Math.abs(y1 - y2) > 0.5; }
+      if (y < cy && y > bottom) { bottom = y; hit.bottom = sg; }
+      if (y > cy && y < top) { top = y; hit.top = sg; }
     }
   }
-  return [left, right, bottom, top].every(Number.isFinite) ? { x0: left, x1: right, y0: bottom, y1: top, slanted } : null;
+  if (![left, right, bottom, top].every(Number.isFinite)) return null;
+  slanted = ['left', 'right'].some(k => Math.abs(hit[k][0] - hit[k][2]) > 0.5) || ['top', 'bottom'].some(k => Math.abs(hit[k][1] - hit[k][3]) > 0.5);
+  // 四面牆延長線兩兩相交＝房間四個角（斜牆的梯形房間也圍得出來）
+  const cross = (a, b) => {
+    const [x1, y1, x2, y2] = a, [x3, y3, x4, y4] = b;
+    const d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(d) < 1e-9) return null;
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d;
+    return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)];
+  };
+  const quad = [cross(hit.left, hit.top), cross(hit.top, hit.right), cross(hit.right, hit.bottom), cross(hit.bottom, hit.left)];
+  if (quad.every(Boolean)) {
+    const b = bboxOf(quad);
+    // 角落離射線點太遠（例如牆線很短、延長線幾乎平行）就不用四邊形
+    if (b.x1 - b.x0 < (right - left) * 1.5 && b.y1 - b.y0 < (top - bottom) * 1.5) {
+      return { x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y1, slanted, quad: slanted ? quad : null };
+    }
+  }
+  return { x0: left, x1: right, y0: bottom, y1: top, slanted, quad: null };
 }
 
 // 找出檔案裡每一張放樣施工圖
@@ -493,7 +506,7 @@ function buildSheet(g, dxf, rects, symbols) {
       if (room && fits(room) && room.x1 - room.x0 >= 50 && room.y1 - room.y0 >= 50) {
         plan = Object.assign(room, { e: null });
         warnings.push(`地坪外框是用直線畫的，已從視角符號往四周找牆線圍出 ${r1(room.x1 - room.x0)}×${r1(room.y1 - room.y0)}`
-          + (room.slanted ? '；房間有斜牆，地坪以矩形近似計算，請確認' : '（若是 L 形請手動確認）'));
+          + (room.quad ? '；房間有斜牆，已用四面牆圍成的四邊形裁切計算地磚' : room.slanted ? '；房間有斜牆，地坪以矩形近似計算，請確認' : '（若是 L 形請手動確認）'));
       }
     }
   }
@@ -583,8 +596,14 @@ function buildSheet(g, dxf, rects, symbols) {
   if (P) {
     // 實際外框（L 形）：沒封閉的聚合線用直角補起來，兩種補法取面積小的（門口門檻不算地坪）
     const outline = plan.e ? planOutline(plan.e.pts, plan.e.closed, P) : null;
-    if (outline === 'slanted') warnings.push('地坪外框有斜邊，暫以外框矩形計算地磚，請確認');
-    else if (outline) floor.outline = outline;
+    if (outline === 'odd') warnings.push('地坪外框形狀不完整（面積不到外框一半），暫以矩形計算地磚，請確認');
+    else if (outline) {
+      floor.outline = outline;
+      const slanted = outline.some((p, i) => { const q = outline[(i + 1) % outline.length]; return Math.abs(p[0] - q[0]) > 0.1 && Math.abs(p[1] - q[1]) > 0.1; });
+      if (slanted) warnings.push('地坪外框有斜邊，已照實際形狀裁切計算地磚');
+    } else if (plan.quad) {
+      floor.outline = plan.quad.map(p => [r1(p[0] - P.x0), r1(P.y1 - p[1])]);
+    }
     // 平面設備（馬桶、臉盆、門、檯面）與牆線：範圍放寬到牆厚
     const PB = { x0: P.x0 - 30, y0: P.y0 - 30, x1: P.x1 + 30, y1: P.y1 + 30 };
     floor.overlay = collectOverlay(dxf, flatCache, PB, p => [p[0] - P.x0, P.y1 - p[1]], skipCommon);
