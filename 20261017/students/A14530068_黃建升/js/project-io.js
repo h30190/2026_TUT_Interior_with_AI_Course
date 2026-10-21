@@ -20,6 +20,7 @@ function collectProject() {
     faces[k] = Object.assign({ fw: dims[k].fw, fh: dims[k].fh }, cfgOf(k));
     const t = parseTileSize($(k + '_tile') ? $(k + '_tile').value : '');
     if (t) Object.assign(faces[k], t);
+    if (faceOverlays[k]) faces[k].overlay = faceOverlays[k];
   }
   return {
     format: PROJECT_FORMAT,
@@ -82,6 +83,7 @@ function validateProject(obj) {
       if (!Array.isArray(f.zones) || ok.length !== f.zones.length) warnings.push(`${k}.zones 有起迄或磚尺寸不正確的分區，已略過`);
       face.zones = ok.map(z => ({ x0: z.x0, x1: z.x1, TL: z.TL, TW: z.TW, name: String(z.name || '') }));
     }
+    if (f.overlay !== undefined) face.overlay = cleanOverlay(f.overlay);
     if (f.marks !== undefined) {
       face.marks = Array.isArray(f.marks) ? f.marks.filter(v => Number.isFinite(v) && v > 0) : [];
       if (!Array.isArray(f.marks) || face.marks.length !== f.marks.length) warnings.push(`${k}.marks 有不是正數的值，已略過`);
@@ -117,6 +119,22 @@ function validateProject(obj) {
   return { errors, warnings, project: out };
 }
 
+// 設備線稿與備註：只留形狀正確的點與文字，避免壞資料讓畫圖當掉
+function cleanOverlay(ov) {
+  if (!ov || typeof ov !== 'object') return undefined;
+  const pt = p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);
+  const num = v => Number.isFinite(v);
+  return {
+    polys: (Array.isArray(ov.polys) ? ov.polys : []).filter(p => p && Array.isArray(p.pts) && p.pts.length >= 2 && p.pts.every(pt))
+      .map(p => ({ c: num(p.c) ? p.c : 7, pts: p.pts })),
+    texts: (Array.isArray(ov.texts) ? ov.texts : []).filter(t => t && num(t.x) && num(t.y) && typeof t.text === 'string')
+      .map(t => ({ x: t.x, y: t.y, h: num(t.h) && t.h > 0 ? t.h : 2.5, text: t.text, c: num(t.c) ? t.c : 7, top: !!t.top })),
+    notes: (Array.isArray(ov.notes) ? ov.notes : []).filter(n => n && num(n.x) && num(n.y) && typeof n.text === 'string')
+      .map(n => ({ x: n.x, y: n.y, h: num(n.h) && n.h > 0 ? n.h : 2.5, text: n.text, c: num(n.c) ? n.c : 6,
+        leaders: (Array.isArray(n.leaders) ? n.leaders : []).filter(l => Array.isArray(l) && l.length >= 2 && l.every(pt)) }))
+  };
+}
+
 // 套用整理好的資料檔到畫面
 function applyProject(pj) {
   lockAllJoints = false;
@@ -124,6 +142,7 @@ function applyProject(pj) {
   setIf('L', pj.room.L); setIf('W', pj.room.W); setIf('H', pj.room.H);
   setIf('TL', pj.tile.TL); setIf('TW', pj.tile.TW); setIf('joint', pj.tile.jointMM); setIf('price', pj.tile.price);
   setIf('smallTh', pj.tile.smallTh); setIf('avoidTh', pj.tile.avoidTh);
+  faceOverlays = {};
   for (const k in pj.faces) {
     const f = pj.faces[k];
     setIf(k + '_fw', f.fw); setIf(k + '_fh', f.fh);
@@ -132,6 +151,7 @@ function applyProject(pj) {
     setIf(k + '_tile', f.TL ? `${f.TL}×${f.TW}` : '');
     setIf(k + '_marks', (f.marks || []).join(', '));
     setIf(k + '_zones', formatZones(f.zones));
+    if (f.overlay) faceOverlays[k] = f.overlay; else delete faceOverlays[k];
   }
   projectMaterials = pj.materials || [];
   projectMeta = pj.meta || {};

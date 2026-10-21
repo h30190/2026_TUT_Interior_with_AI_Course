@@ -275,6 +275,21 @@ assert('smoke', '小料：右側 2cm 條＝避免小料（< 3cm 紅圈）', res2
 const resMosaic = layout(Object.assign({}, pTh, { TL: 4.8, TW: 4.8 }), 101, 100, gridCfg(0), []);
 assert('smoke', '小料：磚本身 4.8cm（≤ 5）裁到多窄都不列入', resMosaic.cut > 0 && resMosaic.danger === 0);
 
+// Test S12: 設備與備註（B 面馬桶立面＋「因馬桶位置提高一塊磚」；平面馬桶、臉盆、門）
+const ovB = fz && fz.B.overlay, ovF = fz && fz.floor.overlay;
+assert('smoke', '設備：B 面馬桶立面線稿在 B 面範圍內（圖塊展開）',
+  ovB && ovB.polys.length >= 20 && ovB.polys.every(p => p.pts.every(q => q[0] >= -1 && q[0] <= 208 && q[1] >= -1 && q[1] <= 290)));
+assert('smoke', '備註：B 面「因馬桶位置／提高一塊磚」，箭頭指在 B 面上',
+  ovB && ovB.notes.length === 1 && ovB.notes[0].text === '因馬桶位置\n提高一塊磚'
+  && ovB.notes[0].leaders[0][0][0] > 117 && ovB.notes[0].leaders[0][0][0] < 207);
+assert('smoke', '設備：平面有馬桶型號 Subway2.0 與臉盆 ALAPE（圖塊內文字）',
+  ovF && ovF.texts.some(t => t.text === 'Subway2.0') && ovF.texts.some(t => t.text.startsWith('ALAPE')));
+assert('smoke', '設備：不重複搬程式自己會畫的東西（磚縫、紅線、門框、放樣標示、A 面沒有設備）',
+  fz && fz.A.overlay.polys.length === 0 && fz.D.overlay.polys.length === 0 && ovB.texts.every(t => !/放樣|填縫/.test(t.text)));
+const semi = vmCtx.bulgePts([0, 0], [2, 0], 1);
+assert('smoke', '線稿：聚合線 bulge＝1 是半圓，終點正確且弧在弦的右側',
+  Math.abs(semi[semi.length - 1][0] - 2) < 1e-9 && Math.abs(semi[semi.length - 1][1]) < 1e-9 && Math.min(...semi.map(p => p[1])) < -0.99);
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================
@@ -356,6 +371,11 @@ try {
   assert('redteam', 'DXF：空檔、亂碼、缺外框都回 0 張圖而不當機', empty.length === 0 && junk.length === 0 && onlySym.length === 0);
 } catch (e) { dxfCrash = e; }
 if (dxfCrash) assert('redteam', 'DXF：空檔、亂碼、缺外框都回 0 張圖而不當機', false, dxfCrash.message);
+
+// Test R5d: 資料檔裡的設備線稿亂寫，只留正確的部分
+const badOv = vmCtx.cleanOverlay({ polys: [{ c: 5, pts: [[0, 0], [1, 1]] }, { pts: [[0, 'x']] }, null], texts: [{ x: 1, y: 2, text: 'ok' }, { x: 'a' }], notes: 'nope' });
+assert('redteam', '資料檔：壞掉的設備線稿／文字被略過，好的保留',
+  badOv.polys.length === 1 && badOv.texts.length === 1 && badOv.notes.length === 0 && vmCtx.cleanOverlay(null) === undefined);
 
 // Test R6: 大量門窗高負載壓力測試 (50 個動態開口)
 const stressList = [];

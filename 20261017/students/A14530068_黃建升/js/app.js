@@ -651,6 +651,7 @@ function initApp() {
       syncFaceDims(pr.faces);
       // 換成內建案例：清掉上一張匯入圖的材料與圖名
       projectMaterials = [];
+      faceOverlays = {};
       projectMeta = Object.assign({}, EMPTY_META);
       renderProjectMeta();
       // 案例附帶各面起磚設定：其餘欄位回到預設，避免沿用上一個情境的起磚點

@@ -62,6 +62,66 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
   }
 }
 
+// AutoCAD 色號 → 畫面顏色（1–9 標準色；10–249 依色相輪；7 白在白底畫成黑）
+function aciColor(aci) {
+  const base = { 1: '#e02020', 2: '#c8a400', 3: '#1f9d3a', 4: '#13a8c4', 5: '#2347d6', 6: '#d020c8', 7: '#222222', 8: '#7f7f7f', 9: '#b0b0b0' };
+  if (base[aci]) return base[aci];
+  if (aci >= 250 && aci <= 255) return ['#333', '#505050', '#696969', '#828282', '#bebebe', '#d0d0d0'][aci - 250];
+  if (aci < 10 || aci > 249) return '#444444';
+  const hue = Math.floor((aci - 10) / 10) * 15, k = aci % 10;
+  const val = [1, 1, 0.8, 0.8, 0.6, 0.6, 0.5, 0.5, 0.3, 0.3][k], sat = k % 2 ? 0.5 : 1;
+  const light = val * (1 - sat / 2), s2 = light === 0 || light === 1 ? 0 : (val - light) / Math.min(light, 1 - light);
+  return `hsl(${hue}, ${Math.round(s2 * 100)}%, ${Math.round(light * 100 * 0.9)}%)`;
+}
+
+// 匯入的設備線稿、文字與備註（照原施工圖的位置與顏色）；備註文字超出面框時往內推
+function drawOverlay(ctx, ox, oy, fw, fh, sc, ov, isElevation) {
+  if (!ov) return;
+  const P = p => [ox + p[0] * sc, isElevation ? oy + (fh - p[1]) * sc : oy + p[1] * sc];
+  ctx.save();
+  ctx.lineWidth = 0.8; ctx.lineJoin = 'round';
+  for (const pl of ov.polys) {
+    ctx.strokeStyle = aciColor(pl.c);
+    ctx.beginPath();
+    pl.pts.forEach((p, i) => { const [x, y] = P(p); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.stroke();
+  }
+  ctx.textAlign = 'left';
+  for (const t of ov.texts) {
+    const size = Math.max(7, t.h * sc);
+    ctx.font = `${size}px sans-serif`; ctx.fillStyle = aciColor(t.c);
+    const [x, y] = P([t.x, t.y]);
+    t.text.split('\n').forEach((ln, i) => ctx.fillText(ln, x, (t.top ? y + size : y) + i * size * 1.2));
+  }
+  for (const n of ov.notes) {
+    const col = aciColor(n.c);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+    for (const l of n.leaders) {
+      ctx.beginPath();
+      l.forEach((p, i) => { const [x, y] = P(p); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+      ctx.stroke();
+      const [ax, ay] = P(l[0]), [bx, by] = P(l[1]);
+      const ang = Math.atan2(ay - by, ax - bx);
+      ctx.beginPath(); ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - 7 * Math.cos(ang - 0.35), ay - 7 * Math.sin(ang - 0.35));
+      ctx.lineTo(ax - 7 * Math.cos(ang + 0.35), ay - 7 * Math.sin(ang + 0.35));
+      ctx.closePath(); ctx.fill();
+    }
+    const size = Math.max(10, Math.min(13, n.h * sc));
+    ctx.font = `bold ${size}px sans-serif`;
+    const lines = n.text.split('\n');
+    const w = Math.max(...lines.map(s => ctx.measureText(s).width));
+    let [x, y] = P([n.x, n.y]);
+    x = Math.max(ox + 2, Math.min(ox + fw * sc - w - 2, x));
+    y = Math.max(oy + 2, Math.min(oy + fh * sc - lines.length * size * 1.25 - 2, y));
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.fillRect(x - 2, y - 1, w + 4, lines.length * size * 1.25 + 2);
+    ctx.fillStyle = col;
+    lines.forEach((ln, i) => ctx.fillText(ln, x, y + size + i * size * 1.25 - 2));
+  }
+  ctx.restore();
+}
+
 // 正統建築立面門窗樣式（雙線門樘、窗框、接地）
 function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
   for (const o of ops) {
@@ -251,6 +311,9 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   if (ops && ops.length) {
     drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, opts.faceKey || 'A');
   }
+
+  // 匯入的設備（馬桶、臉盆…）與備註，畫在磁磚上、紅線下
+  drawOverlay(ctx, ox, oy, fw, fh, sc, faceOverlays[opts.faceKey], isElevation);
 
   // 施工圖紅線（分界、門框、對縫基準）：整面高度的紅色實線
   if (cfg.marks && cfg.marks.length) {
@@ -443,8 +506,11 @@ function drawStartMarker(ctx, xPx, topY, minX, maxX) {
   ctx.beginPath(); ctx.moveTo(xPx, topY); ctx.lineTo(xPx, ay); ctx.moveTo(lx, ay); ctx.lineTo(rx, ay); ctx.stroke();
   if (lx < xPx - 4) { ctx.beginPath(); ctx.moveTo(lx, ay); ctx.lineTo(lx + 6, ay - 3.5); ctx.lineTo(lx + 6, ay + 3.5); ctx.closePath(); ctx.fill(); }
   if (rx > xPx + 4) { ctx.beginPath(); ctx.moveTo(rx, ay); ctx.lineTo(rx - 6, ay - 3.5); ctx.lineTo(rx - 6, ay + 3.5); ctx.closePath(); ctx.fill(); }
-  ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('由此線開始放樣', (lx + rx) / 2, ay - 4);
+  // 起磚線貼在面的邊緣時，文字往面內對齊，才不會跟隔壁面的標示疊在一起
+  ctx.font = '11px sans-serif';
+  if (rx - xPx < 20) { ctx.textAlign = 'right'; ctx.fillText('由此線開始放樣', rx, ay - 4); }
+  else if (xPx - lx < 20) { ctx.textAlign = 'left'; ctx.fillText('由此線開始放樣', lx, ay - 4); }
+  else { ctx.textAlign = 'center'; ctx.fillText('由此線開始放樣', (lx + rx) / 2, ay - 4); }
   ctx.restore();
 }
 
@@ -775,6 +841,15 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
   ctx.restore();
 }
 
+// 匯入線稿的範圍（該面座標），用來讓尺寸鏈避開牆線
+function overlayExtent(ov) {
+  let x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  for (const pl of ov.polys) for (const p of pl.pts) {
+    if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1];
+  }
+  return { x0, y0, x1, y1 };
+}
+
 // 地坪四面牆門窗文字標籤最寬者（決定左側尺寸鏈要讓出多少空間）
 function planLabelWidth(ctx, ops) {
   ctx.save(); ctx.font = 'bold 9px sans-serif';
@@ -836,18 +911,23 @@ function drawUnfold(p, rows) {
 
   drawJointAlignmentGuide(ctx, px, py, planW, flR, facePosX.B.x, facePosX.B.y, facePosX.B.h, byKey.B.r, s);
   drawFaceBox(ctx, px, py, Lf, Wf, s, '地坪平面', p, byKey.floor.cfg, flR, [], { detail: false, faceKey: 'floor' });
-  drawFloorPlanOpenings(ctx, px, py, planW, planH, s, allOps, dims);
+  // 有匯入平面線稿時門已經畫在線稿裡，不再重畫一次
+  if (!faceOverlays.floor) drawFloorPlanOpenings(ctx, px, py, planW, planH, s, allOps, dims);
   const col = columnParams();
   drawFloorPlanColumn(ctx, px, py, planW, planH, s, col, facePosX[col.face || 'B']);
   drawPlanCompass(ctx, px + planW / 2, py + planH / 2);
 
   // 地坪外圍尺寸鏈與放樣起點（避開四面牆的門窗文字）
   const fch = floorChains(Lf, Wf, flR, allOps, chainMarks(byKey.floor.cfg));
-  const botY = py + planH + ((allOps.D || []).length ? 40 : 14);
+  // 有匯入平面線稿時，尺寸鏈讓到牆線外面；沒有時讓開四面牆的門窗文字
+  const ov = faceOverlays.floor;
+  const oe = ov ? overlayExtent(ov) : null;
+  const botY = oe ? py + Math.max(Wf, oe.y1) * s + 14 : py + planH + ((allOps.D || []).length ? 40 : 14);
   drawDimChain(ctx, px, botY, 1, 0, s, fch.h, DIM_COLOR);
-  const leftX = px - 10 - ((allOps.A || []).length ? planLabelWidth(ctx, allOps.A) + 12 : 0);
+  const leftX = oe ? px + Math.min(0, oe.x0) * s - 10
+    : px - 10 - ((allOps.A || []).length ? planLabelWidth(ctx, allOps.A) + 12 : 0);
   drawDimChain(ctx, leftX, py, 0, 1, s, fch.v, DIM_COLOR);
-  const markTop = py - ((allOps.B || []).length ? 14 : 0);
+  const markTop = oe ? py + Math.min(0, oe.y0) * s : py - ((allOps.B || []).length ? 14 : 0);
   drawStartMarker(ctx, px + Math.max(0, flR.xBase) * s, markTop, px - 10, px + planW + 10);
   drawStartMarkerV(ctx, py + Math.max(0, flR.yBase) * s, leftX - 16, py - 10, py + planH + 10);
 

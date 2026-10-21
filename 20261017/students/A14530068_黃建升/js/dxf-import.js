@@ -4,6 +4,7 @@
 //   門窗＝立面內的青色（色號 4）封閉矩形，貼地為門；紅線＝立面內紅色（色號 1）垂直線
 //   放樣起點＝色號 62 的引線下端碰到立面頂邊（地坪：垂直線碰上緣、水平線碰左緣）
 //   材料＝含「填縫劑」的多行文字：第一行用途（壁／地／主秀壁）、型號、尺寸名稱、填縫劑
+//   設備與備註＝立面／平面範圍內其餘的線稿（含圖塊）、文字、多重引線，照原座標與顏色搬過來畫
 
 const DXF_FACE_LETTERS = ['A', 'B', 'C', 'D'];
 const DXF_RED = 1, DXF_CYAN = 4, DXF_MARK = 62;
@@ -39,12 +40,14 @@ function parseDxf(text) {
       if (name !== undefined) layers[name] = Math.abs(color) || 7;
     } else if (section === 'BLOCKS') {
       if (val === 'BLOCK') {
-        curBlock = { name: getCode(rec, 2), base: [toNum(getCode(rec, 10)), toNum(getCode(rec, 20))], circle: null };
+        curBlock = { name: getCode(rec, 2), base: [toNum(getCode(rec, 10)), toNum(getCode(rec, 20))], circle: null, ents: [] };
         blocks[curBlock.name] = curBlock;
       } else if (val === 'ENDBLK') {
         curBlock = null;
-      } else if (curBlock && val === 'CIRCLE' && !curBlock.circle) {
-        curBlock.circle = [toNum(getCode(rec, 10)), toNum(getCode(rec, 20))];
+      } else if (curBlock) {
+        if (val === 'CIRCLE' && !curBlock.circle) curBlock.circle = [toNum(getCode(rec, 10)), toNum(getCode(rec, 20))];
+        const e = toEntity(val, rec);
+        if (e) curBlock.ents.push(e); // 圖塊內的顏色先不解析（ByBlock／圖層 0 要跟著插入的圖塊）
       }
     } else if (section === 'ENTITIES') {
       const e = toEntity(val, rec);
@@ -84,14 +87,37 @@ function toEntity(type, rec) {
     return Object.assign(base, { x1: f(10), y1: f(20), x2: f(11), y2: f(21) });
   }
   if (type === 'LWPOLYLINE') {
-    const pts = [];
+    const pts = [], bulges = [];
     let x = null;
     for (const [c, v] of rec) {
       if (c === 10) x = parseFloat(v);
-      else if (c === 20 && x !== null) { pts.push([x, parseFloat(v)]); x = null; }
+      else if (c === 20 && x !== null) { pts.push([x, parseFloat(v)]); bulges.push(0); x = null; }
+      else if (c === 42 && bulges.length) bulges[bulges.length - 1] = parseFloat(v);
     }
-    return Object.assign(base, { pts, closed: (parseInt(getCode(rec, 70) || '0', 10) & 1) === 1 });
+    return Object.assign(base, { pts, bulges, closed: (parseInt(getCode(rec, 70) || '0', 10) & 1) === 1 });
   }
+  if (type === 'ARC' || type === 'CIRCLE') {
+    return Object.assign(base, {
+      cx: f(10), cy: f(20), r: f(40),
+      a0: type === 'ARC' ? f(50) : 0, a1: type === 'ARC' ? f(51) : 360
+    });
+  }
+  if (type === 'ELLIPSE') {
+    return Object.assign(base, { cx: f(10), cy: f(20), mx: f(11), my: f(21), ratio: f(40), t0: f(41), t1: f(42) });
+  }
+  if (type === 'SPLINE') {
+    // 有擬合點用擬合點，否則用控制點連成折線（施工圖示意夠用）
+    const fit = [], ctl = [];
+    let x = null, xf = null;
+    for (const [c, v] of rec) {
+      if (c === 10) x = parseFloat(v);
+      else if (c === 20 && x !== null) { ctl.push([x, parseFloat(v)]); x = null; }
+      else if (c === 11) xf = parseFloat(v);
+      else if (c === 21 && xf !== null) { fit.push([xf, parseFloat(v)]); xf = null; }
+    }
+    return Object.assign(base, { pts: fit.length >= 2 ? fit : ctl });
+  }
+  if (type === 'MULTILEADER') return Object.assign(base, parseMLeader(rec));
   if (type === 'TEXT' || type === 'MTEXT') {
     let txt = '';
     if (type === 'MTEXT') {
@@ -108,7 +134,7 @@ function toEntity(type, rec) {
       if ([3, 6, 9].includes(attach)) x -= w;
       else if ([2, 5, 8].includes(attach)) x -= w / 2;
     }
-    return Object.assign(base, { x, y: f(20), text: txt });
+    return Object.assign(base, { x, y: f(20), text: txt, h: f(40) || 2.5, top: type === 'MTEXT' });
   }
   if (type === 'INSERT') {
     const sx = getCode(rec, 41), sy = getCode(rec, 42);
@@ -119,6 +145,38 @@ function toEntity(type, rec) {
     });
   }
   return null;
+}
+
+// 多重引線：文字（第一個 304）、文字位置 12/22、字高 41；每條引線＝落點（LEADER{ 的 10/20）＋頂點（LEADER_LINE{ 的 10/20，第一點是箭頭）
+function parseMLeader(rec) {
+  let inCtx = false, inLeader = false, inLine = false, x = null;
+  let text = null, tx, ty, th, landing = null, dog = [1, 0], dogLen = 0, verts = [];
+  const leaders = [];
+  for (const [c, v] of rec) {
+    if (c === 300 && v.startsWith('CONTEXT_DATA')) { inCtx = true; continue; }
+    if (!inCtx) continue;
+    if (c === 301) break;
+    if (c === 302 && v.startsWith('LEADER')) { inLeader = true; landing = null; x = null; continue; }
+    if (c === 303) { inLeader = false; continue; }
+    if (c === 304 && v === 'LEADER_LINE{') { inLine = true; verts = []; x = null; continue; }
+    if (c === 305) { inLine = false; leaders.push({ landing, dog, dogLen, verts }); continue; }
+    if (!inLeader) {
+      if (c === 304 && text === null) text = cleanMText(v);
+      else if (c === 12 && tx === undefined) tx = parseFloat(v);
+      else if (c === 22 && ty === undefined) ty = parseFloat(v);
+      else if (c === 41 && th === undefined) th = parseFloat(v);
+    } else if (inLine) {
+      if (c === 10) x = parseFloat(v);
+      else if (c === 20 && x !== null) { verts.push([x, parseFloat(v)]); x = null; }
+    } else {
+      if (c === 10 && !landing) x = parseFloat(v);
+      else if (c === 20 && x !== null && !landing) { landing = [x, parseFloat(v)]; x = null; }
+      else if (c === 11) dog = [parseFloat(v), dog[1]];
+      else if (c === 21) dog = [dog[0], parseFloat(v)];
+      else if (c === 40) dogLen = parseFloat(v);
+    }
+  }
+  return { text: text || '', x: tx, y: ty, h: th || 2.5, leaders };
 }
 
 function bboxOf(pts) {
@@ -200,6 +258,132 @@ function detectZones(R, marks, jointLines, materials, wallMat) {
   return zones;
 }
 
+// ── 設備與備註：把圖元（含圖塊）攤平成折線與文字 ──
+
+// ByBlock（0）跟插入的圖塊；ByLayer 在圖層 0 上也跟插入的圖塊，其餘看圖層顏色
+function resolveColor(e, layers, inherit) {
+  const c = e.color;
+  if (c === 0) return inherit || 7;
+  if (c === undefined || c === 256) return (e.layer === '0' && inherit) ? inherit : (layers[e.layer] || 7);
+  return c;
+}
+
+function arcPts(cx, cy, r, a0, a1) {
+  let sweep = a1 - a0;
+  while (sweep <= 0) sweep += 360;
+  const n = Math.max(6, Math.ceil(sweep / 10));
+  const out = [];
+  for (let k = 0; k <= n; k++) {
+    const a = (a0 + sweep * k / n) * Math.PI / 180;
+    out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  return out;
+}
+
+// 聚合線的弧段（bulge）：正值＝逆時針
+function bulgePts(p, q, b) {
+  const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+  if (!b || d < 1e-9) return [q];
+  const ux = (q[0] - p[0]) / d, uy = (q[1] - p[1]) / d;
+  const s = b * d / 2, r = (d * d / 4 + s * s) / (2 * s);
+  const cx = (p[0] + q[0]) / 2 - uy * (r - s), cy = (p[1] + q[1]) / 2 + ux * (r - s);
+  const a0 = Math.atan2(p[1] - cy, p[0] - cx), sweep = 4 * Math.atan(b);
+  const n = Math.max(4, Math.ceil(Math.abs(sweep) / (Math.PI / 18)));
+  const out = [];
+  for (let k = 1; k <= n; k++) {
+    const a = a0 + sweep * k / n;
+    out.push([cx + Math.abs(r) * Math.cos(a), cy + Math.abs(r) * Math.sin(a)]);
+  }
+  return out;
+}
+
+// tf＝座標轉換（巢狀圖塊一層層組合）；結果放進 out.polys／out.texts／out.notes（世界座標）
+function flattenEntity(e, dxf, tf, inherit, depth, out) {
+  const c = resolveColor(e, dxf.layers, inherit);
+  const poly = pts => { if (pts.length >= 2) out.polys.push({ c, pts: pts.map(tf) }); };
+  if (e.type === 'LINE') poly([[e.x1, e.y1], [e.x2, e.y2]]);
+  else if (e.type === 'LWPOLYLINE') {
+    const pts = [e.pts[0]];
+    const n = e.pts.length, segs = e.closed ? n : n - 1;
+    for (let k = 0; k < segs; k++) pts.push(...bulgePts(e.pts[k], e.pts[(k + 1) % n], e.bulges[k]));
+    poly(pts);
+  } else if (e.type === 'ARC' || e.type === 'CIRCLE') poly(arcPts(e.cx, e.cy, e.r, e.a0, e.a1));
+  else if (e.type === 'ELLIPSE') {
+    let t1 = e.t1; while (t1 <= e.t0) t1 += 2 * Math.PI;
+    const n = Math.max(8, Math.ceil((t1 - e.t0) / (Math.PI / 18))), pts = [];
+    for (let k = 0; k <= n; k++) {
+      const t = e.t0 + (t1 - e.t0) * k / n;
+      pts.push([e.cx + e.mx * Math.cos(t) - e.ratio * e.my * Math.sin(t), e.cy + e.my * Math.cos(t) + e.ratio * e.mx * Math.sin(t)]);
+    }
+    poly(pts);
+  } else if (e.type === 'SPLINE') poly(e.pts);
+  else if ((e.type === 'TEXT' || e.type === 'MTEXT') && e.text) {
+    const [x, y] = tf([e.x, e.y]), [hx, hy] = tf([e.x, e.y + e.h]);
+    out.texts.push({ x, y, h: Math.hypot(hx - x, hy - y), text: e.text, c, top: e.top });
+  } else if (e.type === 'MULTILEADER' && e.text && e.x !== undefined) {
+    const lines = e.leaders.filter(l => l.verts.length && l.landing).map(l => {
+      const pts = l.verts.concat([l.landing]);
+      if (l.dogLen) pts.push([l.landing[0] + l.dog[0] * l.dogLen, l.landing[1] + l.dog[1] * l.dogLen]);
+      return pts.map(tf);
+    });
+    const [x, y] = tf([e.x, e.y]);
+    out.notes.push({ x, y, h: e.h, text: e.text, c, leaders: lines });
+  } else if (e.type === 'INSERT' && depth < 5) {
+    const b = dxf.blocks[e.name];
+    if (!b) return;
+    const a = e.rot * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+    const local = p => {
+      const lx = (p[0] - b.base[0]) * e.sx, ly = (p[1] - b.base[1]) * e.sy;
+      return [e.x + lx * ca - ly * sa, e.y + lx * sa + ly * ca];
+    };
+    for (const be of b.ents) flattenEntity(be, dxf, p => tf(local(p)), c, depth + 1, out);
+  }
+}
+
+const OVERLAY_SKIP_TEXT = /由此線開始放樣|由此開始放樣|填縫/;
+const SIZE_CALLOUT = /\d\s*[*xX×]\s*\d/;
+
+// 收集範圍 box 內的設備線稿、文字、備註；toLocal 轉成該面座標；skip(e) 排除程式自己會畫的東西
+function collectOverlay(dxf, cache, box, toLocal, skip) {
+  const ov = { polys: [], texts: [], notes: [] };
+  const inBox = (p, tol) => p[0] >= box.x0 - tol && p[0] <= box.x1 + tol && p[1] >= box.y0 - tol && p[1] <= box.y1 + tol;
+  const loc = p => toLocal(p).map(v => Math.round(v * 10) / 10);
+  for (const e of dxf.entities) {
+    if (!['LINE', 'LWPOLYLINE', 'ARC', 'CIRCLE', 'ELLIPSE', 'SPLINE', 'TEXT', 'MTEXT', 'MULTILEADER', 'INSERT'].includes(e.type)) continue;
+    if (skip(e)) continue;
+    const pre = cache.get(e);
+    if (pre && (!pre.bb || pre.bb.x1 < box.x0 - 1 || pre.bb.x0 > box.x1 + 1 || pre.bb.y1 < box.y0 - 1 || pre.bb.y0 > box.y1 + 1)
+      && !pre.notes.length) continue;
+    let fl = pre;
+    if (!fl) {
+      fl = { polys: [], texts: [], notes: [] };
+      flattenEntity(e, dxf, p => p, undefined, 0, fl);
+      // 範圍只算一次，之後每一面先比範圍
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const p of fl.polys.flatMap(p => p.pts).concat(fl.texts.map(t => [t.x, t.y]))) {
+        if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1];
+      }
+      fl.bb = x0 <= x1 ? { x0, y0, x1, y1 } : null;
+      cache.set(e, fl);
+    }
+    if (fl.bb && inBox([fl.bb.x0, fl.bb.y0], 0.6) && inBox([fl.bb.x1, fl.bb.y1], 0.6)) {
+      fl.polys.forEach(p => ov.polys.push({ c: p.c, pts: p.pts.map(loc) }));
+      fl.texts.filter(t => !OVERLAY_SKIP_TEXT.test(t.text)).forEach(t => {
+        const [x, y] = loc([t.x, t.y]);
+        ov.texts.push({ x, y, h: Math.round(t.h * 10) / 10, text: t.text, c: t.c, top: !!t.top });
+      });
+    }
+    // 備註看箭頭指到哪一面（文字可能寫在面外）
+    for (const n of fl.notes) {
+      if (!n.leaders.length || !inBox(n.leaders[0][0], 0.6)) continue;
+      if (n.text.includes('避免小料') || SIZE_CALLOUT.test(n.text)) continue; // 程式自己會標小料；材料標籤已列在材料表
+      const [x, y] = loc([n.x, n.y]);
+      ov.notes.push({ x, y, h: n.h, text: n.text, c: n.c, leaders: n.leaders.map(l => l.map(loc)) });
+    }
+  }
+  return ov;
+}
+
 // 找出檔案裡每一張放樣施工圖
 function findDxfSheets(dxf) {
   const ents = dxf.entities;
@@ -276,6 +460,12 @@ function buildSheet(g, dxf, rects, symbols) {
   const materials = texts.filter(t => t.text.includes('填縫')).map(t => parseMaterial(t.text)).filter(Boolean);
 
   const lines = ents.filter(e => e.type === 'LINE');
+  const flatCache = dxf.flatCache || (dxf.flatCache = new Map());
+  // 各面共用的排除：磚縫線與磚面圖、放樣標示、索引符號、放樣文字
+  const skipCommon = e => (e.layer.includes('磚') && ['LINE', 'LWPOLYLINE', 'INSERT'].includes(e.type))
+    || e.layer === '標註' || e.color === DXF_MARK
+    || (e.type === 'INSERT' && (DXF_FACE_LETTERS.includes(e.name) || e.name === 'ABCD'))
+    || ((e.type === 'TEXT' || e.type === 'MTEXT') && OVERLAY_SKIP_TEXT.test(e.text));
   const isV = l => Math.abs(l.x1 - l.x2) < 0.05, isH = l => Math.abs(l.y1 - l.y2) < 0.05;
   const jointLines = lines.filter(l => l.layer.includes('磚') && isV(l));
   const wallMat = pickMaterial(materials, 'wall');
@@ -295,6 +485,10 @@ function buildSheet(g, dxf, rects, symbols) {
       .map(l => r1(l.x1 - R.x0)).sort((a, b) => a - b).filter((v, i, a) => i === 0 || v - a[i - 1] > 0.4);
     // 分區：紅線切出的每一段，若磚縫間距符合另一種材料（例如主秀壁 14.8），就設成分區
     face.zones = detectZones(R, face.marks, jointLines, materials, wallMat);
+    // 設備（馬桶等）與備註：排除外框、磚縫、紅線、門窗框、放樣標示（程式自己會畫）
+    face.overlay = collectOverlay(dxf, flatCache, R, p => [p[0] - R.x0, p[1] - R.y0], e =>
+      (e.type === 'LWPOLYLINE' && (() => { const r = asRect(e); return r && (r === R || (Math.abs(r.x0 - R.x0) < 0.05 && Math.abs(r.x1 - R.x1) < 0.05 && Math.abs(r.y0 - R.y0) < 0.05 && Math.abs(r.y1 - R.y1) < 0.05) || r.color === DXF_CYAN); })())
+      || skipCommon(e) || (e.type === 'LINE' && e.color === DXF_RED && isV(e) && Math.abs(e.y1 - e.y2) >= R.h * 0.5));
     faces[k] = face;
 
     for (const o of rects) {
@@ -326,6 +520,11 @@ function buildSheet(g, dxf, rects, symbols) {
     if (Math.abs((P.x1 - P.x0) - ref.w) > 1) warnings.push(`地坪寬 ${r1(P.x1 - P.x0)} 與 B 面寬 ${r1(ref.w)} 不同（可能是 L 形或含門口凹入），已用地坪外框`);
   } else {
     Object.assign(floor, { xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0 });
+  }
+  if (P) {
+    // 平面設備（馬桶、臉盆、門、檯面）與牆線：範圍放寬到牆厚
+    const PB = { x0: P.x0 - 30, y0: P.y0 - 30, x1: P.x1 + 30, y1: P.y1 + 30 };
+    floor.overlay = collectOverlay(dxf, flatCache, PB, p => [p[0] - P.x0, P.y1 - p[1]], skipCommon);
   }
   faces.floor = floor;
 

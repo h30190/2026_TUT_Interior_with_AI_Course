@@ -59,6 +59,8 @@ let drawStyle = 'color';
 let face = 'floor';
 // 匯入施工圖帶進來的材料（壁／地／主秀壁…）與圖面資訊（工程名稱、圖名）
 let projectMaterials = [];
+// 匯入施工圖帶進來的設備線稿與備註（各面座標：立面由左下量、地坪由左上量）
+let faceOverlays = {};
 const EMPTY_META = { project: '', drawingName: '', number: '' };
 let projectMeta = Object.assign({}, EMPTY_META);
 
