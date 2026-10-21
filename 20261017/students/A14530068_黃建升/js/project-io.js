@@ -27,7 +27,7 @@ function collectProject() {
     meta: projectMeta,
     materials: projectMaterials,
     room: { L: p.L, W: p.W, H: p.H },
-    tile: { TL: p.TL, TW: p.TW, jointMM: Math.round(p.joint * 100) / 10, price: p.price },
+    tile: { TL: p.TL, TW: p.TW, jointMM: Math.round(p.joint * 100) / 10, price: p.price, smallTh: p.smallTh, avoidTh: p.avoidTh },
     faces,
     openings: openingsList.map(o => ({ kind: o.kind, name: o.name, face: o.face, w: o.w, h: o.h, x: o.x, y: o.y })),
     column: columnParams()
@@ -58,7 +58,7 @@ function validateProject(obj) {
   ['L', 'W', 'H'].forEach(k => { out.room[k] = pos(room[k], `room.${k}`); });
   // 磁磚欄位沒寫就沿用目前設定（例如 DXF 裡沒有磚縫寬）
   const tile = obj.tile || {};
-  ['TL', 'TW', 'jointMM'].forEach(k => { if (tile[k] !== undefined) out.tile[k] = pos(tile[k], `tile.${k}`); });
+  ['TL', 'TW', 'jointMM', 'smallTh', 'avoidTh'].forEach(k => { if (tile[k] !== undefined) out.tile[k] = pos(tile[k], `tile.${k}`); });
   if (tile.price !== undefined) out.tile.price = nonNeg(tile.price, 'tile.price');
 
   for (const k of FACE_KEYS) {
@@ -123,6 +123,7 @@ function applyProject(pj) {
   const setIf = (id, v) => { if (v !== undefined && $(id)) $(id).value = v; };
   setIf('L', pj.room.L); setIf('W', pj.room.W); setIf('H', pj.room.H);
   setIf('TL', pj.tile.TL); setIf('TW', pj.tile.TW); setIf('joint', pj.tile.jointMM); setIf('price', pj.tile.price);
+  setIf('smallTh', pj.tile.smallTh); setIf('avoidTh', pj.tile.avoidTh);
   for (const k in pj.faces) {
     const f = pj.faces[k];
     setIf(k + '_fw', f.fw); setIf(k + '_fh', f.fh);

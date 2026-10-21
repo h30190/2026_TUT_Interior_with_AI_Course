@@ -40,13 +40,13 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
 
     if (drawStyle === 'line') {
       // 線稿：只畫磚縫，小料淡紅底提醒
-      ctx.fillStyle = t.danger ? 'rgba(224, 69, 69, 0.14)' : '#ffffff';
+      ctx.fillStyle = t.avoid ? 'rgba(224, 69, 69, 0.30)' : (t.danger ? 'rgba(224, 69, 69, 0.12)' : '#ffffff');
       ctx.fillRect(px, py, pw, ph);
       ctx.strokeStyle = '#8c8c8c';
       ctx.lineWidth = 0.7;
     } else {
       // 分區磚（例如主秀壁）整磚改用淡藍，一眼分得出兩種材料
-      ctx.fillStyle = t.danger ? '#e04545' : (t.full ? (t.zone ? '#dfe9f2' : '#efe9df') : '#f2b48c');
+      ctx.fillStyle = t.avoid ? '#d62f2f' : t.danger ? '#f08a7a' : (t.full ? (t.zone ? '#dfe9f2' : '#efe9df') : '#f2b48c');
       ctx.fillRect(px, py, pw, ph);
       ctx.strokeStyle = '#d8d2c6';
       ctx.lineWidth = 0.6;
@@ -159,25 +159,6 @@ function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
 }
 
 // 紅色放樣基準線 ＋ 🎯 起磚十字靶 ＋ 起磚點明確標註 ＋ CAD 鎖點
-// 磚被門窗遮住一部分時，回傳露出區塊的中心與短邊（讓「避免小料」圈在看得到的那一條）
-function visiblePart(t, ops) {
-  const x0 = Math.max(t.x0, 0), x1 = x0 + t.wL;
-  const y0 = Math.max(t.y0, 0), y1 = y0 + t.wW;
-  for (const o of ops) {
-    const ox1 = o.x + o.w, oy1 = o.y + o.h;
-    if (ox1 <= x0 || o.x >= x1 || oy1 <= y0 || o.y >= y1) continue;
-    const strips = [
-      [x0, y0, Math.min(o.x, x1), y1], [Math.max(ox1, x0), y0, x1, y1],
-      [x0, y0, x1, Math.min(o.y, y1)], [x0, Math.max(oy1, y0), x1, y1]
-    ].filter(([a, b, c, d]) => c - a > EPS && d - b > EPS);
-    if (strips.length) {
-      const [a, b, c, d] = strips.sort((p, q) => (q[2] - q[0]) * (q[3] - q[1]) - (p[2] - p[0]) * (p[3] - p[1]))[0];
-      return { cx: (a + c) / 2, cy: (b + d) / 2, minDim: Math.min(c - a, d - b) };
-    }
-  }
-  return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, minDim: Math.min(t.wL, t.wW) };
-}
-
 function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail, ops) {
   const xPx = ox + Math.max(0, r.xBase) * sc;
   const yPx = isElevation
@@ -234,10 +215,10 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
     box: [ox, yPx - 5, fw * sc, 10]
   });
 
-  // 碎磚處畫紅圈並標註「避免小料」（文字留在面內，不會被畫布邊緣切掉）
-  if (r.danger > 0) {
+  // 最短邊 < 避免小料門檻（預設 3cm）的磚才畫紅圈標「避免小料」（文字留在面內，不會被畫布邊緣切掉）
+  if (r.avoid > 0) {
     let t = null;
-    for (const q of r.tiles) { if (q.danger) { t = q; break; } }
+    for (const q of r.tiles) { if (q.avoid) { t = q; break; } }
     if (t) {
       const vis = visiblePart(t, ops || []);
       const cx = ox + vis.cx * sc;

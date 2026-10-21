@@ -17,7 +17,9 @@ function params() {
     TL: num('TL', 120),
     TW: num('TW', 60),
     joint: num('joint', 2) / 10,
-    price: num('price', 0)
+    price: num('price', 0),
+    smallTh: num('smallTh', 5),
+    avoidTh: num('avoidTh', 3)
   };
 }
 
@@ -62,8 +64,37 @@ function rowOffset(r, pitchL, mode) {
   return 0;
 }
 
+// 磚被門窗遮住一部分時，回傳露出區塊的中心與短邊（讓「避免小料」圈在看得到的那一條）
+function visiblePart(t, ops) {
+  const x0 = Math.max(t.x0, 0), x1 = x0 + t.wL;
+  const y0 = Math.max(t.y0, 0), y1 = y0 + t.wW;
+  for (const o of ops) {
+    const ox1 = o.x + o.w, oy1 = o.y + o.h;
+    if (ox1 <= x0 || o.x >= x1 || oy1 <= y0 || o.y >= y1) continue;
+    const strips = [
+      [x0, y0, Math.min(o.x, x1), y1], [Math.max(ox1, x0), y0, x1, y1],
+      [x0, y0, x1, Math.min(o.y, y1)], [x0, Math.max(oy1, y0), x1, y1]
+    ].filter(([a, b, c, d]) => c - a > EPS && d - b > EPS);
+    if (strips.length) {
+      const [a, b, c, d] = strips.sort((p, q) => (q[2] - q[0]) * (q[3] - q[1]) - (p[2] - p[0]) * (p[3] - p[1]))[0];
+      return { cx: (a + c) / 2, cy: (b + d) / 2, minDim: Math.min(c - a, d - b) };
+    }
+  }
+  return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, minDim: Math.min(t.wL, t.wW) };
+}
+
+// 小料判定（依黃建升的現場經驗）：只看裁切後露出部分的最短邊
+//   最短邊 < th.small（預設 5cm）＝小料，計入碎磚警示；再 < th.avoid（預設 3cm）＝圖上紅圈「避免小料」
+//   磁磚本身短邊 ≤ th.small（例如小馬賽克）不列入
+function sliverOf(t, ops, th) {
+  if (t.full || Math.min(t.tL, t.tW) <= th.small) return { danger: false, avoid: false, visMin: null };
+  const visMin = visiblePart(t, ops).minDim;
+  return { danger: visMin < th.small, avoid: visMin < th.avoid, visMin };
+}
+
 // 輔助函式：計算指定區間 [xMin, xMax] 內的磁磚陣列
-function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops) {
+function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th) {
+  th = th || { small: 5, avoid: 3 };
   const tiles = [];
   const r0 = Math.floor((0 - yBase + EPS) / pitchW);
   const r1 = Math.ceil((fh - yBase - EPS) / pitchW);
@@ -97,10 +128,8 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
       if (covered) continue;
 
       const full = !cutL && !cutW && !cutOp;
-      const minDim = Math.min(wL, wW);
-      const frac = wA / (tL * tW);
-      const danger = !full && (frac < 0.25 || minDim < 5);
-      tiles.push({ x0: Math.max(x0, xMin), y0, wL, wW, full, danger, tL, tW });
+      const t = { x0: Math.max(x0, xMin), y0, wL, wW, full, tL, tW };
+      tiles.push(Object.assign(t, sliverOf(t, ops, th)));
     }
   }
   return tiles;
@@ -170,6 +199,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   const tW = cfg.dir === 'H' ? p.TW : p.TL;
   const pitchL = tL + p.joint, pitchW = tW + p.joint;
   // 立面與地坪垂直起磚基準：預設由地面（Y=0）起磚向上排
+  const th = { small: p.smallTh || 5, avoid: p.avoidTh || 3 };
   const xBase = startOf(fw, pitchL, tL, cfg.xalign, cfg.xoff);
   const yBase = startOf(fh, pitchW, tW, cfg.yalign, cfg.yoff);
 
@@ -178,10 +208,11 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   const zones = cfg.zones || [];
   const groupMap = {};
   const addGroup = (key, label, TL, TW, segTiles, segArea, segOps) => {
-    const g = groupMap[key] || (groupMap[key] = { key, label, TL, TW, full: 0, cut: 0, danger: 0, area: 0, opArea: 0 });
+    const g = groupMap[key] || (groupMap[key] = { key, label, TL, TW, full: 0, cut: 0, danger: 0, avoid: 0, area: 0, opArea: 0 });
     g.full += segTiles.filter(t => t.full).length;
     g.cut += segTiles.filter(t => !t.full).length;
     g.danger += segTiles.filter(t => t.danger).length;
+    g.avoid += segTiles.filter(t => t.avoid).length;
     g.area += segArea; g.opArea += segOps;
   };
   // 開口落在 [x0, x1] 這一段的面積
@@ -195,10 +226,10 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
         const zL = cfg.dir === 'H' ? TL : TW, zW = cfg.dir === 'H' ? TW : TL;
         const zx = seg.zone.xoff !== undefined ? seg.zone.xoff : seg.x0; // 分區預設從分界線起磚
         const zy = startOf(fh, zW + p.joint, zW, cfg.yalign, cfg.yoff);
-        segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, zx, zy, zL + p.joint, zW + p.joint, zL, zW, cfg, ops);
+        segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, zx, zy, zL + p.joint, zW + p.joint, zL, zW, cfg, ops, th);
         segTiles.forEach(t => { t.zone = 1; });
       } else {
-        segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops);
+        segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
       }
       tiles = tiles.concat(segTiles);
       const key = seg.zone ? `z${TL}x${TW}${seg.zone.name}` : 'main';
@@ -206,14 +237,14 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     }
   } else if (col && col.on && col.mode === 'independent' && col.x > 5 && col.x < fw - 5) {
     // 判斷是否啟用柱子獨立起磚模式：柱左側區間 [0, col.x]
-    const tilesLeft = generateZoneTiles(fw, fh, 0, col.x, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops);
+    const tilesLeft = generateZoneTiles(fw, fh, 0, col.x, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
     // 柱右側區間 [col.x, fw]，自柱邊起磚加上 xoffRight
     xBase2 = col.x + (col.xoffRight || 0);
-    const tilesRight = generateZoneTiles(fw, fh, col.x, fw, xBase2, yBase, pitchL, pitchW, tL, tW, cfg, ops);
+    const tilesRight = generateZoneTiles(fw, fh, col.x, fw, xBase2, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
     tiles = tilesLeft.concat(tilesRight);
   } else {
     // 全牆連續鋪貼（若有柱線則為連動模式）
-    tiles = generateZoneTiles(fw, fh, 0, fw, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops);
+    tiles = generateZoneTiles(fw, fh, 0, fw, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
   }
   if (!zones.length) addGroup('main', matLabel(p.TL, p.TW), p.TL, p.TW, tiles, fw * fh, ops.reduce((a, o) => a + o.area, 0));
 
@@ -225,7 +256,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   const opArea = ops.reduce((a, o) => a + o.area, 0);
   const sum = k => groups.reduce((a, g) => a + g[k], 0);
   return {
-    tiles, groups, net: sum('net'), full: sum('full'), cut: sum('cut'), total: sum('total'), danger: sum('danger'), opArea,
+    tiles, groups, net: sum('net'), full: sum('full'), cut: sum('cut'), total: sum('total'), danger: sum('danger'), avoid: sum('avoid'), opArea,
     xBase, yBase, tL, tW, pitchL, pitchW, col, xBase2
   };
 }

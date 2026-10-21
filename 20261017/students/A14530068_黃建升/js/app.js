@@ -1,5 +1,11 @@
 // 應用程式入口：UI 事件綁定、畫布滑鼠拖曳放樣、CAD 鎖點與一鍵地壁對縫
 
+// 碎磚警示欄：小料片數，其中要避免的另外註明
+function sliverTxt(g) {
+  if (!g.danger) return '—';
+  return `⚠ ${g.danger} 片` + (g.avoid ? `<br><small>避免小料 ${g.avoid}</small>` : '');
+}
+
 function renderTable(rows, p) {
   const tb = document.querySelector('#tbl tbody');
   tb.innerHTML = '';
@@ -15,8 +21,8 @@ function renderTable(rows, p) {
     const yTxt = YALIGN_NAMES[s.cfg.yalign] + (s.cfg.yalign === 'custom' ? (' ' + s.cfg.yoff) : '');
     // 有分區的面：每種磚各一行（不同尺寸的片數不能相加）
     s.r.groups.forEach((g, gi) => {
-      const m = byMat[g.label] || (byMat[g.label] = { net: 0, full: 0, cut: 0, total: 0, danger: 0 });
-      ['net', 'full', 'cut', 'total', 'danger'].forEach(k => { m[k] += g[k]; });
+      const m = byMat[g.label] || (byMat[g.label] = { net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0 });
+      ['net', 'full', 'cut', 'total', 'danger', 'avoid'].forEach(k => { m[k] += g[k]; });
       const tr = document.createElement('tr');
       const multi = s.r.groups.length > 1;
       tr.innerHTML = `<td>${s.name}${multi ? `<br><small>${g.label}</small>` : ''}</td><td>${gi === 0 ? s.fw + '×' + s.fh : ''}</td>
@@ -27,7 +33,7 @@ function renderTable(rows, p) {
         <td>${gi === 0 ? opTxt : ''}</td>
         <td>${fmt(g.full)}</td><td>${fmt(g.cut)}</td><td>${fmt(g.total)}</td>
         <td>${lossOf(g).toFixed(1)}</td>
-        <td class="${g.danger > 0 ? 'danger' : ''}">${g.danger > 0 ? ('⚠ ' + g.danger + ' 片') : '—'}</td>`;
+        <td class="${g.danger > 0 ? 'danger' : ''}">${sliverTxt(g)}</td>`;
       tb.appendChild(tr);
     });
   }
@@ -40,7 +46,7 @@ function renderTable(rows, p) {
       <td>${i === 0 && opArea > 0 ? (opArea / 10000).toFixed(2) + ' m²' : '—'}</td>
       <td>${fmt(m.full)}</td><td>${fmt(m.cut)}</td><td>${fmt(m.total)}</td>
       <td>${lossOf(m).toFixed(1)}</td>
-      <td class="${m.danger > 0 ? 'danger' : ''}">${m.danger > 0 ? ('⚠ ' + m.danger + ' 片') : '—'}</td>`;
+      <td class="${m.danger > 0 ? 'danger' : ''}">${sliverTxt(m)}</td>`;
     tb.appendChild(tr);
   });
   // 單價只有一種材料時才有意義
@@ -66,7 +72,10 @@ function renderConcl(p, tot) {
   }
   if (tot.danger > 0) {
     const names = worst.map(s => `${s.name} ${s.r.danger} 片`).join('、');
-    txt += ` ⚠️ 全室共 ${tot.danger} 片危險碎磚（${names}），建議直接在畫面上拖曳紅線，或點擊上方「✨ 智慧消滅小料」！`;
+    const avoid = rows.reduce((a, s) => a + s.r.avoid, 0);
+    txt += ` ⚠️ 全室共 ${tot.danger} 片小料（最短邊 < ${p.smallTh}cm：${names}）`
+      + (avoid ? `，其中 ${avoid} 片 < ${p.avoidTh}cm 已在圖上紅圈標「避免小料」` : '')
+      + '，可拖曳紅線或點「✨ 智慧消滅小料」調整。';
   } else {
     txt += '  未出現危險碎磚，排磚配置安全。';
   }
@@ -489,7 +498,7 @@ function initCanvasInteraction() {
           + `實鋪尺寸：<b>${tile.wL.toFixed(1)} × ${tile.wW.toFixed(1)} cm</b><br>`
           + `原磚規格：${tile.tL} × ${tile.tW} cm<br>`
           + `狀態：${tile.full ? '<span style="color:#7bed9f">整磚 (100%)</span>' : `裁切磚 (保留 ${ratio}%)`}<br>`
-          + (tile.danger ? `<div class="danger">⚠️ 危險小料！(最短邊長 < 5cm)</div>` : '');
+          + (tile.danger ? `<div class="danger">⚠️ ${tile.avoid ? '避免小料' : '小料'}（露出最短邊 ${tile.visMin.toFixed(1)} cm）</div>` : '');
       } else if (inspector) {
         inspector.style.display = 'none';
         cv.style.cursor = 'default';
@@ -665,7 +674,7 @@ function initApp() {
     refresh();
   }));
 
-  ['TL', 'TW', 'joint', 'price'].forEach(id => $(id).addEventListener('input', refresh));
+  ['TL', 'TW', 'joint', 'price', 'smallTh', 'avoidTh'].forEach(id => $(id).addEventListener('input', refresh));
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign'].forEach(s => $(k + s).addEventListener('change', refresh)));
   FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones'].forEach(s => $(k + s).addEventListener('input', refresh)));

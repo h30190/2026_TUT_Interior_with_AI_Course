@@ -252,14 +252,28 @@ const zoneB = layout({ L: 171, W: 207, H: 289, TL: 120, TW: 120, joint: 0.2, pri
   { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 117, yalign: 'bottom', yoff: 0, zones: fz.B.zones }, []);
 const gMain = zoneB.groups.find(g => g.key === 'main'), gMosaic = zoneB.groups.find(g => g.key !== 'main');
 assert('smoke', '分區：壁磚區 3 片（117 寬的裁切磚 × 3 列）', gMain && gMain.full === 0 && gMain.cut === 3);
-assert('smoke', '分區：主秀壁 6 欄 × 20 列＝120 片，頂端 4cm 一列 6 片為小料（同施工圖「避免小料」）',
-  gMosaic && gMosaic.total === 120 && gMosaic.full === 114 && gMosaic.danger === 6 && gMosaic.label.includes('主秀壁'));
+assert('smoke', '分區：主秀壁 6 欄 × 20 列＝120 片，頂端 4cm 一列 6 片為小料（≥ 3cm 不畫紅圈）',
+  gMosaic && gMosaic.total === 120 && gMosaic.full === 114 && gMosaic.danger === 6 && gMosaic.avoid === 0 && gMosaic.label.includes('主秀壁'));
 assert('smoke', '分區：不同尺寸的磚分開算理論片數（壁 3、主秀壁 119）', gMain && gMosaic && gMain.net === 3 && gMosaic.net === 119);
 assert('smoke', '分區文字「117-207: 14.8×14.8 主秀壁」可讀回、可寫出',
   vmCtx.formatZones(vmCtx.parseZones('117-207: 14.8×14.8 主秀壁; 0~50：30x60')) === '117-207: 14.8×14.8 主秀壁; 0-50: 30×60');
 const overlap = vmCtx.splitByZones(200, [{ x0: 50, x1: 120, TL: 10, TW: 10 }, { x0: 100, x1: 150, TL: 20, TW: 20 }]);
 assert('smoke', '分區重疊時後一區從前一區結尾開始，整面不重複也不漏',
   JSON.stringify(overlap.map(sg => [sg.x0, sg.x1, !!sg.zone])) === '[[0,50,false],[50,120,true],[120,150,true],[150,200,false]]');
+
+// Test S11: 小料只看露出部分最短邊（< 5 小料、< 3 紅圈避免小料、磚本身 ≤ 5 不列入）
+const pTh = { TL: 120, TW: 120, joint: 0.2, price: 0, smallTh: 5, avoidTh: 3 };
+const gridCfg = (xoff) => ({ dir: 'H', mode: 'grid', xalign: 'custom', xoff, yalign: 'bottom', yoff: 0 });
+const resA = layout(pTh, 171, 289, gridCfg(59), []);
+assert('smoke', '小料：A 面左上 59×49 面積雖小但最短邊夠寬，不算小料', resA.danger === 0, `danger=${resA.danger}`);
+const resDoor = layout(pTh, 210, 289, gridCfg(104), [{ kind: 'door', x: 104, y: 0, w: 86, h: 239, area: 86 * 239 }]);
+assert('smoke', '小料：門旁 20cm 露出條（磚大部分被門遮住）不算小料', resDoor.danger === 0, `danger=${resDoor.danger}`);
+const res4 = layout(pTh, 124.2, 120, gridCfg(0), []);
+assert('smoke', '小料：右側 4cm 條＝小料但不畫紅圈（≥ 3cm）', res4.danger === 1 && res4.avoid === 0, `danger=${res4.danger} avoid=${res4.avoid}`);
+const res2 = layout(pTh, 122.2, 120, gridCfg(0), []);
+assert('smoke', '小料：右側 2cm 條＝避免小料（< 3cm 紅圈）', res2.danger === 1 && res2.avoid === 1, `danger=${res2.danger} avoid=${res2.avoid}`);
+const resMosaic = layout(Object.assign({}, pTh, { TL: 4.8, TW: 4.8 }), 101, 100, gridCfg(0), []);
+assert('smoke', '小料：磚本身 4.8cm（≤ 5）裁到多窄都不列入', resMosaic.cut > 0 && resMosaic.danger === 0);
 
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）

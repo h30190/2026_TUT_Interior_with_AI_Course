@@ -42,6 +42,10 @@
       <div class="row2">
         <div><label>磁磚單價 (元/片)</label><input id="price" type="number" value="0"></div>
       </div>
+      <div class="row2">
+        <div><label>小料門檻：最短邊 &lt; (cm)</label><input id="smallTh" type="number" value="5" step="0.5"></div>
+        <div><label>紅圈「避免小料」：&lt; (cm)</label><input id="avoidTh" type="number" value="3" step="0.5"></div>
+      </div>
       <div class="presets">
         <button data-p="living">客廳大板磚（600×400×280，磚 120×60）</button>
         <button data-p="bedroom">主臥木紋磚（450×350×280，磚 15×75）</button>
@@ -160,7 +164,8 @@
       <div class="legend" id="legendColor">
         <span><i class="sw" style="background:var(--tile)"></i>整磚</span>
         <span><i class="sw" style="background:var(--cut)"></i>裁切修邊磚</span>
-        <span><i class="sw" style="background:var(--danger)"></i>危險小料（最短邊 &lt; 5cm）</span>
+        <span><i class="sw" style="background:#f08a7a"></i>小料（最短邊 &lt; 5cm）</span>
+        <span><i class="sw" style="background:#d62f2f"></i>避免小料（&lt; 3cm，紅圈）</span>
         <span><i class="sw" style="background:#fff;border:1px dashed #2b2b2b"></i>壁地交接折線</span>
         <span><i class="sw" style="background:#eaf2fa;border:2px solid #3a76b5"></i>門窗開口（不鋪磚，可拖曳）</span>
         <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>🎯 紅色起磚靶心（可拖曳）</span>
@@ -169,7 +174,8 @@
         <span><i class="sw" style="background:#fff;border:1px solid #8c8c8c"></i>磁磚（灰線＝磚縫）</span>
         <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>紅線＝放樣基準線（可拖曳）</span>
         <span><i class="sw" style="background:#fff;border-top:3px solid #7cb518"></i>綠箭頭＝由此線開始放樣</span>
-        <span><i class="sw" style="background:#fff;border:1.5px solid #d22;border-radius:50%"></i>紅圈＝避免小料</span>
+        <span><i class="sw" style="background:rgba(224,69,69,0.12)"></i>淡紅＝小料（&lt; 5cm）</span>
+        <span><i class="sw" style="background:#fff;border:1.5px solid #d22;border-radius:50%"></i>紅圈＝避免小料（&lt; 3cm）</span>
         <span><i class="sw" style="background:#fff;border:2px solid #18a7c9"></i>門窗開口（不鋪磚，可拖曳）</span>
       </div>
       <div id="warn" class="warn" style="display:none">
@@ -203,7 +209,7 @@
         <tbody></tbody>
       </table>
       <div id="concl" class="concl"></div>
-      <div class="note">總叫料＝整磚＋裁切消耗（裁切磚不可回填復用）；損耗率＝(總叫料−理論片數)÷理論片數；理論片數＝淨面積（已扣門窗）÷單磚面積（向上取整）。碎磚警示＝裁切後最短邊長 &lt; 5cm 之危險小料數量（只要最短邊 ≥ 5cm 即視為安全可施工，面積不用顧慮）。開口完全覆蓋之磚不計料。</div>
+      <div class="note">總叫料＝整磚＋裁切消耗（裁切磚不可回填復用）；損耗率＝(總叫料−理論片數)÷理論片數；理論片數＝淨面積（已扣門窗）÷單磚面積（向上取整），不同尺寸的磚分開計算。小料＝裁切後露出部分的最短邊 &lt; 小料門檻（預設 5cm）；再小於「避免小料」門檻（預設 3cm）者在圖上紅圈標示；磁磚本身短邊 ≤ 小料門檻（例如小馬賽克）不列入。開口完全覆蓋之磚不計料。</div>
     </div>
   </div>
 </div>
