@@ -161,6 +161,9 @@ function refresh() {
   }
 
   syncCADToolbar();
+  // 外框由匯入／案例設定時，欄位跟著顯示（正在輸入時不改，免得游標跳掉）
+  const olInp = $('floor_outline');
+  if (olInp && document.activeElement !== olInp) olInp.value = formatOutline(floorOutline);
   draw(p, rows);
 }
 
@@ -221,6 +224,7 @@ function buildPanels() {
       + `<div><label>紅線 X (cm)</label><input id="${k}_marks" type="text" placeholder="例 59, 142"></div>`
       + `</div>`
       + `<div><label>分區磚（起-迄: 磚 名稱）</label><input id="${k}_zones" type="text" placeholder="例 117-207: 14.8×14.8 主秀壁"></div>`
+      + (k === 'floor' ? `<div><label>外框頂點 x,y（由左上量，空白＝整個矩形）</label><input id="floor_outline" type="text" placeholder="例 0,29 117,29 117,0 207,0 207,172 0,172"></div>` : '')
       + `<label class="openable" style="margin-top:6px"><input type="checkbox" id="${k}_skip"> 此面不鋪磚</label>`;
     host.appendChild(blk);
   }
@@ -691,6 +695,7 @@ function initApp() {
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign', '_skip'].forEach(s => $(k + s).addEventListener('change', refresh)));
   FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones'].forEach(s => $(k + s).addEventListener('input', refresh)));
+  $('floor_outline').addEventListener('input', e => { floorOutline = parseOutline(e.target.value); refresh(); });
 
   $('syncWalls').addEventListener('click', () => {
     ['B', 'C', 'D'].forEach(k => {

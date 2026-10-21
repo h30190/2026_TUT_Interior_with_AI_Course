@@ -374,6 +374,17 @@ function getSnapPoints(p, dims, faceKey, ops) {
   return snaps;
 }
 
+// 地坪外框文字「0,29 117,29 117,0 …」↔ [[0,29],[117,29],…]（少於 3 點＝沒有外框，整個矩形都鋪）
+function parseOutline(s) {
+  const pts = String(s || '').trim().split(/[\s;；]+/).filter(Boolean)
+    .map(t => t.split(/[,，]/).map(parseFloat)).filter(p => p.length === 2 && p.every(Number.isFinite));
+  return pts.length >= 3 ? pts : null;
+}
+
+function formatOutline(pts) {
+  return (pts || []).map(p => `${p[0]},${p[1]}`).join(' ');
+}
+
 // 尺寸鏈分段點：兩端＋各標記點，排序去重（相距 < 0.5cm 視為同一點，避免擠在一起的小段）
 function dimChainPoints(len, marks) {
   const pts = [0, len];

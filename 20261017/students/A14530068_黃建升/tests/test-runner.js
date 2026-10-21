@@ -302,6 +302,9 @@ assert('smoke', 'L 形：地磚只算外框內（6 片、理論 5 片），外�
 const rRect = layout({ TL: 50, TW: 50, joint: 0, smallTh: 5, avoidTh: 5 }, 100, 50, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', poly: [[0, 0], [100, 0], [100, 50], [0, 50]] }, []);
 assert('smoke', '外框：矩形外框跟沒有外框一樣（2 片整磚）', rRect.full === 2 && rRect.cut === 0 && rRect.voidArea === 0);
 
+assert('smoke', '外框文字「0,29 117,29 …」可讀回、可寫出，少於 3 點＝沒有外框',
+  vmCtx.formatOutline(vmCtx.parseOutline('0,29 117,29；117,0 207,0')) === '0,29 117,29 117,0 207,0' && vmCtx.parseOutline('1,2 3,4') === null && vmCtx.parseOutline('') === null);
+
 // Test S13b: 斜牆地坪（右牆由上 x=100 斜到下 x=90）
 const trap = [[0, 0], [100, 0], [90, 100], [0, 100]];
 const rT = layout({ TL: 50, TW: 50, joint: 0, smallTh: 5, avoidTh: 5 }, 100, 100, { dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', poly: trap }, []);
