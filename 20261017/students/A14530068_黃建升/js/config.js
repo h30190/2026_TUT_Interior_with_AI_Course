@@ -1,22 +1,53 @@
-// 專案配置、常數與預設資料
+// 專案配置、常數與全域工具函式
+const $ = id => (typeof document !== 'undefined' ? document.getElementById(id) : null);
+const EPS = 1e-6;
+// 切磚機鋸路寬（cm）：剩料回收時每切一刀要扣掉
+const SAW_KERF = 0.3;
+// 每種磁磚的 Hatch（依出現順序套用）：照施工圖習慣用 ANSI31（色號 2 黃）、色號 41 橘…；
+// 每種樣式也不同，黑白列印分得出來。畫面線稿、PDF、匯出 DXF 共用這張表
+const HATCH_STYLES = [
+  { pat: 'ANSI31', aci: 2 },
+  { pat: 'ANSI34', aci: 41 },
+  { pat: 'ANSI37', aci: 3 },
+  { pat: 'ANSI32', aci: 4 },
+  { pat: 'NET', aci: 6 }
+];
+// 畫布邏輯尺寸（繪圖與滑鼠座標換算共用）
+const CANVAS_W = 1240, CANVAS_H = 820;
+
+function num(id, dft) {
+  const el = $(id);
+  if (!el) return dft;
+  const v = parseFloat(el.value);
+  return (Number.isFinite(v) && v > 0) ? v : dft;
+}
+
+function num0(id, dft) {
+  const el = $(id);
+  if (!el) return dft;
+  const v = parseFloat(el.value);
+  return (Number.isFinite(v) && v >= 0) ? v : dft;
+}
+
 const PRESETS = {
   living: { L: 600, W: 400, H: 280, TL: 120, TW: 60 },
   bedroom: { L: 450, W: 350, H: 280, TL: 15, TW: 75 },
   bath: { L: 240, W: 180, H: 240, TL: 30, TW: 60 },
+  // 依實際浴室施工圖（DXF 實測）：四面牆高皆 289（239 是 D 面門高），壁磚 120×120、地磚 60×120
   demo: {
-    L: 171, W: 207, H: 289, TL: 30, TW: 60,
-    faces: { floor: [207, 171], A: [171, 289], B: [207, 289], C: [172, 289], D: [210, 239] }
-  }
-};
-
-const OPEN_PRESETS = {
-  bathop: {
-    door_on: true, door_face: 'D', door_w: 86, door_h: 239, door_x: 104, door_y: 0,
-    win_on: true, win_face: 'B', win_w: 60, win_h: 60, win_x: 40, win_y: 140
-  },
-  livingop: {
-    door_on: true, door_face: 'A', door_w: 100, door_h: 220, door_x: 20, door_y: 0,
-    win_on: true, win_face: 'C', win_w: 240, win_h: 220, win_x: 40, win_y: 0
+    L: 171, W: 207, H: 289, TL: 120, TW: 120,
+    faces: { floor: [207, 187], A: [171, 289], B: [207, 289], C: [172, 289], D: [210, 289] },
+    // 各面放樣起點（「由此線開始放樣」）與紅線：A 59／142、B 117、C 靠左、D 對齊門框 104／190
+    cfg: {
+      floor: { xalign: 'custom', xoff: 117, yalign: 'custom', yoff: 172, TL: 120, TW: 60 },
+      A: { xalign: 'custom', xoff: 59, marks: [59, 142] },
+      B: { xalign: 'custom', xoff: 117, marks: [117], zones: [{ x0: 117, x1: 207, TL: 14.8, TW: 14.8, name: '主秀壁' }] },
+      C: { xalign: 'left', xoff: 0 },
+      D: { xalign: 'custom', xoff: 104, marks: [190] }
+    },
+    // 地坪 L 形：左上缺 117×29、左下缺 20×60，門檻 172～187 不鋪地磚（DXF 實測）
+    outline: [[20, 172], [20, 112], [0, 112], [0, 29], [117, 29], [117, 0], [207, 0], [207, 172], [103, 172]],
+    openings: 'caseop'
   }
 };
 
@@ -36,7 +67,19 @@ const DEFAULT_CFG = {
 };
 
 let view = 'unfold';
+// 圖面風格：'color' 彩色方案（給業主看損耗）／'line' 施工線稿（給師傅放樣）
+let drawStyle = 'color';
 let face = 'floor';
+// 匯入施工圖帶進來的材料（壁／地／主秀壁…）與圖面資訊（工程名稱、圖名）
+let projectMaterials = [];
+// 單價表：材料型號 → 元/片（換圖、整份匯出都沿用；瀏覽器也會記住）
+let priceBook = {};
+// 匯入施工圖帶進來的設備線稿與備註（各面座標：立面由左下量、地坪由左上量）
+let faceOverlays = {};
+// 地坪實際外框（L 形等；座標由左上量，null＝整個矩形都鋪）
+let floorOutline = null;
+const EMPTY_META = { project: '', drawingName: '', number: '' };
+let projectMeta = Object.assign({}, EMPTY_META);
 
 // 結構柱／分界紅線預設設定
 const COLUMN_DEFAULT = {

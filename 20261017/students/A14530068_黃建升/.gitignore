@@ -9,6 +9,8 @@
 *.skp
 *.dwg
 *.dxf
+# 例外：測試用範例 DXF（已去除業主姓名、電話、真實案名）
+!tests/fixtures/*.dxf
 *.3dm
 *.max
 *.blend

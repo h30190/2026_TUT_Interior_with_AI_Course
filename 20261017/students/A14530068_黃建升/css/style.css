@@ -7,6 +7,11 @@
 body{font-family:"Segoe UI","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);padding:24px}
 h1{font-size:20px;font-weight:600;letter-spacing:.5px;margin-bottom:4px}
 .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+.steps{display:flex;gap:8px;list-style:none;counter-reset:st;margin:6px 0 18px;padding:0;flex-wrap:wrap}
+.steps li{counter-increment:st;flex:1 1 200px;display:flex;flex-direction:column;gap:2px;padding:8px 12px 8px 40px;position:relative;background:#fbfaf7;border:1px solid #e3ddd0;border-radius:8px;font-size:13px}
+.steps li::before{content:counter(st);position:absolute;left:10px;top:9px;width:22px;height:22px;border-radius:50%;background:var(--accent,#b8352b);color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center}
+.steps li span{color:var(--muted);font-size:11.5px}
+@media print{.steps{display:none}}
 .layout{display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;position:relative}
 .card h2{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--accent)}
@@ -32,6 +37,8 @@ input,select{width:100%;padding:8px;border:1px solid var(--line);border-radius:6
 .view{display:flex;gap:8px;margin-bottom:10px}
 .view button{flex:1;padding:10px;border:1px solid var(--line);border-radius:6px;background:#fbfaf7;cursor:pointer;font-size:13px}
 .view button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.style-toggle button{padding:7px;font-size:12px}
+.style-toggle button.on{background:var(--accent);border-color:var(--accent)}
 .tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .tabs button{padding:8px 14px;border:1px solid var(--line);border-radius:6px;background:#fbfaf7;cursor:pointer;font-size:12.5px}
 .tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -81,6 +88,22 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
 .joint-badge{font-size:10px;padding:2px 5px;background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9;border-radius:4px;font-weight:600}
 
 /* 🔒 鎖定／解鎖四面對縫切換按鈕 */
+.opwarn{margin-top:6px;padding:4px 8px;border-radius:4px;background:#fdecea;color:#b42318;font-size:11.5px;line-height:1.4}
+.zone-add{display:flex;gap:4px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:4px}
+.zone-add button{padding:2px 6px;border:1px solid #c9c2b4;border-radius:4px;background:#fbfaf7;font-size:11px;cursor:pointer}
+.zone-add button:hover{border-color:#007acc;color:#007acc}
+.plan-search-btn{padding:6px 14px;border:1px solid #6a4c93;border-radius:6px;background:#6a4c93;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+.plan-search-btn:hover{filter:brightness(1.12)}
+.plan-search-btn:disabled{opacity:.6;cursor:wait}
+.plan-results{margin-bottom:12px;padding:10px 12px;border:1px solid #d9cfe8;border-radius:8px;background:#faf8fd;font-size:12px}
+.plan-results h3{font-size:13px;color:#6a4c93;margin-bottom:6px}
+.plan-results table{width:100%;border-collapse:collapse}
+.plan-results th,.plan-results td{padding:4px 6px;border-bottom:1px solid #e6e0ee;text-align:left;vertical-align:top}
+.plan-results tr.best{background:#efe8f8}
+.plan-results .star{color:#b8352b;font-weight:700}
+.plan-results .muted{color:var(--muted)}
+.plan-results button{padding:3px 10px;border:1px solid #6a4c93;border-radius:5px;background:#fff;color:#6a4c93;font-size:12px;cursor:pointer}
+.plan-results tr.best button{background:#6a4c93;color:#fff}
 .lock-toggle-btn{padding:6px 14px;border:1px solid #3e4451;border-radius:6px;background:#fbfaf7;color:var(--ink);font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .2s}
 .lock-toggle-btn:hover{border-color:#007acc;color:#007acc}
 .lock-toggle-btn.locked{background:#2e7d32;color:#ffffff;border-color:#2e7d32;box-shadow:0 2px 6px rgba(46,125,50,0.25)}
@@ -91,3 +114,69 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
 
 
 
+
+/* 📐 DXF 選圖視窗 */
+.modal{position:fixed;inset:0;background:rgba(20,20,20,0.45);display:flex;align-items:center;justify-content:center;z-index:100}
+.modal-box{background:#fff;border-radius:10px;padding:18px 20px;width:min(760px,92vw);max-height:84vh;display:flex;flex-direction:column}
+.modal-box h2{font-size:15px;margin-bottom:10px;color:var(--accent)}
+.sheet-list{overflow:auto;display:flex;flex-direction:column;gap:6px}
+.sheet-list button{text-align:left;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:#fbfaf7;cursor:pointer;font-size:12.5px}
+.sheet-list button:hover{border-color:var(--accent);background:#f4efe6}
+
+/* 🧱 材料卡片：左邊照片、右邊欄位 */
+.mat-card{display:flex;gap:10px;align-items:flex-start}
+.mat-photo{flex:0 0 56px;height:56px;border:1px dashed var(--line);border-radius:6px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;color:var(--muted);cursor:pointer;overflow:hidden;background:#fff}
+.mat-photo img{width:100%;height:100%;object-fit:cover}
+.mat-fields{flex:1;min-width:0}
+.mat-fields label{margin:4px 0 2px}
+.mat-fields input{padding:5px 6px;font-size:12px}
+.mat-fields .btn-del-op{margin-top:6px;padding:2px 8px;font-size:11px;background:#fee2e2;color:#dc2626;border:1px solid #f87171;border-radius:4px;cursor:pointer}
+
+/* 🖨️ 出圖頁：螢幕上隱藏；列印時只印出圖頁（A3 橫式） */
+#printSheet{display:none}
+@page{size:A3 landscape;margin:8mm}
+@media print{
+  body{background:#fff;padding:0}
+  body>*:not(#printSheet){display:none !important}
+  #printSheet{display:block;color:#222;font-family:"Microsoft JhengHei","Segoe UI",sans-serif}
+  .ps-page{width:100%}
+  .ps-break{break-before:page}
+  .ps-drawing{display:block;width:100%;max-height:248mm;object-fit:contain;border:1px solid #333}
+  .ps-title{width:100%;border-collapse:collapse;margin-top:3mm;font-size:11pt}
+  .ps-title td{border:1px solid #333;padding:2mm 3mm;text-align:left;vertical-align:top}
+  .ps-title small{display:block;color:#777;font-size:8pt}
+  .ps-title .ps-warn{color:#d22;font-weight:700;font-size:13pt;vertical-align:middle;text-align:center}
+  .ps-page h2{font-size:14pt;margin:0 0 3mm;color:#8a7f6d}
+  .ps-page table{font-size:9.5pt}
+  .ps-mats{margin-bottom:6mm}
+  .ps-mats td,.ps-mats th{text-align:left;padding:2mm}
+  .ps-photo{width:22mm}
+  .ps-photo img{width:20mm;height:20mm;object-fit:cover;border:1px solid #ccc}
+  .ps-concl{margin-top:4mm;font-size:10pt;line-height:1.6}
+  .ps-note{font-size:8.5pt;color:#666}
+  .ps-h1{font-size:20pt;margin:0 0 2mm}
+  .ps-sub{font-size:11pt;color:#555;margin-bottom:5mm}
+  .ps-small{font-size:8pt;color:#8a4b00;text-align:left}
+  .ps-quote h3{font-size:12pt;color:#8a7f6d;margin:5mm 0 2mm}
+}
+
+/* 💰 報價表 */
+.quote{margin-top:14px}
+.quote h3{font-size:13px;color:var(--accent);margin-bottom:4px}
+.quote .muted{color:var(--muted)}
+
+/* ✂️ 裁切清單 */
+.cut-faces{margin-top:10px;font-size:12.5px;line-height:1.9}
+.cut-size{display:inline-block;padding:0 5px;border-radius:4px;background:#f1ede5;font-variant-numeric:tabular-nums}
+
+/* 匯入前確認高度 */
+.pc-body{overflow:auto;font-size:13px}
+.pc-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid #eee8dc}
+.pc-row input[type=number]{width:72px;padding:3px 6px}
+.pc-src{font-size:11px;color:var(--muted)}
+.pc-src.warn{background:#fff3c4;color:#8a6100;padding:1px 6px;border-radius:4px}
+.pc-chk{display:inline-flex;align-items:center;gap:3px;margin-right:6px;font-weight:400;white-space:nowrap}
+/* 半高檯卡片 */
+.ledge-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.ledge-head .btn-del-op{padding:2px 8px;font-size:11px;background:#fee2e2;color:#dc2626;border:1px solid #f87171;border-radius:4px;cursor:pointer}
+.ledge-empty{text-align:center;padding:10px;color:#7a756c;font-size:12px;background:#fdfcf9;border-radius:6px;border:1px dashed #d8d3c8}

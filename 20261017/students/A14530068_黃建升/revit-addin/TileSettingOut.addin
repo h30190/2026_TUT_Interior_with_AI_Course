@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Command">
+    <Name>磁磚放樣：匯出房間</Name>
+    <Assembly>TileSettingOutExport.dll</Assembly>
+    <AddInId>cc6a57c3-e592-423a-a449-5ad863b4120e</AddInId>
+    <FullClassName>TileSettingOut.ExportRoomCommand</FullClassName>
+    <Text>磁磚放樣：匯出房間（JSON）</Text>
+    <Description>選一個房間，匯出四面牆、地坪外框與門窗，給網頁版磁磚放樣施工圖系統使用</Description>
+    <VendorId>A14530068</VendorId>
+    <VendorDescription>南應室設 黃建升</VendorDescription>
+  </AddIn>
+</RevitAddIns>
