@@ -38,7 +38,9 @@
 - 每面可設自己的磚（例如地坪 120×60、牆 120×120）
 - **同一面多種磚（分區）**：例如 B 面「117-207: 14.8×14.8 主秀壁」，分區外沿用該面的磚；各區各自起磚、各自算料，算料表依材料分開合計。DXF 匯入時會依紅線切段、看磚縫間距自動判斷分區（主秀壁與壁磚同尺寸時無法判斷，會提示手動設定）
 
-測試：`node tests/test-runner.js`（含 DXF 範例 `tests/fixtures/sample-bathroom.dxf`，已去除業主姓名、電話與真實案名）。
+測試（`powershell -File tests\ci.ps1` 一次跑完）：
+- `node tests/test-runner.js`：計算邏輯（含 DXF 範例 `tests/fixtures/sample-bathroom.dxf`，已去除業主姓名、電話與真實案名）
+- `node tests/browser-test.js`：真的打開網頁按遍所有按鈕、匯入匯出、DXF、PDF（第一次先 `npm install -g playwright` 和 `npx playwright install chromium`；沒裝會自動略過）
 
 - **設備與備註**：DXF 立面／平面範圍內的設備線稿（馬桶、臉盆、門、檯面，含圖塊）、文字、多重引線備註（例如「因馬桶位置提高一塊磚」）照原座標與顏色搬過來畫
 - **小料規則**：只看裁切後露出部分的最短邊，< 5cm 為小料（計入碎磚警示）並在圖上紅圈標「避免小料」；磁磚本身 ≤ 5cm 不列入（兩個門檻可分開調，例如紅圈只圈 < 3cm）
