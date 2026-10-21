@@ -110,3 +110,27 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
 .mat-fields label{margin:4px 0 2px}
 .mat-fields input{padding:5px 6px;font-size:12px}
 .mat-fields .btn-del-op{margin-top:6px;padding:2px 8px;font-size:11px;background:#fee2e2;color:#dc2626;border:1px solid #f87171;border-radius:4px;cursor:pointer}
+
+/* 🖨️ 出圖頁：螢幕上隱藏；列印時只印出圖頁（A3 橫式） */
+#printSheet{display:none}
+@page{size:A3 landscape;margin:8mm}
+@media print{
+  body{background:#fff;padding:0}
+  body>*:not(#printSheet){display:none !important}
+  #printSheet{display:block;color:#222;font-family:"Microsoft JhengHei","Segoe UI",sans-serif}
+  .ps-page{width:100%}
+  .ps-break{break-before:page}
+  .ps-drawing{display:block;width:100%;max-height:248mm;object-fit:contain;border:1px solid #333}
+  .ps-title{width:100%;border-collapse:collapse;margin-top:3mm;font-size:11pt}
+  .ps-title td{border:1px solid #333;padding:2mm 3mm;text-align:left;vertical-align:top}
+  .ps-title small{display:block;color:#777;font-size:8pt}
+  .ps-title .ps-warn{color:#d22;font-weight:700;font-size:13pt;vertical-align:middle;text-align:center}
+  .ps-page h2{font-size:14pt;margin:0 0 3mm;color:#8a7f6d}
+  .ps-page table{font-size:9.5pt}
+  .ps-mats{margin-bottom:6mm}
+  .ps-mats td,.ps-mats th{text-align:left;padding:2mm}
+  .ps-photo{width:22mm}
+  .ps-photo img{width:20mm;height:20mm;object-fit:cover;border:1px solid #ccc}
+  .ps-concl{margin-top:4mm;font-size:10pt;line-height:1.6}
+  .ps-note{font-size:8.5pt;color:#666}
+}

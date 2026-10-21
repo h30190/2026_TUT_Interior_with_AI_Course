@@ -127,6 +127,8 @@
       <div class="view style-toggle">
         <button id="styleColor" class="on">🎨 彩色方案（給業主看損耗）</button>
         <button id="styleLine">✏️ 施工線稿（給師傅放樣）</button>
+        <button id="btnExportPdf" title="A3 橫式兩頁：施工圖＋標題欄、材料表＋算料表；在列印視窗選「另存為 PDF」">🖨️ 匯出 PDF</button>
+        <button id="btnExportPng" title="下載目前畫面的高解析度圖片">🖼️ 下載圖片</button>
       </div>
       <div class="tabs" id="faceTabs" style="display:none">
         <button data-f="floor" class="on">地坪 L×W</button>
@@ -232,6 +234,9 @@
   </div>
 </div>
 
+<!-- 🖨️ 匯出 PDF 用的出圖頁（螢幕上不顯示，列印時只印這裡） -->
+<div id="printSheet"></div>
+
 <!-- 🔍 X 光磁磚透視檢查器浮動視窗 -->
 <div id="tileInspector" class="tile-inspector" style="display:none"></div>
 
@@ -244,6 +249,7 @@
 <script src="js/project-io.js"></script>
 <script src="js/dxf-import.js"></script>
 <script src="js/materials.js"></script>
+<script src="js/export.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

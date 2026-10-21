@@ -14,7 +14,8 @@ function clearInteractiveTargets() {
 
 // 支援高解析度（Retina 2x）與加大圖面尺寸
 function setupHiDPICanvas(cv) {
-  const dpr = Math.max(window.devicePixelRatio || 1, 2);
+  // 匯出 PDF／圖片時暫時用更高解析度（window.__exportDpr）
+  const dpr = window.__exportDpr || Math.max(window.devicePixelRatio || 1, 2);
   const cssW = CANVAS_W, cssH = CANVAS_H;
   if (cv.width !== cssW * dpr || cv.height !== cssH * dpr) {
     cv.width = cssW * dpr;
@@ -993,6 +994,8 @@ function drawUnfold(p, rows) {
   }
   ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif';
 
+  // 操作說明只在螢幕上看，匯出 PDF／圖片時不畫
+  if (window.__exportDpr) { drawActiveDragGuide(ctx); return; }
   ctx.textAlign = 'right';
   const spec2 = [
     '【CAD 互動放樣說明】',

@@ -754,6 +754,7 @@ function initApp() {
   initProjectIO();
   initDxfImport();
   initMaterials();
+  initExport();
 
   refresh();
 }

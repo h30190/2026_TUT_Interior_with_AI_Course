@@ -42,6 +42,7 @@ const requiredFiles = [
   'js/project-io.js',
   'js/dxf-import.js',
   'js/materials.js',
+  'js/export.js',
   'js/app.js'
 ];
 
@@ -52,7 +53,7 @@ requiredFiles.forEach(file => {
 });
 
 // 檢查 JS 檔案語法 (Syntax Check)
-const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'app.js'];
+const jsFiles = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'app.js'];
 jsFiles.forEach(f => {
   const fPath = path.join(JS_DIR, f);
   try {
@@ -67,7 +68,7 @@ jsFiles.forEach(f => {
 
 // 檢查 index.html 模組引入順序
 const htmlContent = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
-const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'app.js'];
+const scriptOrder = ['config.js', 'columns.js', 'openings.js', 'calculator.js', 'renderer.js', 'project-io.js', 'dxf-import.js', 'materials.js', 'export.js', 'app.js'];
 let lastIdx = -1;
 let orderCorrect = true;
 scriptOrder.forEach(s => {
