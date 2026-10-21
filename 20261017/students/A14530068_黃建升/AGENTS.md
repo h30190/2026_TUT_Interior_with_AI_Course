@@ -1,0 +1,80 @@
+# AGENTS.md：磁磚放樣施工圖系統（給 AI agent 看的專案說明）
+
+> 這份檔案是給 Antigravity／OpenCode／Gemini 等 AI 看的「固定提示」。每次動手改程式前先讀完。
+> 使用者：黃建升（A14530068），室內設計，程式初學者。請一律用**繁體中文**說明，並用白話解釋你改了什麼。
+
+## 這是什麼
+
+浴室磁磚放樣施工圖＋算料工具：匯入 AutoCAD 施工圖（DXF），自動畫出四面立面＋地坪平面的放樣圖、算每種磚的叫料片數、標出小料、報價、匯出 PDF。
+純網頁：**HTML＋CSS＋原生 JavaScript，不用 npm、不用框架、不用打包**，瀏覽器直接打開 `index.html` 就能用。
+
+## 檔案分工（`index.html` 依這個順序載入，順序不能亂）
+
+| 檔案 | 負責 |
+|---|---|
+| `js/config.js` | 常數、內建案例 `PRESETS`、全域狀態（材料、單價表、設備線稿、地坪外框、圖面資訊） |
+| `js/columns.js` | 結構柱 |
+| `js/openings.js` | 門窗清單與情境 |
+| `js/calculator.js` | **核心計算**：排磚 `layout()`、分區、地坪多邊形裁切、小料判定、尺寸鏈、報價、裁切清單與剩料回收 |
+| `js/renderer.js` | Canvas 畫圖（彩色方案／施工線稿兩種） |
+| `js/project-io.js` | 施工圖資料檔（JSON）匯出、檢查 `validateProject()`、套用 `applyProject()` |
+| `js/dxf-import.js` | DXF 解析與判讀（照下面「畫圖習慣」） |
+| `js/materials.js` | 材料卡片、材質照片、單價 |
+| `js/export.js` | PDF、PNG、整份 DXF 總叫料表 |
+| `js/app.js` | 畫面事件、算料表、報價表、滑鼠拖曳 |
+| `tests/test-runner.js` | 計算邏輯測試（Node 直接跑） |
+| `tests/browser-test.js` | 瀏覽器實測（Playwright，真的按按鈕） |
+| `tests/fixtures/sample-bathroom.dxf` | 測試用 DXF（已去個資） |
+
+新增 JS 檔要同時改：`index.html` 的 `<script>`、`tests/test-runner.js` 的 `requiredFiles`／`jsFiles`／`scriptOrder`。
+
+## 座標與方向（最容易改錯）
+
+- 單位一律 **cm**。DXF 檔頭雖寫 mm，實際圖面 1 單位＝1 cm。
+- **立面**：x 由左往右、y **由地面往上**（`yalign: 'bottom'`）。
+- **地坪**：x 由左往右、y **由上（B 牆）往下**。
+- 立面是「站在房間裡面向那面牆看」：B、C 的左右跟平面一致；**A、D 跟平面左右相反**，換算一律用 `planPos(faceKey, x, w, dims)`，不要自己寫鏡像。
+- 平面方位：B 在上、D 在下、A 在左、C 在右。
+
+## 使用者的畫圖習慣（DXF 判讀規則，改 `dxf-import.js` 前要懂）
+
+- 立面外框＝封閉矩形，正下方有 `A`/`B`/`C`/`D` 索引圖塊（圖塊基準點在遠處，要用圖塊裡圓圈的位置換算）。
+- 地坪＝`ABCD` 視角圖塊所在的平面外框；沒有外框聚合線時，從視角符號往四周找牆線圍成四邊形。
+- 「由此線開始放樣」＝**色號 62** 引線，下端碰到立面頂邊的位置就是起磚線。
+- 紅線＝立面內**色號 1** 垂直線（分界、門框、對縫基準）。
+- 門窗＝立面內**色號 4（青色）**封閉矩形，貼地＝門。
+- 材料＝含「填縫劑」的多行文字：第一行用途（壁／地／主秀壁／其他壁），接著型號、「120*120 名稱」、「填縫劑：」。
+- 主秀壁分區＝紅線切出的區段裡，磚縫間距符合另一種材料尺寸。
+- 設備（馬桶、臉盆、門）與多重引線備註照原座標搬過來畫。
+- 圖上沒有的立面 → 設成「此面不鋪磚」，不要沿用上一張圖。
+
+## 業務規則
+
+- **小料**：只看裁切後**露出部分的最短邊**。< 5 cm 算小料並畫紅圈「避免小料」（兩個門檻 `smallTh`、`avoidTh` 可調）；磁磚本身短邊 ≤ 5 cm（小馬賽克）不算。不看面積。
+- **叫料**＝整磚＋裁切磚（預設裁切磚不回收）；不同尺寸的磚**分開算**，不可相加。
+- **下單**＝叫料 ×（1＋備品%），無條件進位；全案是先加總再乘備品。
+- **單價**以材料**型號**為鍵（`matKey()`），存在資料檔與瀏覽器 localStorage。
+- 換內建情境時，各面設定全部回到預設。
+
+## 改完一定要做
+
+1. 跑測試（Windows PowerShell）：`powershell -File tests\ci.ps1`
+   - 或分開跑：`node tests/test-runner.js`、`node tests/browser-test.js`
+2. 新功能要加測試：計算放 `test-runner.js`（`assert('smoke'|'redteam', '中文說明', 條件)`），畫面放 `browser-test.js`（`check(...)`）。
+3. 修 bug 先寫一個會失敗的測試，修好後讓它通過。
+4. 打開 `index.html` 實際看一次畫面（彩色與線稿都看）。
+
+## 寫程式的規則
+
+- 原生 JS、全域函式（同一個 `window`），不要加 npm 套件或框架。
+- 註解用繁體中文，寫「為什麼」，跟現有檔案風格一致。
+- 不要用 `alert` 以外的新對話框套件；錯誤訊息要白話、告訴使用者下一步。
+- 資料檔格式（`format: 'tile-setting-out', version: 1`）只能**加欄位**，舊檔要能讀；新欄位要在 `validateProject()` 檢查壞值。
+- 中文檔名下載在部分瀏覽器會變成 `download`，下載檔名用英文。
+- Playwright 讀不到含中文的路徑：測試上傳檔案用 buffer（見 `browser-test.js` 的 `asUpload`）。
+
+## 個資與 repo 規則（課程規定）
+
+- **業主 DXF 原檔不要 commit**（有姓名、電話）。`.gitignore` 已擋 `*.dxf`，只放行已去個資的 `tests/fixtures/*.dxf`。
+- 只動 `20261017/students/A14530068_黃建升/` 這個資料夾。
+- commit 訊息格式：`20261017 A14530068 黃建升：做了什麼（白話）`
