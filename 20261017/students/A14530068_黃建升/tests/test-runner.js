@@ -341,6 +341,30 @@ assert('smoke', '報價：地磚沒填單價不算金額，合計只算有單價
 assert('smoke', '報價：剛好整數不多進一片（20 片×0%＝20、20 片×5%＝21）', vmCtx.orderQty(20, 0) === 20 && vmCtx.orderQty(20, 5) === 21);
 vm.runInContext('projectMaterials = [];', vmCtx);
 
+// Test S17: 裁切清單與剩料回收
+const reuse1 = vmCtx.planReuse([{ a: 59, b: 60 }, { a: 59, b: 60 }], 120, 60, 0.3, 5);
+assert('smoke', '剩料：120 的磚切 59，剩 60.7 還能切第二塊 59 → 2 塊只開 1 片新磚', reuse1.newTiles === 1 && reuse1.saved === 1);
+const reuse2 = vmCtx.planReuse([{ a: 70, b: 60 }, { a: 70, b: 60 }], 120, 60, 0.3, 5);
+assert('smoke', '剩料：切 70 剩 49.7 不夠第二塊 70 → 2 塊開 2 片', reuse2.newTiles === 2 && reuse2.saved === 0);
+const reuse3 = vmCtx.planReuse([{ a: 60, b: 117 }], 120, 120, 0.3, 5);
+assert('smoke', '剩料：正方形磚可以轉 90° 放（60×117 放進 120×120）', reuse3.newTiles === 1);
+// 120×60 磚切 65 剩 54.7×60；下一塊要 58×50：轉 90° 才放得下，但長方形磚不准轉（紋路方向）→ 另開新磚
+const reuse4 = vmCtx.planReuse([{ a: 65, b: 60 }, { a: 58, b: 50 }], 120, 60, 0.3, 5);
+assert('smoke', '剩料：長方形磚不轉向（紋路方向），轉了才放得下的不算', reuse4.newTiles === 2 && reuse4.saved === 0);
+const pcDoor = vmCtx.cutPieceSize({ x0: 104, y0: 0, wL: 106, wW: 120, full: false }, [{ x: 104, y: 0, w: 86, h: 239 }]);
+assert('smoke', '裁切清單：門旁那塊實際只要切 20×120（被門遮住的不用切）', Math.abs(pcDoor.w - 20) < 1e-9 && pcDoor.h === 120);
+const pcDoorTop = vmCtx.cutPieceSize({ x0: 104, y0: 120.2, wL: 106, wW: 120, full: false }, [{ x: 104, y: 0, w: 86, h: 239 }]);
+assert('smoke', '裁切清單：門頂上方只露 1.2cm 被門框蓋住，那塊也只要切 20×120', Math.abs(pcDoorTop.w - 20) < 1e-9 && Math.abs(pcDoorTop.h - 120) < 1e-9);
+const pcL = vmCtx.cutPieceSize({ x0: 0, y0: 29, wL: 117, wW: 60, full: false, poly: [[0, 29], [117, 29], [117, 89], [0, 89]] }, []);
+const pcS = vmCtx.cutPieceSize({ x0: 0, y0: 0, wL: 50, wW: 50, full: false, poly: [[0, 0], [50, 0], [45, 50], [0, 50]] }, []);
+assert('smoke', '裁切清單：L 形缺角是直角切不標斜切，斜牆切到才標', !pcL.slanted && pcS.slanted);
+const caseRows = [{ key: 'B', name: 'B立面', cfg: { dir: 'H', skip: false }, ops: [], r: zoneB }];
+const listB = vmCtx.cutListByFace(vmCtx.cutPieces(caseRows));
+assert('smoke', '裁切清單：B 面壁磚 117×120 ×2、117×48.5 ×1；主秀壁頂端 15×4 ×6（取到 0.5cm）',
+  listB.length === 1 && listB[0].items.some(it => it.label === '120×120' && it.w === 117 && it.h === 120 && it.count === 2)
+  && listB[0].items.some(it => it.label === '120×120' && it.w === 117 && it.h === 48.5 && it.count === 1)
+  && listB[0].items.some(it => it.label.includes('主秀壁') && it.w === 15 && it.h === 4 && it.count === 6), JSON.stringify(listB[0] && listB[0].items));
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================

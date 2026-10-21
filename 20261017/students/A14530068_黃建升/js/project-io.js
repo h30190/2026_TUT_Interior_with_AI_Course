@@ -28,7 +28,7 @@ function collectProject() {
     version: PROJECT_VERSION,
     meta: projectMeta,
     materials: projectMaterials,
-    pricing: { spare: p.spare, priceBook },
+    pricing: { spare: p.spare, priceBook, useReuse: !!($('useReuse') && $('useReuse').checked) },
     room: { L: p.L, W: p.W, H: p.H },
     tile: { TL: p.TL, TW: p.TW, jointMM: Math.round(p.joint * 100) / 10, price: p.price, smallTh: p.smallTh, avoidTh: p.avoidTh },
     faces,
@@ -126,6 +126,7 @@ function validateProject(obj) {
   const pr = obj.pricing && typeof obj.pricing === 'object' ? obj.pricing : {};
   out.pricing = { priceBook: {} };
   if (pr.spare !== undefined) out.pricing.spare = nonNeg(pr.spare, 'pricing.spare');
+  if (pr.useReuse !== undefined) out.pricing.useReuse = !!pr.useReuse;
   for (const [k, v] of Object.entries(pr.priceBook && typeof pr.priceBook === 'object' ? pr.priceBook : {})) {
     if (Number.isFinite(v) && v > 0) out.pricing.priceBook[k] = v; else warnings.push(`單價「${k}」不是正數，已略過`);
   }
@@ -160,6 +161,7 @@ function applyProject(pj) {
   // 單價：資料檔裡有的蓋過目前的（DXF 沒有單價，就沿用已填過的）
   if (pj.pricing) {
     setIf('spare', pj.pricing.spare);
+    if (pj.pricing.useReuse !== undefined && $('useReuse')) $('useReuse').checked = pj.pricing.useReuse;
     Object.assign(priceBook, pj.pricing.priceBook || {});
     if (typeof savePriceBook === 'function') savePriceBook();
   }

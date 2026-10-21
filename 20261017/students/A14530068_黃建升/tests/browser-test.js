@@ -102,6 +102,19 @@ function check(name, ok, info) {
   const quoteRow = await page.$$eval('#quote tbody tr', trs => trs.map(tr => tr.textContent.replace(/\s+/g, ' ').trim()));
   const wallRow = quoteRow.find(r => r.startsWith('壁 120×120')) || '';
   check('報價：壁 120×120 叫料 21 → 下單 23 片 × 850 ＝ 19,550', wallRow.includes('23') && wallRow.includes('19,550'), wallRow);
+  // 4a-2. 裁切清單與剩料回收：清單有 D 面門旁 20×120；勾「採用剩料回收」後壁磚下單變少
+  const cut = await page.$eval('#cutlist', el => el.textContent.replace(/\s+/g, ' '));
+  check('裁切清單：D 面門旁那條列成 20×120', /D立面：.*20×120/.test(cut), cut.slice(0, 200));
+  const wallOrder = () => page.$$eval('#quote tbody tr', trs => {
+    const tr = trs.find(t => t.textContent.trim().startsWith('壁 120×120'));
+    return tr ? +tr.children[3].textContent.replace(/,/g, '') : NaN;
+  });
+  const orderBefore = await wallOrder();
+  await page.check('#useReuse');
+  const orderAfter = await wallOrder();
+  check(`剩料回收：勾選後壁磚下單變少（${orderBefore} → ${orderAfter}）`, orderAfter < orderBefore);
+  await page.uncheck('#useReuse');
+
   await page.reload();
   await page.setInputFiles('#dxfFile', asUpload(fixtureFile, 'sample-bathroom.dxf', 'application/dxf'));
   await page.waitForTimeout(500);
@@ -144,7 +157,7 @@ function check(name, ok, info) {
   const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
   await page.emulateMedia({ media: 'screen' });
   const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
-  check(`匯出 PDF：A3 共 2 頁（實際 ${pages} 頁）`, pages === 2 && errors.length === n, errorsSince(n));
+  check(`匯出 PDF：A3，第 1 頁施工圖、後面材料／算料／裁切清單（共 ${pages} 頁）`, pages >= 2 && errors.length === n, errorsSince(n));
   const [png] = await Promise.all([page.waitForEvent('download'), page.click('#btnExportPng')]);
   check('下載圖片：tile-setting-out.png', png.suggestedFilename() === 'tile-setting-out.png');
 

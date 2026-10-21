@@ -243,6 +243,104 @@ function matOf(TL, TW, name) {
   return (name && projectMaterials.find(m => m.role === name && same(m))) || projectMaterials.find(same) || null;
 }
 
+// ── ✂️ 裁切清單與剩料回收 ──
+
+// 這塊裁切磚實際要切出多大（立面寬×高）：被門窗遮住的部分扣掉；地坪外框切到的取外接框
+// trim：門窗旁剩不到這麼寬（預設 5cm）的一條會被門框／窗框收邊蓋住，不用切出來
+function cutPieceSize(t, ops, trim) {
+  trim = trim === undefined ? 5 : trim;
+  let x0 = Math.max(t.x0, 0), x1 = x0 + t.wL, y0 = Math.max(t.y0, 0), y1 = y0 + t.wW;
+  if (!t.poly) {
+    for (const o of ops) {
+      const ox1 = o.x + o.w, oy1 = o.y + o.h;
+      if (ox1 <= x0 || o.x >= x1 || oy1 <= y0 || o.y >= y1) continue;
+      if (o.y <= y0 + trim && oy1 >= y1 - trim) {        // 開口（幾乎）蓋住整個高度：左右擇一留下
+        if (o.x <= x0 + trim) x0 = Math.min(x1, ox1); else if (ox1 >= x1 - trim) x1 = Math.max(x0, o.x);
+      } else if (o.x <= x0 + trim && ox1 >= x1 - trim) { // 蓋住整個寬度：上下擇一留下
+        if (o.y <= y0 + trim) y0 = Math.min(y1, oy1); else if (oy1 >= y1 - trim) y1 = Math.max(y0, o.y);
+      }
+    }
+  }
+  // 真的切到斜邊才算斜切（L 形缺角是直角切）
+  const slanted = !!t.poly && t.poly.some((q, i) => {
+    const r = t.poly[(i + 1) % t.poly.length];
+    return Math.abs(q[0] - r[0]) > 0.05 && Math.abs(q[1] - r[1]) > 0.05;
+  });
+  return { w: x1 - x0, h: y1 - y0, slanted };
+}
+
+// 全室每塊裁切磚：面別、材料、要切的大小（不鋪磚的面不列）
+function cutPieces(rows, trim) {
+  const out = [];
+  for (const s of rows) {
+    if (s.cfg.skip) continue;
+    const groups = {};
+    s.r.groups.forEach(g => { groups[g.key] = g; });
+    for (const t of s.r.tiles) {
+      if (t.full) continue;
+      const g = groups[t.gkey] || s.r.groups[0];
+      const sz = cutPieceSize(t, s.ops, trim);
+      if (sz.w <= EPS || sz.h <= EPS) continue;
+      out.push({ face: s.key, faceName: s.name, label: g.label, TL: g.TL, TW: g.TW, dir: s.cfg.dir, w: sz.w, h: sz.h, slanted: sz.slanted });
+    }
+  }
+  return out;
+}
+
+// 裁切清單：每面相同尺寸（取到 0.5cm）合併計數
+function cutListByFace(pieces) {
+  const r05 = v => Math.round(v * 2) / 2;
+  const faces = {};
+  for (const pc of pieces) {
+    const f = faces[pc.face] || (faces[pc.face] = { face: pc.face, faceName: pc.faceName, items: {} });
+    const key = `${pc.label}|${r05(pc.w)}|${r05(pc.h)}|${pc.slanted}`;
+    const it = f.items[key] || (f.items[key] = { label: pc.label, w: r05(pc.w), h: r05(pc.h), slanted: pc.slanted, count: 0 });
+    it.count++;
+  }
+  return Object.values(faces).map(f => Object.assign(f, {
+    items: Object.values(f.items).sort((a, b) => a.label.localeCompare(b.label) || b.w * b.h - a.w * a.h)
+  }));
+}
+
+// 剩料回收（貪婪法）：大塊先切；能從之前的剩料切出來就不開新磚。
+// 尺寸換成磚本身的方向（a 沿磚長 TL、b 沿磚寬 TW）；長方形磚不旋轉（紋路方向），正方形可轉。
+// 每刀扣鋸路，剩料只留比較大的那塊，最短邊 < minKeep 的剩料丟掉。
+function planReuse(pieces, TL, TW, kerf, minKeep) {
+  const square = Math.abs(TL - TW) < EPS;
+  const need = pieces.map(p => ({ a: Math.min(p.a, TL), b: Math.min(p.b, TW) })).sort((p, q) => q.a * q.b - p.a * p.b);
+  const fits = (l, p) => (l.a >= p.a - EPS && l.b >= p.b - EPS) || (square && l.a >= p.b - EPS && l.b >= p.a - EPS);
+  const leftovers = [];
+  let newTiles = 0;
+  for (const p of need) {
+    let best = -1;
+    leftovers.forEach((l, i) => { if (fits(l, p) && (best < 0 || l.a * l.b < leftovers[best].a * leftovers[best].b)) best = i; });
+    let src;
+    if (best >= 0) src = leftovers.splice(best, 1)[0];
+    else { newTiles++; src = { a: TL, b: TW }; }
+    const rot = !(src.a >= p.a - EPS && src.b >= p.b - EPS); // 正方形磚轉 90° 才放得下
+    const pa = rot ? p.b : p.a, pb = rot ? p.a : p.b;
+    const rest = [{ a: src.a - pa - kerf, b: src.b }, { a: src.a, b: src.b - pb - kerf }]
+      .filter(r => Math.min(r.a, r.b) >= minKeep).sort((x, y) => y.a * y.b - x.a * x.b)[0];
+    if (rest) leftovers.push(rest);
+  }
+  return { cut: need.length, newTiles, saved: need.length - newTiles };
+}
+
+// 依材料算剩料回收能省幾片
+function reuseByMaterial(rows, p) {
+  const byMat = {};
+  for (const pc of cutPieces(rows, p.smallTh || 5)) {
+    const m = byMat[pc.label] || (byMat[pc.label] = { label: pc.label, TL: pc.TL, TW: pc.TW, pieces: [] });
+    const along = pc.dir === 'H'; // 橫貼：立面寬沿磚長
+    m.pieces.push({ a: along ? pc.w : pc.h, b: along ? pc.h : pc.w });
+  }
+  const out = {};
+  for (const m of Object.values(byMat)) {
+    out[m.label] = Object.assign({ label: m.label }, planReuse(m.pieces, m.TL, m.TW, SAW_KERF, p.smallTh || 5));
+  }
+  return out;
+}
+
 // ── 報價 ──
 // 價格表用型號當鍵（沒有型號用「用途 尺寸名稱」）
 function matKey(m) {
@@ -316,8 +414,9 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
       } else {
         segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
       }
-      tiles = tiles.concat(segTiles);
       const key = seg.zone ? `z${TL}x${TW}${seg.zone.name}` : 'main';
+      segTiles.forEach(t => { t.gkey = key; });
+      tiles = tiles.concat(segTiles);
       addGroup(key, matLabel(TL, TW, seg.zone ? seg.zone.name : ''), TL, TW, segTiles, areaIn(seg.x0, seg.x1), opsAreaIn(seg.x0, seg.x1), seg.zone ? seg.zone.name : '');
     }
   } else if (col && col.on && col.mode === 'independent' && col.x > 5 && col.x < fw - 5) {
@@ -331,6 +430,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     // 全牆連續鋪貼（若有柱線則為連動模式）
     tiles = generateZoneTiles(fw, fh, 0, fw, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
   }
+  if (!zones.length) tiles.forEach(t => { t.gkey = 'main'; });
   if (!zones.length) addGroup('main', matLabel(p.TL, p.TW), p.TL, p.TW, tiles, areaIn(0, fw), ops.reduce((a, o) => a + o.area, 0));
 
   // 每種材料各自算理論片數與損耗（不同尺寸的磚不能混在一起加）

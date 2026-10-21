@@ -1,6 +1,8 @@
 // 專案配置、常數與全域工具函式
 const $ = id => (typeof document !== 'undefined' ? document.getElementById(id) : null);
 const EPS = 1e-6;
+// 切磚機鋸路寬（cm）：剩料回收時每切一刀要扣掉
+const SAW_KERF = 0.3;
 // 畫布邏輯尺寸（繪圖與滑鼠座標換算共用）
 const CANVAS_W = 1240, CANVAS_H = 820;
 

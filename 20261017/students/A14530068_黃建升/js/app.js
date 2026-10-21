@@ -84,11 +84,30 @@ function renderConcl(p, tot) {
 }
 
 // 報價表：叫料 →（備品）下單片數 × 單價＝金額
-function renderQuote(p, tot) {
+// 勾了「採用剩料回收」：各材料叫料扣掉回收省下的片數
+function matsAfterReuse(mats, reuse) {
+  if (!$('useReuse') || !$('useReuse').checked) return mats;
+  return mats.map(m => Object.assign({}, m, { total: m.total - ((reuse[m.label] && reuse[m.label].saved) || 0) }));
+}
+
+function renderCutList(rows, reuse) {
+  const host = $('cutlist');
+  if (!host) return;
+  const faces = cutListByFace(cutPieces(rows, params().smallTh));
+  const mats = Object.values(reuse);
+  host.innerHTML = `<table><thead><tr><th>材料</th><th>裁切塊數</th><th>不回收要開</th><th>回收後要開</th><th>省下</th></tr></thead><tbody>
+    ${mats.map(m => `<tr><td>${m.label}</td><td>${m.cut}</td><td>${m.cut} 片</td><td>${m.newTiles} 片</td><td>${m.saved ? `<b>${m.saved} 片</b>` : '—'}</td></tr>`).join('') || '<tr><td colspan="5">沒有裁切磚</td></tr>'}
+    </tbody></table>
+    <div class="cut-faces">${faces.map(f => `<div><b>${f.faceName}</b>：${f.items.map(it =>
+      `${it.label.replace(/\s*[\d.]+×[\d.]+$/, '') || it.label} <span class="cut-size">${it.w}×${it.h}</span>${it.slanted ? '（斜切）' : ''} ×${it.count}`).join('、')}</div>`).join('')}</div>`;
+}
+
+function renderQuote(p, tot, reuse) {
   const host = $('quote');
   if (!host) return;
-  const q = quoteLines(tot.mats, priceBook, p.spare, p.price);
-  host.innerHTML = `<h3>報價</h3>
+  const useR = $('useReuse') && $('useReuse').checked;
+  const q = quoteLines(matsAfterReuse(tot.mats, reuse || {}), priceBook, p.spare, p.price);
+  host.innerHTML = `<h3>報價${useR ? '（已採用剩料回收）' : ''}</h3>
     <table><thead><tr><th>材料</th><th>叫料（片）</th><th>備品</th><th>下單（片）</th><th>單價（元/片）</th><th>金額（元）</th></tr></thead><tbody>
     ${q.lines.map(l => `<tr><td>${l.label}${l.mat && l.mat.code ? `<br><small>${l.mat.code}</small>` : ''}</td><td>${fmt(l.total)}</td><td>${p.spare}%</td>
       <td>${fmt(l.order)}</td><td>${l.price > 0 ? fmt(l.price) : '<span class="muted">未填</span>'}</td><td>${l.amount !== null ? fmt(l.amount) : '—'}</td></tr>`).join('')}
@@ -152,8 +171,10 @@ function refresh() {
   const p = params();
   const rows = computeAll(p);
   const tot = renderTable(rows, p);
+  const reuse = reuseByMaterial(rows, p);
+  renderCutList(rows, reuse);
   renderConcl(p, tot);
-  renderQuote(p, tot);
+  renderQuote(p, tot, reuse);
 
   // 碎磚警示條與智慧消滅小料按鈕聯動
   const anyDanger = tot.danger > 0;
@@ -700,6 +721,7 @@ function initApp() {
     refresh();
   }));
 
+  $('useReuse').addEventListener('change', refresh);
   ['TL', 'TW', 'joint', 'price', 'spare', 'smallTh', 'avoidTh'].forEach(id => $(id).addEventListener('input', refresh));
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign', '_skip'].forEach(s => $(k + s).addEventListener('change', refresh)));

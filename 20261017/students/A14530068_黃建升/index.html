@@ -224,6 +224,15 @@
       <div id="quote" class="quote"></div>
       <div class="note">總叫料＝整磚＋裁切消耗（裁切磚不可回填復用）；損耗率＝(總叫料−理論片數)÷理論片數；理論片數＝淨面積（已扣門窗）÷單磚面積（向上取整），不同尺寸的磚分開計算。小料＝裁切後露出部分的最短邊 &lt; 小料門檻（預設 5cm）；再小於「避免小料」門檻（預設 5cm，可調小只圈更窄的）者在圖上紅圈標示；磁磚本身短邊 ≤ 小料門檻（例如小馬賽克）不列入。開口完全覆蓋之磚不計料。</div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <h2 style="margin:0">✂️ 裁切清單與剩料回收</h2>
+        <label class="openable"><input type="checkbox" id="useReuse"> 報價／下單採用剩料回收</label>
+      </div>
+      <div id="cutlist"></div>
+      <div class="note">裁切清單：每面要切的磚，寬×高（cm，取到 0.5）；被門窗遮住的部分不用切。剩料回收：同一種磚大塊先切，切剩的料夠大就拿去切下一塊（每刀扣鋸路 0.3cm，剩料最短邊 &lt; 小料門檻就丟；長方形磚不轉向，避免紋路方向不對）。實際能不能用還要看切邊會不會露出來，所以預設不採用，勾選後報價與總叫料表才改用回收後片數。</div>
+    </div>
   </div>
 </div>
 

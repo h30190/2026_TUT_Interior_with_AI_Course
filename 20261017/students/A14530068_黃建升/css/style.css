@@ -143,3 +143,7 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
 .quote{margin-top:14px}
 .quote h3{font-size:13px;color:var(--accent);margin-bottom:4px}
 .quote .muted{color:var(--muted)}
+
+/* ✂️ 裁切清單 */
+.cut-faces{margin-top:10px;font-size:12.5px;line-height:1.9}
+.cut-size{display:inline-block;padding:0 5px;border-radius:4px;background:#f1ede5;font-variant-numeric:tabular-nums}

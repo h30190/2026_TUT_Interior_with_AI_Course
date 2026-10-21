@@ -51,6 +51,7 @@ function preparePrintSheet() {
       ${$('tbl').outerHTML.replace('id="tbl"', '')}
       <p class="ps-concl">${escapeHtml($('concl').textContent)}</p>
       <div class="ps-quote">${$('quote') ? $('quote').innerHTML : ''}</div>
+      <div class="ps-quote"><h3>裁切清單與剩料回收</h3>${$('cutlist') ? $('cutlist').innerHTML : ''}</div>
       <p class="ps-note">${escapeHtml(document.querySelector('#tbl ~ .note') ? document.querySelector('#tbl ~ .note').textContent : '')}</p>
     </section>`;
 }
@@ -83,7 +84,8 @@ function initExport() {
 // 目前畫面這張圖：依材料合計（不同尺寸分開），附上對應的材料型號
 function sheetMaterialTotals() {
   const byLabel = {};
-  for (const s of computeAll(params())) {
+  const rows = computeAll(params());
+  for (const s of rows) {
     for (const g of s.r.groups) {
       const t = byLabel[g.label] || (byLabel[g.label] = { label: g.label, TL: g.TL, TW: g.TW, total: 0, full: 0, cut: 0, net: 0, danger: 0, faces: [] });
       ['total', 'full', 'cut', 'net', 'danger'].forEach(k => { t[k] += g[k]; });
@@ -91,6 +93,11 @@ function sheetMaterialTotals() {
       const zoneName = g.key !== 'main' ? g.label.replace(/\s[\d.]+×[\d.]+$/, '') : '';
       t.mat = t.mat || matOf(g.TL, g.TW, zoneName);
     }
+  }
+  // 勾了「採用剩料回收」：扣掉回收省下的片數
+  if ($('useReuse') && $('useReuse').checked) {
+    const reuse = reuseByMaterial(rows, params());
+    Object.values(byLabel).forEach(t => { t.total -= (reuse[t.label] && reuse[t.label].saved) || 0; });
   }
   return Object.values(byLabel);
 }
@@ -154,7 +161,7 @@ function batchExportPdf(sheets) {
   const cover = `
     <section class="ps-page">
       <h1 class="ps-h1">全案總叫料表</h1>
-      <p class="ps-sub">工程名稱：${escapeHtml(proj)}　｜　共 ${results.length} 張施工圖　｜　${todayText()}</p>
+      <p class="ps-sub">工程名稱：${escapeHtml(proj)}　｜　共 ${results.length} 張施工圖　｜　${todayText()}${$('useReuse') && $('useReuse').checked ? '　｜　已採用剩料回收' : ''}</p>
       <h2>材料總計</h2>
       <table class="ps-mats"><thead><tr><th>用途</th><th>型號</th><th>尺寸與名稱</th><th>填縫劑</th><th>總叫料（片）</th><th>理論片數</th><th>損耗率%</th><th>小料</th><th>用到的圖</th><th>下單（備品 ${params().spare}%）</th><th>單價</th><th>金額</th></tr></thead>
         <tbody>${totals.map(a => `<tr><td><b>${escapeHtml(a.role)}</b></td><td>${escapeHtml(a.code)}</td><td>${escapeHtml(a.spec)}</td><td>${escapeHtml(a.grout)}</td>
