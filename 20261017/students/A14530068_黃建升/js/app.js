@@ -28,7 +28,7 @@ function renderTable(rows, p) {
     }
     // 有分區的面：每種磚各一行（不同尺寸的片數不能相加）
     s.r.groups.forEach((g, gi) => {
-      const m = byMat[g.label] || (byMat[g.label] = { net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0 });
+      const m = byMat[g.label] || (byMat[g.label] = { net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0, TL: g.TL, TW: g.TW, name: g.name });
       ['net', 'full', 'cut', 'total', 'danger', 'avoid'].forEach(k => { m[k] += g[k]; });
       const tr = document.createElement('tr');
       const multi = s.r.groups.length > 1;
@@ -56,10 +56,7 @@ function renderTable(rows, p) {
       <td class="${m.danger > 0 ? 'danger' : ''}">${sliverTxt(m)}</td>`;
     tb.appendChild(tr);
   });
-  // 單價只有一種材料時才有意義
-  const one = mats.length === 1 ? mats[0] : null;
-  const amt = one && p.price > 0 ? one.total * p.price : null;
-  return { mats, danger, opArea, amt, total: one ? one.total : null, loss: one ? lossOf(one) : null };
+  return { mats, danger, opArea };
 }
 
 function renderConcl(p, tot) {
@@ -70,9 +67,7 @@ function renderConcl(p, tot) {
   let txt = '【全室五面】' + tot.mats.map(m => {
     const loss = m.net > 0 ? ((m.total - m.net) / m.net * 100) : 0;
     return `${m.label} 叫料 ${fmt(m.total)} 片（整磚 ${fmt(m.full)}＋裁切 ${fmt(m.cut)}，損耗 ${loss.toFixed(1)}%）`;
-  }).join('；') + '。'
-    + (tot.amt !== null ? ` 總工程金額 ${fmt(tot.amt)} 元（單價 ${fmt(p.price)} 元/片）。` : '')
-    + (p.price > 0 && tot.mats.length > 1 ? ' （有多種材料，單價請依材料分別計算）' : '');
+  }).join('；') + '。';
   if (tot.opArea > 0) {
     txt += ` 已扣除門窗開口 ${opNames.join('、')}（共 ${(tot.opArea / 10000).toFixed(2)} m²，不鋪磚）。`;
   }
@@ -86,6 +81,19 @@ function renderConcl(p, tot) {
     txt += '  未出現危險碎磚，排磚配置安全。';
   }
   document.getElementById('concl').textContent = txt;
+}
+
+// 報價表：叫料 →（備品）下單片數 × 單價＝金額
+function renderQuote(p, tot) {
+  const host = $('quote');
+  if (!host) return;
+  const q = quoteLines(tot.mats, priceBook, p.spare, p.price);
+  host.innerHTML = `<h3>報價</h3>
+    <table><thead><tr><th>材料</th><th>叫料（片）</th><th>備品</th><th>下單（片）</th><th>單價（元/片）</th><th>金額（元）</th></tr></thead><tbody>
+    ${q.lines.map(l => `<tr><td>${l.label}${l.mat && l.mat.code ? `<br><small>${l.mat.code}</small>` : ''}</td><td>${fmt(l.total)}</td><td>${p.spare}%</td>
+      <td>${fmt(l.order)}</td><td>${l.price > 0 ? fmt(l.price) : '<span class="muted">未填</span>'}</td><td>${l.amount !== null ? fmt(l.amount) : '—'}</td></tr>`).join('')}
+    <tr class="total"><td>合計</td><td colspan="4">${q.missing ? `還有 ${q.missing} 種材料沒填單價（左側「材料」卡片填寫）` : ''}</td><td>${fmt(q.sum)}</td></tr>
+    </tbody></table>`;
 }
 
 // 同步更新 CAD 工具列的數值
@@ -145,6 +153,7 @@ function refresh() {
   const rows = computeAll(p);
   const tot = renderTable(rows, p);
   renderConcl(p, tot);
+  renderQuote(p, tot);
 
   // 碎磚警示條與智慧消滅小料按鈕聯動
   const anyDanger = tot.danger > 0;
@@ -691,7 +700,7 @@ function initApp() {
     refresh();
   }));
 
-  ['TL', 'TW', 'joint', 'price', 'smallTh', 'avoidTh'].forEach(id => $(id).addEventListener('input', refresh));
+  ['TL', 'TW', 'joint', 'price', 'spare', 'smallTh', 'avoidTh'].forEach(id => $(id).addEventListener('input', refresh));
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign', '_skip'].forEach(s => $(k + s).addEventListener('change', refresh)));
   FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones'].forEach(s => $(k + s).addEventListener('input', refresh)));

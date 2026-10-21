@@ -61,6 +61,8 @@ let drawStyle = 'color';
 let face = 'floor';
 // 匯入施工圖帶進來的材料（壁／地／主秀壁…）與圖面資訊（工程名稱、圖名）
 let projectMaterials = [];
+// 單價表：材料型號 → 元/片（換圖、整份匯出都沿用；瀏覽器也會記住）
+let priceBook = {};
 // 匯入施工圖帶進來的設備線稿與備註（各面座標：立面由左下量、地坪由左上量）
 let faceOverlays = {};
 // 地坪實際外框（L 形等；座標由左上量，null＝整個矩形都鋪）

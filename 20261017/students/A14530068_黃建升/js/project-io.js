@@ -28,6 +28,7 @@ function collectProject() {
     version: PROJECT_VERSION,
     meta: projectMeta,
     materials: projectMaterials,
+    pricing: { spare: p.spare, priceBook },
     room: { L: p.L, W: p.W, H: p.H },
     tile: { TL: p.TL, TW: p.TW, jointMM: Math.round(p.joint * 100) / 10, price: p.price, smallTh: p.smallTh, avoidTh: p.avoidTh },
     faces,
@@ -122,6 +123,12 @@ function validateProject(obj) {
       // 材質照片只收圖片 data URL（上傳時已縮成 200px，太大的多半不是本程式存的）
       photo: typeof m.photo === 'string' && /^data:image\/(png|jpeg|webp|gif);base64,/.test(m.photo) && m.photo.length < 1500000 ? m.photo : undefined
     }));
+  const pr = obj.pricing && typeof obj.pricing === 'object' ? obj.pricing : {};
+  out.pricing = { priceBook: {} };
+  if (pr.spare !== undefined) out.pricing.spare = nonNeg(pr.spare, 'pricing.spare');
+  for (const [k, v] of Object.entries(pr.priceBook && typeof pr.priceBook === 'object' ? pr.priceBook : {})) {
+    if (Number.isFinite(v) && v > 0) out.pricing.priceBook[k] = v; else warnings.push(`單價「${k}」不是正數，已略過`);
+  }
   const meta = obj.meta && typeof obj.meta === 'object' ? obj.meta : {};
   out.meta = { project: String(meta.project || ''), drawingName: String(meta.drawingName || ''), number: String(meta.number || '') };
   return { errors, warnings, project: out };
@@ -150,6 +157,12 @@ function applyProject(pj) {
   setIf('L', pj.room.L); setIf('W', pj.room.W); setIf('H', pj.room.H);
   setIf('TL', pj.tile.TL); setIf('TW', pj.tile.TW); setIf('joint', pj.tile.jointMM); setIf('price', pj.tile.price);
   setIf('smallTh', pj.tile.smallTh); setIf('avoidTh', pj.tile.avoidTh);
+  // 單價：資料檔裡有的蓋過目前的（DXF 沒有單價，就沿用已填過的）
+  if (pj.pricing) {
+    setIf('spare', pj.pricing.spare);
+    Object.assign(priceBook, pj.pricing.priceBook || {});
+    if (typeof savePriceBook === 'function') savePriceBook();
+  }
   faceOverlays = {};
   floorOutline = (pj.faces.floor && pj.faces.floor.outline) || null;
   for (const k in pj.faces) {

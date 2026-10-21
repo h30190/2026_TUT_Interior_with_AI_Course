@@ -55,6 +55,9 @@ function renderMaterialsUI() {
           <div><label>型號</label><input data-i="${i}" data-f="code" value="${escapeAttr(m.code)}"></div>
           <div><label>填縫劑</label><input data-i="${i}" data-f="grout" value="${escapeAttr(m.grout)}"></div>
         </div>
+        <div class="row2">
+          <div><label>單價（元/片）</label><input data-i="${i}" data-price="1" type="number" min="0" value="${priceBook[matKey(m)] || ''}" placeholder="同型號共用"></div>
+        </div>
         <button type="button" class="btn-del-op" data-del="${i}">🗑️ 刪除</button>
       </div>`;
     host.appendChild(card);
@@ -68,6 +71,13 @@ function renderMaterialsUI() {
     }
     refresh();
   }));
+  host.querySelectorAll('input[data-price]').forEach(el => el.addEventListener('input', e => {
+    const key = matKey(projectMaterials[+e.target.dataset.i]);
+    const v = parseFloat(e.target.value);
+    if (Number.isFinite(v) && v > 0) priceBook[key] = v; else delete priceBook[key];
+    savePriceBook();
+    refresh();
+  }));
   host.querySelectorAll('.mat-photo').forEach(el => el.addEventListener('click', () => {
     const inp = $('materialPhotoFile');
     inp.dataset.i = el.dataset.i;
@@ -79,11 +89,21 @@ function renderMaterialsUI() {
   }));
 }
 
+// 單價表存在這台電腦的瀏覽器（下次匯入新的 DXF 不用重填）；存不了就算了，資料檔裡也有
+function loadPriceBook() {
+  try { Object.assign(priceBook, JSON.parse(localStorage.getItem('tile-price-book') || '{}')); } catch (e) { /* 無痕模式等 */ }
+}
+
+function savePriceBook() {
+  try { localStorage.setItem('tile-price-book', JSON.stringify(priceBook)); } catch (e) { /* 無痕模式等 */ }
+}
+
 function escapeAttr(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
 function initMaterials() {
+  loadPriceBook();
   if ($('btnAddMaterial')) $('btnAddMaterial').addEventListener('click', () => {
     projectMaterials.push({ role: '壁', code: '', spec: '', grout: '', size: null });
     renderMaterialsUI(); refresh();

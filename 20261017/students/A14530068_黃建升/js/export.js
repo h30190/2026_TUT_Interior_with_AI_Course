@@ -50,6 +50,7 @@ function preparePrintSheet() {
       <h2>五面明細與算料</h2>
       ${$('tbl').outerHTML.replace('id="tbl"', '')}
       <p class="ps-concl">${escapeHtml($('concl').textContent)}</p>
+      <div class="ps-quote">${$('quote') ? $('quote').innerHTML : ''}</div>
       <p class="ps-note">${escapeHtml(document.querySelector('#tbl ~ .note') ? document.querySelector('#tbl ~ .note').textContent : '')}</p>
     </section>`;
 }
@@ -123,9 +124,16 @@ function projectTotals(results) {
       const key = [m.role || t.label, m.code || '', Math.min(t.TL, t.TW), Math.max(t.TL, t.TW)].join('|');
       const a = all[key] || (all[key] = { role: m.role || t.label, code: m.code || '', spec: m.spec || t.label, grout: m.grout || '', total: 0, net: 0, danger: 0, sheets: 0 });
       a.total += t.total; a.net += t.net; a.danger += t.danger; a.sheets++;
+      a.key = a.key || matKey(t.mat);
     }
   }
-  return Object.values(all).sort((a, b) => a.role.localeCompare(b.role, 'zh-Hant') || a.code.localeCompare(b.code));
+  // 全案一起下單：合計後再乘備品（不是每張圖各自進位）；單價查價格表，沒有型號用共用單價
+  const spare = params().spare, fallback = params().price;
+  return Object.values(all).map(a => {
+    const order = orderQty(a.total, spare);
+    const price = a.key ? (priceBook[a.key] || 0) : fallback;
+    return Object.assign(a, { order, price, amount: price > 0 ? order * price : null });
+  }).sort((a, b) => a.role.localeCompare(b.role, 'zh-Hant') || a.code.localeCompare(b.code));
 }
 
 // 工程名稱取各張圖最常出現的那個（範本圖的標題欄常是空白或「圖名」）
@@ -148,9 +156,11 @@ function batchExportPdf(sheets) {
       <h1 class="ps-h1">全案總叫料表</h1>
       <p class="ps-sub">工程名稱：${escapeHtml(proj)}　｜　共 ${results.length} 張施工圖　｜　${todayText()}</p>
       <h2>材料總計</h2>
-      <table class="ps-mats"><thead><tr><th>用途</th><th>型號</th><th>尺寸與名稱</th><th>填縫劑</th><th>總叫料（片）</th><th>理論片數</th><th>損耗率%</th><th>小料</th><th>用到的圖</th></tr></thead>
+      <table class="ps-mats"><thead><tr><th>用途</th><th>型號</th><th>尺寸與名稱</th><th>填縫劑</th><th>總叫料（片）</th><th>理論片數</th><th>損耗率%</th><th>小料</th><th>用到的圖</th><th>下單（備品 ${params().spare}%）</th><th>單價</th><th>金額</th></tr></thead>
         <tbody>${totals.map(a => `<tr><td><b>${escapeHtml(a.role)}</b></td><td>${escapeHtml(a.code)}</td><td>${escapeHtml(a.spec)}</td><td>${escapeHtml(a.grout)}</td>
-          <td><b>${a.total}</b></td><td>${a.net}</td><td>${lossOf(a)}</td><td>${a.danger || '—'}</td><td>${a.sheets} 張</td></tr>`).join('')}</tbody></table>
+          <td><b>${a.total}</b></td><td>${a.net}</td><td>${lossOf(a)}</td><td>${a.danger || '—'}</td><td>${a.sheets} 張</td>
+          <td><b>${a.order}</b></td><td>${a.price > 0 ? fmt(a.price) : '未填'}</td><td>${a.amount !== null ? fmt(a.amount) : '—'}</td></tr>`).join('')}
+          <tr class="total"><td colspan="11">全案合計${totals.some(a => a.amount === null) ? `（${totals.filter(a => a.amount === null).length} 種材料未填單價）` : ''}</td><td><b>${fmt(totals.reduce((s, a) => s + (a.amount || 0), 0))}</b></td></tr></tbody></table>
       <h2>各圖明細</h2>
       <table class="ps-mats"><thead><tr><th>#</th><th>圖名</th><th>叫料</th><th>小料</th><th>需要確認</th></tr></thead>
         <tbody>${results.map(r => `<tr><td>${r.i + 1}</td><td>${escapeHtml(sheetName(r))}</td><td>${escapeHtml(totalsText(r))}</td>
@@ -184,8 +194,9 @@ function batchCsvText(sheets) {
   const results = collectAllSheets(sheets, false);
   const totals = projectTotals(results);
   const rows = [['全案總叫料表', todayText()], [],
-    ['用途', '型號', '尺寸與名稱', '填縫劑', '總叫料（片）', '理論片數', '小料', '用到幾張圖']];
-  totals.forEach(a => rows.push([a.role, a.code, a.spec, a.grout, a.total, a.net, a.danger, a.sheets]));
+    ['用途', '型號', '尺寸與名稱', '填縫劑', '總叫料（片）', '理論片數', '小料', '用到幾張圖', `下單（備品 ${params().spare}%）`, '單價（元/片）', '金額（元）']];
+  totals.forEach(a => rows.push([a.role, a.code, a.spec, a.grout, a.total, a.net, a.danger, a.sheets, a.order, a.price || '', a.amount === null ? '' : a.amount]));
+  rows.push(['全案合計', '', '', '', '', '', '', '', '', '', totals.reduce((s, a) => s + (a.amount || 0), 0)]);
   rows.push([], ['#', '圖名', '材料', '叫料（片）', '理論片數', '小料', '需要確認']);
   results.forEach(r => {
     if (r.error) { rows.push([r.i + 1, sheetName(r), '無法匯入', '', '', '', r.error]); return; }

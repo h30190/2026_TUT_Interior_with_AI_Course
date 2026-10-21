@@ -55,6 +55,7 @@ function params() {
     TW: num('TW', 60),
     joint: num('joint', 2) / 10,
     price: num('price', 0),
+    spare: num0('spare', 0),
     smallTh: num('smallTh', 5),
     avoidTh: num('avoidTh', 5)
   };
@@ -242,6 +243,29 @@ function matOf(TL, TW, name) {
   return (name && projectMaterials.find(m => m.role === name && same(m))) || projectMaterials.find(same) || null;
 }
 
+// ── 報價 ──
+// 價格表用型號當鍵（沒有型號用「用途 尺寸名稱」）
+function matKey(m) {
+  return m ? String(m.code || `${m.role} ${m.spec}`).trim() : '';
+}
+
+// 下單片數＝叫料 ×（1＋備品%），無條件進位
+function orderQty(total, sparePct) {
+  return Math.ceil(total * (1 + (sparePct || 0) / 100) - 1e-9);
+}
+
+// 每種材料一行：叫料、下單、單價、金額；沒有材料資料（例如內建案例）時用共用單價
+function quoteLines(mats, book, sparePct, fallbackPrice) {
+  const lines = mats.map(t => {
+    const mat = matOf(t.TL, t.TW, t.name);
+    const price = mat ? (book[matKey(mat)] || 0) : (fallbackPrice || 0);
+    const order = orderQty(t.total, sparePct);
+    return { label: t.label, mat, total: t.total, order, price, amount: price > 0 ? order * price : null };
+  });
+  const priced = lines.filter(l => l.amount !== null);
+  return { lines, sum: priced.reduce((a, l) => a + l.amount, 0), missing: lines.length - priced.length };
+}
+
 function matLabel(TL, TW, name) {
   const fmt = v => String(Math.round(v * 10) / 10);
   const m = matOf(TL, TW, name);
@@ -267,8 +291,8 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   let xBase2 = 0;
   const zones = cfg.zones || [];
   const groupMap = {};
-  const addGroup = (key, label, TL, TW, segTiles, segArea, segOps) => {
-    const g = groupMap[key] || (groupMap[key] = { key, label, TL, TW, full: 0, cut: 0, danger: 0, avoid: 0, area: 0, opArea: 0 });
+  const addGroup = (key, label, TL, TW, segTiles, segArea, segOps, name) => {
+    const g = groupMap[key] || (groupMap[key] = { key, label, name: name || '', TL, TW, full: 0, cut: 0, danger: 0, avoid: 0, area: 0, opArea: 0 });
     g.full += segTiles.filter(t => t.full).length;
     g.cut += segTiles.filter(t => !t.full).length;
     g.danger += segTiles.filter(t => t.danger).length;
@@ -294,7 +318,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
       }
       tiles = tiles.concat(segTiles);
       const key = seg.zone ? `z${TL}x${TW}${seg.zone.name}` : 'main';
-      addGroup(key, matLabel(TL, TW, seg.zone ? seg.zone.name : ''), TL, TW, segTiles, areaIn(seg.x0, seg.x1), opsAreaIn(seg.x0, seg.x1));
+      addGroup(key, matLabel(TL, TW, seg.zone ? seg.zone.name : ''), TL, TW, segTiles, areaIn(seg.x0, seg.x1), opsAreaIn(seg.x0, seg.x1), seg.zone ? seg.zone.name : '');
     }
   } else if (col && col.on && col.mode === 'independent' && col.x > 5 && col.x < fw - 5) {
     // 判斷是否啟用柱子獨立起磚模式：柱左側區間 [0, col.x]

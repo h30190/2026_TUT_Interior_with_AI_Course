@@ -96,6 +96,19 @@ function check(name, ok, info) {
   check('DXF：B 面主秀壁分區、地坪 L 形外框、備註、3 種材料', dxf.zones.includes('主秀壁') && dxf.outline.split(' ').length >= 8 && dxf.notes === 1 && dxf.mats === 3, JSON.stringify(dxf));
   check('DXF 匯入過程沒有錯誤', errors.length === n, errorsSince(n));
 
+  // 4a. 報價：壁磚填單價、備品 5% → 報價表；重新整理後單價還記得
+  await page.fill('#spare', '5');
+  await page.fill('.mat-card input[data-price]', '850');
+  const quoteRow = await page.$$eval('#quote tbody tr', trs => trs.map(tr => tr.textContent.replace(/\s+/g, ' ').trim()));
+  const wallRow = quoteRow.find(r => r.startsWith('壁 120×120')) || '';
+  check('報價：壁 120×120 叫料 21 → 下單 23 片 × 850 ＝ 19,550', wallRow.includes('23') && wallRow.includes('19,550'), wallRow);
+  await page.reload();
+  await page.setInputFiles('#dxfFile', asUpload(fixtureFile, 'sample-bathroom.dxf', 'application/dxf'));
+  await page.waitForTimeout(500);
+  check('報價：重新整理再匯入 DXF，壁磚單價 850 還記得', await page.$eval('.mat-card input[data-price]', e => e.value) === '850');
+  await page.evaluate(() => { localStorage.removeItem('tile-price-book'); });
+  await page.evaluate(t => { window.__fixtureText = t; }, fs.readFileSync(fixtureFile, 'utf8'));
+
   // 4b. 整份 DXF 總叫料表：同一張圖算兩次，材料要加倍、算完恢復原畫面
   const beforeBatch = await state();
   const batch = await page.evaluate(() => {
@@ -105,7 +118,7 @@ function check(name, ok, info) {
     return { one: row(one, 'CC-REX-I120'), two: row(two, 'CC-REX-I120') };
   });
   check('總叫料表：兩張一樣的圖，壁 120×120 片數加倍、圖數 2 張',
-    batch.one && batch.two && +batch.two.split(',')[4] === 2 * +batch.one.split(',')[4] && batch.two.endsWith(',2'), JSON.stringify(batch));
+    batch.one && batch.two && +batch.two.split(',')[4] === 2 * +batch.one.split(',')[4] && batch.two.split(',')[7] === '2', JSON.stringify(batch));
   check('總叫料表算完恢復原本的圖', (await state()) === beforeBatch);
 
   // 5. 換情境要清掉上一張圖的分區、紅線、各面磚尺寸

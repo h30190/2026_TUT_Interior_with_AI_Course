@@ -136,4 +136,10 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
   .ps-h1{font-size:20pt;margin:0 0 2mm}
   .ps-sub{font-size:11pt;color:#555;margin-bottom:5mm}
   .ps-small{font-size:8pt;color:#8a4b00;text-align:left}
+  .ps-quote h3{font-size:12pt;color:#8a7f6d;margin:5mm 0 2mm}
 }
+
+/* 💰 報價表 */
+.quote{margin-top:14px}
+.quote h3{font-size:13px;color:var(--accent);margin-bottom:4px}
+.quote .muted{color:var(--muted)}

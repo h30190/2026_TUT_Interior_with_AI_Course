@@ -332,6 +332,15 @@ const rowA = rowsSkip.find(r => r.key === 'A'), rowB = rowsSkip.find(r => r.key 
 assert('smoke', '不鋪磚：勾選的 A 面不排磚、不計料，其他面照算', rowA.r.total === 0 && rowA.r.tiles.length === 0 && rowB.r.total > 0);
 setChecks({ A_skip: false });
 
+// Test S16: 報價（下單＝叫料×(1＋備品%) 無條件進位；單價以型號查；沒填單價不算金額）
+vm.runInContext(`projectMaterials = [{ role: '壁', code: 'W120', spec: '120*120', size: [120, 120] }, { role: '地', code: 'F60', spec: '60*120', size: [60, 120] }];`, vmCtx);
+const quote = vmCtx.quoteLines([{ label: '壁 120×120', TL: 120, TW: 120, name: '', total: 21 }, { label: '地 60×120', TL: 120, TW: 60, name: '', total: 6 }],
+  { W120: 850 }, 5, 0);
+assert('smoke', '報價：壁 21 片加 5% 備品＝下單 23 片 × 850＝19,550 元', quote.lines[0].order === 23 && quote.lines[0].amount === 19550);
+assert('smoke', '報價：地磚沒填單價不算金額，合計只算有單價的、並提示 1 種未填', quote.lines[1].amount === null && quote.sum === 19550 && quote.missing === 1);
+assert('smoke', '報價：剛好整數不多進一片（20 片×0%＝20、20 片×5%＝21）', vmCtx.orderQty(20, 0) === 20 && vmCtx.orderQty(20, 5) === 21);
+vm.runInContext('projectMaterials = [];', vmCtx);
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================
