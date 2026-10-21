@@ -21,6 +21,12 @@ function renderTable(rows, p) {
       : '—';
     const xTxt = XALIGN_NAMES[s.cfg.xalign] + (s.cfg.xalign === 'custom' ? (' ' + s.cfg.xoff) : '');
     const yTxt = YALIGN_NAMES[s.cfg.yalign] + (s.cfg.yalign === 'custom' ? (' ' + s.cfg.yoff) : '');
+    if (s.cfg.skip) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${s.name}</td><td>${s.fw}×${s.fh}</td><td colspan="10" style="text-align:center;color:var(--muted)">不鋪磚</td>`;
+      tb.appendChild(tr);
+      continue;
+    }
     // 有分區的面：每種磚各一行（不同尺寸的片數不能相加）
     s.r.groups.forEach((g, gi) => {
       const m = byMat[g.label] || (byMat[g.label] = { net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0 });
@@ -215,7 +221,8 @@ function buildPanels() {
       + `<div><label>此面磚 長×寬</label><input id="${k}_tile" type="text" placeholder="空白＝共用"></div>`
       + `<div><label>紅線 X (cm)</label><input id="${k}_marks" type="text" placeholder="例 59, 142"></div>`
       + `</div>`
-      + `<div><label>分區磚（起-迄: 磚 名稱）</label><input id="${k}_zones" type="text" placeholder="例 117-207: 14.8×14.8 主秀壁"></div>`;
+      + `<div><label>分區磚（起-迄: 磚 名稱）</label><input id="${k}_zones" type="text" placeholder="例 117-207: 14.8×14.8 主秀壁"></div>`
+      + `<label class="openable" style="margin-top:6px"><input type="checkbox" id="${k}_skip"> 此面不鋪磚</label>`;
     host.appendChild(blk);
   }
 }
@@ -666,6 +673,7 @@ function initApp() {
           $(k + '_tile').value = c.TL ? `${c.TL}×${c.TW}` : '';
           $(k + '_marks').value = (c.marks || []).join(', ');
           $(k + '_zones').value = formatZones(c.zones);
+          $(k + '_skip').checked = !!c.skip;
         }
       }
       if (pr.openings) applyOpeningPreset(pr.openings);
@@ -680,7 +688,7 @@ function initApp() {
 
   ['TL', 'TW', 'joint', 'price', 'smallTh', 'avoidTh'].forEach(id => $(id).addEventListener('input', refresh));
   FACE_KEYS.forEach(k => ['_fw', '_fh'].forEach(s => $(k + s).addEventListener('input', refresh)));
-  FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign'].forEach(s => $(k + s).addEventListener('change', refresh)));
+  FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign', '_skip'].forEach(s => $(k + s).addEventListener('change', refresh)));
   FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones'].forEach(s => $(k + s).addEventListener('input', refresh)));
 
   $('syncWalls').addEventListener('click', () => {

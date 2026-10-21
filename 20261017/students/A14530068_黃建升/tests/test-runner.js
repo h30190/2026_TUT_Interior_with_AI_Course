@@ -309,6 +309,13 @@ assert('smoke', '平面：D 面門 104～190 在平面上是 20～106（同施�
   vmCtx.planPos('D', 104, 86, dimsCase) === 20 && vmCtx.planPos('B', 117, 90, dimsCase) === 117);
 assert('smoke', '平面：A 面左右鏡像、C 面不變', vmCtx.planPos('A', 0, 50, dimsCase) === 121 && vmCtx.planPos('C', 30, 40, dimsCase) === 30);
 
+// Test S15: 此面不鋪磚（圖上沒有的立面、油漆牆）
+setChecks({ A_skip: true });
+const rowsSkip = vmCtx.computeAll(vmCtx.params());
+const rowA = rowsSkip.find(r => r.key === 'A'), rowB = rowsSkip.find(r => r.key === 'B');
+assert('smoke', '不鋪磚：勾選的 A 面不排磚、不計料，其他面照算', rowA.r.total === 0 && rowA.r.tiles.length === 0 && rowB.r.total > 0);
+setChecks({ A_skip: false });
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================

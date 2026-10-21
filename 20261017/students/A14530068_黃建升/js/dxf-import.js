@@ -399,7 +399,39 @@ function planOutline(pts, closed, P) {
     poly = polyArea(c1) <= polyArea(c2) ? c1 : c2;
   }
   const W = P.x1 - P.x0, H = P.y1 - P.y0;
-  return polyArea(poly) > W * H - 1 ? null : poly;
+  if (polyArea(poly) > W * H - 1) return null;
+  // 只處理直角外框；有斜邊或補起來的形狀太怪（面積不到一半）就用矩形，交給使用者確認
+  const ortho = poly.every((p, i) => { const q = poly[(i + 1) % poly.length]; return Math.abs(p[0] - q[0]) < 0.1 || Math.abs(p[1] - q[1]) < 0.1; });
+  return ortho && polyArea(poly) >= W * H * 0.5 ? poly : 'slanted';
+}
+
+// 從 (cx, cy) 往四個方向找最近的牆線（黑／白線、直線或聚合線的水平垂直段，排除磚縫與標示）
+function rayCastRoom(cx, cy, ents) {
+  const segs = [];
+  for (const e of ents) {
+    if (e.layer.includes('磚') || (e.color !== 0 && e.color !== 7)) continue;
+    if (e.type === 'LINE') segs.push([e.x1, e.y1, e.x2, e.y2]);
+    else if (e.type === 'LWPOLYLINE') {
+      const n = e.pts.length, m = e.closed ? n : n - 1;
+      for (let k = 0; k < m; k++) { const a = e.pts[k], b = e.pts[(k + 1) % n]; segs.push([a[0], a[1], b[0], b[1]]); }
+    }
+  }
+  // 牆可能是斜的：水平射線 y=cy、垂直射線 x=cx 跟每條牆線求交點，取最近的
+  let left = -Infinity, right = Infinity, bottom = -Infinity, top = Infinity, slanted = false;
+  for (const [x1, y1, x2, y2] of segs) {
+    if (Math.hypot(x2 - x1, y2 - y1) < 30) continue;
+    if (Math.min(y1, y2) <= cy && cy <= Math.max(y1, y2) && Math.abs(y2 - y1) > 0.05) {
+      const x = x1 + (cy - y1) * (x2 - x1) / (y2 - y1);
+      if (x < cx && x > left) { left = x; slanted = slanted || Math.abs(x1 - x2) > 0.5; }
+      if (x > cx && x < right) { right = x; slanted = slanted || Math.abs(x1 - x2) > 0.5; }
+    }
+    if (Math.min(x1, x2) <= cx && cx <= Math.max(x1, x2) && Math.abs(x2 - x1) > 0.05) {
+      const y = y1 + (cx - x1) * (y2 - y1) / (x2 - x1);
+      if (y < cy && y > bottom) { bottom = y; slanted = slanted || Math.abs(y1 - y2) > 0.5; }
+      if (y > cy && y < top) { top = y; slanted = slanted || Math.abs(y1 - y2) > 0.5; }
+    }
+  }
+  return [left, right, bottom, top].every(Number.isFinite) ? { x0: left, x1: right, y0: bottom, y1: top, slanted } : null;
 }
 
 // 找出檔案裡每一張放樣施工圖
@@ -455,6 +487,15 @@ function buildSheet(g, dxf, rects, symbols) {
     const fits = b => (!bw || ((b.x1 - b.x0) > bw * 0.6 && (b.x1 - b.x0) < bw * 1.6))
       && (!aw || ((b.y1 - b.y0) > aw * 0.6 && (b.y1 - b.y0) < aw * 1.6));
     plan = polys.find(fits) || null;
+    // 牆用一條條直線畫的平面：從 ABCD 往上下左右找最近的牆線，圍出房間範圍（當成矩形）
+    if (!plan) {
+      const room = rayCastRoom(abcd.x, abcd.y, ents);
+      if (room && fits(room) && room.x1 - room.x0 >= 50 && room.y1 - room.y0 >= 50) {
+        plan = Object.assign(room, { e: null });
+        warnings.push(`地坪外框是用直線畫的，已從視角符號往四周找牆線圍出 ${r1(room.x1 - room.x0)}×${r1(room.y1 - room.y0)}`
+          + (room.slanted ? '；房間有斜牆，地坪以矩形近似計算，請確認' : '（若是 L 形請手動確認）'));
+      }
+    }
   }
   if (!plan) warnings.push('找不到地坪平面（ABCD 視角符號＋外框），地坪沿用 B 面寬度');
 
@@ -489,10 +530,10 @@ function buildSheet(g, dxf, rects, symbols) {
   const wallMat = pickMaterial(materials, 'wall');
 
   // 5. 各立面：尺寸、放樣起點、紅線、門窗
-  const faces = {}, openings = [];
+  const faces = {}, openings = [], missing = [];
   for (const k of DXF_FACE_LETTERS) {
     const R = g.faces[k];
-    if (!R) { warnings.push(`沒有找到 ${k} 立面`); continue; }
+    if (!R) { warnings.push(`圖上沒有 ${k} 立面，已設為「此面不鋪磚」`); missing.push(k); continue; }
     const face = { fw: r1(R.w), fh: r1(R.h), dir: 'H', mode: 'grid', yalign: 'bottom', yoff: 0 };
     const start = lines.find(l => l.color === DXF_MARK && isV(l) && l.x1 >= R.x0 - 0.5 && l.x1 <= R.x1 + 0.5
       && Math.abs(Math.min(l.y1, l.y2) - R.y1) < 1.5);
@@ -541,13 +582,20 @@ function buildSheet(g, dxf, rects, symbols) {
   }
   if (P) {
     // 實際外框（L 形）：沒封閉的聚合線用直角補起來，兩種補法取面積小的（門口門檻不算地坪）
-    const outline = planOutline(plan.e.pts, plan.e.closed, P);
-    if (outline) floor.outline = outline;
+    const outline = plan.e ? planOutline(plan.e.pts, plan.e.closed, P) : null;
+    if (outline === 'slanted') warnings.push('地坪外框有斜邊，暫以外框矩形計算地磚，請確認');
+    else if (outline) floor.outline = outline;
     // 平面設備（馬桶、臉盆、門、檯面）與牆線：範圍放寬到牆厚
     const PB = { x0: P.x0 - 30, y0: P.y0 - 30, x1: P.x1 + 30, y1: P.y1 + 30 };
     floor.overlay = collectOverlay(dxf, flatCache, PB, p => [p[0] - P.x0, P.y1 - p[1]], skipCommon);
   }
   faces.floor = floor;
+  // 圖上沒有的立面：尺寸用地坪推（A/C＝地坪深、B/D＝地坪寬），標成不鋪磚，不沿用上一張圖
+  const Hmax = Math.max(...Object.values(g.faces).map(r => r.h));
+  for (const k of missing) {
+    faces[k] = { fw: (k === 'A' || k === 'C') ? floor.fh : floor.fw, fh: r1(Hmax), dir: 'H', mode: 'grid',
+      xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0, marks: [], zones: [], skip: true };
+  }
 
   // 7. 磚尺寸：牆用「壁」、地坪用「地」
   const wall = wallMat;

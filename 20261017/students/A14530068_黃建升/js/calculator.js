@@ -60,6 +60,7 @@ function cfgOf(k) {
     xoff: num0(k + '_xoff', 0),
     yoff: num0(k + '_yoff', 0),
     marks: parseMarks($(k + '_marks') ? $(k + '_marks').value : ''),
+    skip: $(k + '_skip') ? !!$(k + '_skip').checked : false,
     zones: parseZones($(k + '_zones') ? $(k + '_zones').value : '')
   };
 }
@@ -467,7 +468,10 @@ function computeAll(p) {
     const colInfo = (typeof getFaceColumnInfo === 'function')
       ? getFaceColumnInfo(f.key, col, dims)
       : (col.on && col.face === f.key ? col : null);
-    const r = layout(paramsFor(p, f.key), f.fw, f.fh, cfg, ops[f.key] || [], f.key !== 'floor', colInfo);
+    // 此面不鋪磚（例如圖上沒有這一面、或是油漆牆）：不排磚、不計料
+    const r = cfg.skip
+      ? { tiles: [], groups: [], net: 0, full: 0, cut: 0, total: 0, danger: 0, avoid: 0, opArea: 0, voidArea: 0, xBase: 0, yBase: 0 }
+      : layout(paramsFor(p, f.key), f.fw, f.fh, cfg, ops[f.key] || [], f.key !== 'floor', colInfo);
     return { key: f.key, name: f.name, fw: f.fw, fh: f.fh, cfg, r, ops: ops[f.key] || [], col: colInfo };
   });
 }

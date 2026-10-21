@@ -85,6 +85,7 @@ function validateProject(obj) {
       face.zones = ok.map(z => ({ x0: z.x0, x1: z.x1, TL: z.TL, TW: z.TW, name: String(z.name || '') }));
     }
     if (f.overlay !== undefined) face.overlay = cleanOverlay(f.overlay);
+    if (f.skip !== undefined) face.skip = !!f.skip;
     if (k === 'floor' && f.outline !== undefined) {
       const okPts = Array.isArray(f.outline) && f.outline.length >= 3 && f.outline.every(p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
       if (okPts) face.outline = f.outline; else warnings.push('floor.outline 不是 3 點以上的座標，已略過（整個矩形都鋪）');
@@ -159,6 +160,7 @@ function applyProject(pj) {
     setIf(k + '_tile', f.TL ? `${f.TL}×${f.TW}` : '');
     setIf(k + '_marks', (f.marks || []).join(', '));
     setIf(k + '_zones', formatZones(f.zones));
+    if ($(k + '_skip')) $(k + '_skip').checked = !!f.skip;
     if (f.overlay) faceOverlays[k] = f.overlay; else delete faceOverlays[k];
   }
   projectMaterials = pj.materials || [];

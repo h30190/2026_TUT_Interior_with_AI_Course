@@ -308,6 +308,16 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   ctx.fillStyle = '#fff'; ctx.fillRect(ox, oy, fw * sc, fh * sc);
 
   drawTiles(ctx, ox, oy, fw, fh, sc, r.tiles, name, isElevation);
+  if (cfg.skip) {
+    // 不鋪磚：灰色斜線網底＋字
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ox, oy, fw * sc, fh * sc); ctx.clip();
+    ctx.strokeStyle = '#d6d2ca'; ctx.lineWidth = 1;
+    for (let d = -fh * sc; d < fw * sc; d += 12) { ctx.beginPath(); ctx.moveTo(ox + d, oy + fh * sc); ctx.lineTo(ox + d + fh * sc, oy); ctx.stroke(); }
+    ctx.fillStyle = '#8a857c'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('不鋪磚', ox + fw * sc / 2, oy + fh * sc / 2);
+    ctx.restore();
+  }
   if (ops && ops.length) {
     drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, opts.faceKey || 'A');
   }
@@ -337,7 +347,7 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   }
 
   // 繪製放樣基準線與起磚點
-  drawSettingOut(ctx, ox, oy, fw, fh, sc, r, opts.faceKey || 'A', isElevation, !!opts.detail, ops);
+  if (!cfg.skip) drawSettingOut(ctx, ox, oy, fw, fh, sc, r, opts.faceKey || 'A', isElevation, !!opts.detail, ops);
 
   // 🏛️ 結構柱分界紅線繪製（支援主面與相鄰角隅立面雙面呈現！）
   if (r.col && r.col.on) {
@@ -583,7 +593,7 @@ function drawElevIndex(ctx, ox, oy, fw, fh, sc, key, r, ops, marks) {
   drawDimChain(ctx, ox, baseY + 14, 1, 0, sc, ch.h, DIM_COLOR);
   drawDimChain(ctx, ox - 10, baseY, 0, -1, sc, ch.v, DIM_COLOR);
   drawIndexSymbol(ctx, ox + fw * sc / 2, baseY + 38, key);
-  drawStartMarker(ctx, ox + Math.max(0, r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);
+  if (r.tiles.length || r.total) drawStartMarker(ctx, ox + Math.max(0, r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);
 }
 
 // 地坪平面圖中的四面牆正統門窗圖例（支援 A/B/C/D 任意多個門與窗）
