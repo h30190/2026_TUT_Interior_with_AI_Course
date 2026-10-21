@@ -290,6 +290,24 @@ const semi = vmCtx.bulgePts([0, 0], [2, 0], 1);
 assert('smoke', '線稿：聚合線 bulge＝1 是半圓，終點正確且弧在弦的右側',
   Math.abs(semi[semi.length - 1][0] - 2) < 1e-9 && Math.abs(semi[semi.length - 1][1]) < 1e-9 && Math.min(...semi.map(p => p[1])) < -0.99);
 
+// Test S13: L 形地坪（DXF 平面內框沒封閉，補直角取面積小的那種，門檻不算地坪）
+const ol = fz && fz.floor.outline;
+const voids = ol && vmCtx.floorVoids(ol, 207, 187);
+assert('smoke', 'L 形：缺角＝左上 117×29、左下 20×60、門檻 207×15',
+  voids && JSON.stringify(voids.map(o => [o.x, o.y, o.w, o.h])) === '[[0,0,117,29],[0,112,20,60],[0,172,207,15]]',
+  voids && JSON.stringify(voids.map(o => [o.x, o.y, o.w, o.h])));
+const rL = voids && layout({ TL: 120, TW: 60, joint: 0.2, smallTh: 5, avoidTh: 3 }, 207, 187,
+  { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 117, yalign: 'custom', yoff: 172 }, voids);
+assert('smoke', 'L 形：地磚只算外框內（6 片、理論 5 片），缺角不算門窗扣除',
+  rL && rL.total === 6 && rL.net === 5 && rL.opArea === 0 && rL.voidArea === 7698, rL && `total=${rL.total} net=${rL.net}`);
+assert('smoke', 'L 形：矩形外框不產生缺角', vmCtx.floorVoids([[0, 0], [100, 0], [100, 50], [0, 50]], 100, 50).length === 0);
+
+// Test S14: 立面與平面的左右關係（站在房間裡面向牆看：A、D 跟平面左右相反）
+const dimsCase = { floor: { fw: 207, fh: 187 }, A: { fw: 171 }, B: { fw: 207 }, C: { fw: 172 }, D: { fw: 210 } };
+assert('smoke', '平面：D 面門 104～190 在平面上是 20～106（同施工圖平面門在左下）',
+  vmCtx.planPos('D', 104, 86, dimsCase) === 20 && vmCtx.planPos('B', 117, 90, dimsCase) === 117);
+assert('smoke', '平面：A 面左右鏡像、C 面不變', vmCtx.planPos('A', 0, 50, dimsCase) === 121 && vmCtx.planPos('C', 30, 40, dimsCase) === 30);
+
 // ==========================================
 // 3. 紅隊測試（Red Team Testing：極端邊界與破壞性注入）
 // ==========================================

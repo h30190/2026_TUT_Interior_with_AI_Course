@@ -124,7 +124,7 @@ function drawOverlay(ctx, ox, oy, fw, fh, sc, ov, isElevation) {
 
 // 正統建築立面門窗樣式（雙線門樘、窗框、接地）
 function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
-  for (const o of ops) {
+  for (const o of ops.filter(o => o.kind !== 'void')) {
     const px = ox + o.x * sc;
     const py = oy + (fh - (o.y + o.h)) * sc;
     const pw = o.w * sc, ph = o.h * sc;
@@ -310,6 +310,16 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   drawTiles(ctx, ox, oy, fw, fh, sc, r.tiles, name, isElevation);
   if (ops && ops.length) {
     drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, opts.faceKey || 'A');
+  }
+
+  // 地坪實際外框（L 形）：缺角留白，外框描粗線（有匯入牆線時牆線已經畫了）
+  if (opts.faceKey === 'floor' && floorOutline && !faceOverlays.floor) {
+    ctx.save();
+    ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    floorOutline.forEach((p, i) => { const x = ox + p[0] * sc, y = oy + p[1] * sc; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.closePath(); ctx.stroke();
+    ctx.restore();
   }
 
   // 匯入的設備（馬桶、臉盆…）與備註，畫在磁磚上、紅線下
@@ -604,9 +614,9 @@ function drawFloorPlanOpenings(ctx, px, py, pw, ph, sc, allOps, dims) {
     }
   });
 
-  // 2. D 面（地坪下方水平牆）
+  // 2. D 面（地坪下方水平牆；立面左右跟平面相反）
   (allOps.D || []).forEach(o => {
-    const ox = px + o.x * sc, ow = o.w * sc;
+    const ox = px + planPos('D', o.x, o.w, dims) * sc, ow = o.w * sc;
     if (o.kind === 'door') {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(ox, py + ph - wallThk / 2, ow, wallThk);
       ctx.strokeStyle = '#888888'; ctx.lineWidth = 0.8;
@@ -627,9 +637,9 @@ function drawFloorPlanOpenings(ctx, px, py, pw, ph, sc, allOps, dims) {
     }
   });
 
-  // 3. A 面（地坪左側垂直牆）
+  // 3. A 面（地坪左側垂直牆；立面左右跟平面相反）
   (allOps.A || []).forEach(o => {
-    const oy = py + o.x * sc, ow = o.w * sc;
+    const oy = py + planPos('A', o.x, o.w, dims) * sc, ow = o.w * sc;
     if (o.kind === 'door') {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(px - wallThk / 2, oy, wallThk, ow);
       ctx.strokeStyle = '#888888'; ctx.lineWidth = 0.8;
@@ -918,7 +928,7 @@ function drawUnfold(p, rows) {
   drawPlanCompass(ctx, px + planW / 2, py + planH / 2);
 
   // 地坪外圍尺寸鏈與放樣起點（避開四面牆的門窗文字）
-  const fch = floorChains(Lf, Wf, flR, allOps, chainMarks(byKey.floor.cfg));
+  const fch = floorChains(Lf, Wf, flR, allOps, chainMarks(byKey.floor.cfg), dims);
   // 有匯入平面線稿時，尺寸鏈讓到牆線外面；沒有時讓開四面牆的門窗文字
   const ov = faceOverlays.floor;
   const oe = ov ? overlayExtent(ov) : null;

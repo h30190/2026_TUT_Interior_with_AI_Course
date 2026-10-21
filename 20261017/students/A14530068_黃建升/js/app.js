@@ -14,8 +14,10 @@ function renderTable(rows, p) {
   let danger = 0, opArea = 0;
   for (const s of rows) {
     danger += s.r.danger; opArea += s.r.opArea;
-    const opTxt = s.ops.length > 0
-      ? s.ops.map(o => (o.kind === 'door' ? '門' : '窗') + ' ' + o.w + '×' + o.h).join('<br>')
+    const realOps = s.ops.filter(o => o.kind !== 'void');
+    const opTxt = realOps.length || s.r.voidArea
+      ? realOps.map(o => (o.kind === 'door' ? '門' : '窗') + ' ' + o.w + '×' + o.h)
+        .concat(s.r.voidArea ? [`缺角 ${(s.r.voidArea / 10000).toFixed(2)} m²`] : []).join('<br>')
       : '—';
     const xTxt = XALIGN_NAMES[s.cfg.xalign] + (s.cfg.xalign === 'custom' ? (' ' + s.cfg.xoff) : '');
     const yTxt = YALIGN_NAMES[s.cfg.yalign] + (s.cfg.yalign === 'custom' ? (' ' + s.cfg.yoff) : '');
@@ -59,8 +61,7 @@ function renderConcl(p, tot) {
   const rows = computeAll(p);
   const worst = rows.filter(s => s.r.danger > 0)
     .sort((a, b) => b.r.danger - a.r.danger);
-  const opNames = rows.filter(s => s.ops.length > 0)
-    .flatMap(s => s.ops.map(o => `${s.name}${o.kind === 'door' ? '門' : '窗'} ${o.w}×${o.h}`));
+  const opNames = rows.flatMap(s => s.ops.filter(o => o.kind !== 'void').map(o => `${s.name}${o.kind === 'door' ? '門' : '窗'} ${o.w}×${o.h}`));
   let txt = '【全室五面】' + tot.mats.map(m => {
     const loss = m.net > 0 ? ((m.total - m.net) / m.net * 100) : 0;
     return `${m.label} 叫料 ${fmt(m.total)} 片（整磚 ${fmt(m.full)}＋裁切 ${fmt(m.cut)}，損耗 ${loss.toFixed(1)}%）`;
@@ -652,6 +653,7 @@ function initApp() {
       // 換成內建案例：清掉上一張匯入圖的材料與圖名
       projectMaterials = [];
       faceOverlays = {};
+      floorOutline = pr.outline || null;
       projectMeta = Object.assign({}, EMPTY_META);
       renderProjectMeta();
       // 案例附帶各面起磚設定：其餘欄位回到預設，避免沿用上一個情境的起磚點

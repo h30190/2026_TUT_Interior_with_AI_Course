@@ -1,12 +1,40 @@
 // 磁磚排磚放樣幾何核心、開口扣除與算料演算法
 // 基礎工具函式（$、EPS、num、num0）已於 config.js 全域宣告提供
 
-// 門窗開口：直接透過 openings 模組取得，支援任意多個門窗扣除
+// 門窗開口：直接透過 openings 模組取得，支援任意多個門窗扣除；地坪外框以外的缺角當成不鋪磚區（kind: 'void'）
 function openings(dims) {
-  if (typeof getOpeningsByFace === 'function') {
-    return getOpeningsByFace(dims);
+  const byFace = typeof getOpeningsByFace === 'function' ? getOpeningsByFace(dims) : { A: [], B: [], C: [], D: [] };
+  byFace.floor = floorOutline && dims.floor ? floorVoids(floorOutline, dims.floor.fw, dims.floor.fh) : [];
+  return byFace;
+}
+
+function pointInPolygon(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
   }
-  return { A: [], B: [], C: [], D: [] };
+  return inside;
+}
+
+// L 形等直角外框：用頂點的 x、y 把矩形切格，格子中心在外框外面的就是缺角（同一列相鄰的合併）
+function floorVoids(outline, fw, fh) {
+  const uniq = a => [...new Set(a.map(v => Math.round(v * 10) / 10))].sort((p, q) => p - q);
+  const xs = uniq([0, fw].concat(outline.map(p => Math.max(0, Math.min(fw, p[0])))));
+  const ys = uniq([0, fh].concat(outline.map(p => Math.max(0, Math.min(fh, p[1])))));
+  const out = [];
+  for (let j = 0; j < ys.length - 1; j++) {
+    let run = null;
+    for (let i = 0; i < xs.length - 1; i++) {
+      const outside = !pointInPolygon((xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2, outline);
+      if (outside && run) run.w = xs[i + 1] - run.x;
+      else if (outside) run = { x: xs[i], y: ys[j], w: xs[i + 1] - xs[i], h: ys[j + 1] - ys[j] };
+      if (!outside && run) { out.push(run); run = null; }
+    }
+    if (run) out.push(run);
+  }
+  return out.filter(r => r.w > EPS && r.h > EPS)
+    .map(r => ({ kind: 'void', name: '缺角', face: 'floor', x: r.x, y: r.y, w: r.w, h: r.h, area: r.w * r.h }));
 }
 
 function params() {
@@ -253,10 +281,12 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     const net = Math.ceil(Math.max(0, g.area - g.opArea) / (g.TL * g.TW));
     return Object.assign(g, { net, total: g.full + g.cut });
   });
-  const opArea = ops.reduce((a, o) => a + o.area, 0);
+  // 門窗扣除只算門窗；地坪缺角另計（兩者都不鋪磚）
+  const opArea = ops.filter(o => o.kind !== 'void').reduce((a, o) => a + o.area, 0);
+  const voidArea = ops.filter(o => o.kind === 'void').reduce((a, o) => a + o.area, 0);
   const sum = k => groups.reduce((a, g) => a + g[k], 0);
   return {
-    tiles, groups, net: sum('net'), full: sum('full'), cut: sum('cut'), total: sum('total'), danger: sum('danger'), avoid: sum('avoid'), opArea,
+    tiles, groups, net: sum('net'), full: sum('full'), cut: sum('cut'), total: sum('total'), danger: sum('danger'), avoid: sum('avoid'), opArea, voidArea,
     xBase, yBase, tL, tW, pitchL, pitchW, col, xBase2
   };
 }
@@ -271,7 +301,7 @@ function getSnapPoints(p, dims, faceKey, ops) {
   snaps.push({ type: 'center', axis: 'Y', val: fh / 2, label: '牆面垂直中軸' });
 
   // 2. 開口鎖點（門窗左右邊界、中軸、窗台高度、門頂高）
-  for (const o of (ops[faceKey] || [])) {
+  for (const o of (ops[faceKey] || []).filter(o => o.kind !== 'void')) {
     snaps.push({ type: 'opening', axis: 'X', val: o.x, label: `${o.kind === 'door' ? '門' : '窗'}左緣` });
     snaps.push({ type: 'opening', axis: 'X', val: o.x + o.w, label: `${o.kind === 'door' ? '門' : '窗'}右緣` });
     snaps.push({ type: 'opening', axis: 'X', val: o.x + o.w / 2, label: `${o.kind === 'door' ? '門' : '窗'}中軸` });
@@ -292,13 +322,13 @@ function getSnapPoints(p, dims, faceKey, ops) {
       // B面與D面寬度對齊地坪水平 X 方向
       const joints = getTileJoints(flR.xBase, flR.pitchL, dims.floor.fw);
       joints.forEach(jx => {
-        snaps.push({ type: 'joint', axis: 'X', val: jx, label: '地壁對縫線 🔗' });
+        snaps.push({ type: 'joint', axis: 'X', val: faceKey === 'D' ? planPos('D', jx, 0, dims) : jx, label: '地壁對縫線 🔗' });
       });
     } else if (faceKey === 'A' || faceKey === 'C') {
       // A面與C面寬度對齊地坪垂直 Y 方向（深度）
       const joints = getTileJoints(flR.yBase, flR.pitchW, dims.floor.fh);
       joints.forEach(jy => {
-        snaps.push({ type: 'joint', axis: 'X', val: jy, label: '地壁對縫線 🔗' });
+        snaps.push({ type: 'joint', axis: 'X', val: faceKey === 'A' ? planPos('A', jy, 0, dims) : jy, label: '地壁對縫線 🔗' });
       });
     }
   }
@@ -344,11 +374,18 @@ function elevationChains(fw, fh, r, ops, marks) {
   return { h: dimChainPoints(fw, hx), v: dimChainPoints(fh, vy) };
 }
 
+// 立面是站在房間裡面向該牆看：B、C 的左邊就是平面的左／上；A、D 左右相反，要用該面寬度鏡像
+// 回傳立面 [x, x+w] 在平面邊上的起點（B/D 沿平面 X，A/C 沿平面 Y 由上量）
+function planPos(faceKey, x, w, dims) {
+  const fwFace = dims && dims[faceKey] ? dims[faceKey].fw : 0;
+  return (faceKey === 'A' || faceKey === 'D') ? fwFace - x - w : x;
+}
+
 // 地坪尺寸鏈：水平＝起磚線＋B/D 牆門窗；垂直（由 B 牆往下量）＝起磚線＋A/C 牆門窗
-function floorChains(fw, fh, r, allOps, marks) {
+function floorChains(fw, fh, r, allOps, marks, dims) {
   const hx = [r.xBase].concat(marks || []), vy = [r.yBase];
-  for (const o of (allOps.B || []).concat(allOps.D || [])) hx.push(o.x, o.x + o.w);
-  for (const o of (allOps.A || []).concat(allOps.C || [])) vy.push(o.x, o.x + o.w);
+  for (const k of ['B', 'D']) for (const o of (allOps[k] || [])) { const s = planPos(k, o.x, o.w, dims); hx.push(s, s + o.w); }
+  for (const k of ['A', 'C']) for (const o of (allOps[k] || [])) { const s = planPos(k, o.x, o.w, dims); vy.push(s, s + o.w); }
   return { h: dimChainPoints(fw, hx), v: dimChainPoints(fh, vy) };
 }
 
@@ -386,6 +423,8 @@ function calcJointAlignment(p, dims, faceKey) {
     if (joints.length > 0) targetJoint = joints[0];
   }
 
+  // A、D 面左右跟平面相反
+  if (faceKey === 'A' || faceKey === 'D') targetJoint = planPos(faceKey, targetJoint, 0, dims);
   // 調整 wall xBase 使其磚縫對齊 targetJoint
   let bestX = targetJoint % pitchL;
   if (bestX < 0) bestX += pitchL;

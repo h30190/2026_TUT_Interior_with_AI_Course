@@ -384,6 +384,24 @@ function collectOverlay(dxf, cache, box, toLocal, skip) {
   return ov;
 }
 
+function polyArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }
+  return Math.abs(a) / 2;
+}
+
+// 平面外框轉成地坪座標（x 由左、y 由上量）；外框就是整個矩形時回 null
+function planOutline(pts, closed, P) {
+  let poly = pts.map(p => [r1(p[0] - P.x0), r1(P.y1 - p[1])]);
+  const a = poly[0], b = poly[poly.length - 1];
+  if (!closed && Math.abs(a[0] - b[0]) > 0.05 && Math.abs(a[1] - b[1]) > 0.05) {
+    const c1 = poly.concat([[a[0], b[1]]]), c2 = poly.concat([[b[0], a[1]]]);
+    poly = polyArea(c1) <= polyArea(c2) ? c1 : c2;
+  }
+  const W = P.x1 - P.x0, H = P.y1 - P.y0;
+  return polyArea(poly) > W * H - 1 ? null : poly;
+}
+
 // 找出檔案裡每一張放樣施工圖
 function findDxfSheets(dxf) {
   const ents = dxf.entities;
@@ -522,6 +540,9 @@ function buildSheet(g, dxf, rects, symbols) {
     Object.assign(floor, { xalign: 'left', xoff: 0, yalign: 'bottom', yoff: 0 });
   }
   if (P) {
+    // 實際外框（L 形）：沒封閉的聚合線用直角補起來，兩種補法取面積小的（門口門檻不算地坪）
+    const outline = planOutline(plan.e.pts, plan.e.closed, P);
+    if (outline) floor.outline = outline;
     // 平面設備（馬桶、臉盆、門、檯面）與牆線：範圍放寬到牆厚
     const PB = { x0: P.x0 - 30, y0: P.y0 - 30, x1: P.x1 + 30, y1: P.y1 + 30 };
     floor.overlay = collectOverlay(dxf, flatCache, PB, p => [p[0] - P.x0, P.y1 - p[1]], skipCommon);

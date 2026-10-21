@@ -34,6 +34,8 @@ const PRESETS = {
       C: { xalign: 'left', xoff: 0 },
       D: { xalign: 'custom', xoff: 104, marks: [190] }
     },
+    // 地坪 L 形：左上缺 117×29、左下缺 20×60，門檻 172～187 不鋪地磚（DXF 實測）
+    outline: [[20, 172], [20, 112], [0, 112], [0, 29], [117, 29], [117, 0], [207, 0], [207, 172], [103, 172]],
     openings: 'caseop'
   }
 };
@@ -61,6 +63,8 @@ let face = 'floor';
 let projectMaterials = [];
 // 匯入施工圖帶進來的設備線稿與備註（各面座標：立面由左下量、地坪由左上量）
 let faceOverlays = {};
+// 地坪實際外框（L 形等；座標由左上量，null＝整個矩形都鋪）
+let floorOutline = null;
 const EMPTY_META = { project: '', drawingName: '', number: '' };
 let projectMeta = Object.assign({}, EMPTY_META);
 

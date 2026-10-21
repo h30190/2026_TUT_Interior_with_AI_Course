@@ -21,6 +21,7 @@ function collectProject() {
     const t = parseTileSize($(k + '_tile') ? $(k + '_tile').value : '');
     if (t) Object.assign(faces[k], t);
     if (faceOverlays[k]) faces[k].overlay = faceOverlays[k];
+    if (k === 'floor' && floorOutline) faces[k].outline = floorOutline;
   }
   return {
     format: PROJECT_FORMAT,
@@ -84,6 +85,10 @@ function validateProject(obj) {
       face.zones = ok.map(z => ({ x0: z.x0, x1: z.x1, TL: z.TL, TW: z.TW, name: String(z.name || '') }));
     }
     if (f.overlay !== undefined) face.overlay = cleanOverlay(f.overlay);
+    if (k === 'floor' && f.outline !== undefined) {
+      const okPts = Array.isArray(f.outline) && f.outline.length >= 3 && f.outline.every(p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
+      if (okPts) face.outline = f.outline; else warnings.push('floor.outline 不是 3 點以上的座標，已略過（整個矩形都鋪）');
+    }
     if (f.marks !== undefined) {
       face.marks = Array.isArray(f.marks) ? f.marks.filter(v => Number.isFinite(v) && v > 0) : [];
       if (!Array.isArray(f.marks) || face.marks.length !== f.marks.length) warnings.push(`${k}.marks 有不是正數的值，已略過`);
@@ -143,6 +148,7 @@ function applyProject(pj) {
   setIf('TL', pj.tile.TL); setIf('TW', pj.tile.TW); setIf('joint', pj.tile.jointMM); setIf('price', pj.tile.price);
   setIf('smallTh', pj.tile.smallTh); setIf('avoidTh', pj.tile.avoidTh);
   faceOverlays = {};
+  floorOutline = (pj.faces.floor && pj.faces.floor.outline) || null;
   for (const k in pj.faces) {
     const f = pj.faces[k];
     setIf(k + '_fw', f.fw); setIf(k + '_fh', f.fh);
