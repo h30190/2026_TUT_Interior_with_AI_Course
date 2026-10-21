@@ -286,6 +286,16 @@ const gMos = both.groups.find(g => g.name === '主秀壁'), gW2 = both.groups.fi
 assert('smoke', '主秀壁＋腰帶：腰帶寫在後面就橫跨主秀壁，主秀壁面積扣掉腰帶那段',
   gMos && gW2 && Math.abs(gMos.area - 90 * (289 - 30)) < 1e-6 && Math.abs(gW2.area - 207 * 30) < 1e-6
   && !both.tiles.some(t => t.gkey === gMos.key && t.y0 < 130 - 1e-6 && t.y0 + t.wW > 100 + 1e-6));
+// 腰帶上方重新從腰帶上緣起磚（使用者的做法）；腰帶下方照原本由地起
+const above = waist.tiles.filter(t => t.gkey === 'main' && t.y0 >= 130 - 1e-6), below = waist.tiles.filter(t => t.gkey === 'main' && t.y0 < 100);
+assert('smoke', '腰帶上方：此面的磚從腰帶上緣 130 重新起磚（第一排整磚 60），下方仍由地面 0 起',
+  above.length && Math.min(...above.map(t => t.y0)) === 130 && above.filter(t => t.y0 === 130).every(t => Math.abs(t.wW - 60) < 1e-6)
+  && Math.min(...below.map(t => t.y0)) === 0, JSON.stringify({ a: [...new Set(above.map(t => t.y0))].slice(0, 3), b: [...new Set(below.map(t => t.y0))] }));
+const mosAbove = both.tiles.filter(t => t.gkey === gMos.key && t.y0 >= 130 - 1e-6);
+assert('smoke', '主秀壁＋腰帶：主秀壁在腰帶上方也從 130 重新起磚，腰帶上緣不會切出小料',
+  Math.min(...mosAbove.map(t => t.y0)) === 130 && !mosAbove.some(t => t.y0 < 131 && t.danger), String(Math.min(...mosAbove.map(t => t.y0))));
+const upper = twoBand.tiles.filter(t => t.gkey === 'main');
+assert('smoke', '上下分段：上段從分段線 120 起磚', Math.min(...upper.map(t => t.y0)) === 120 && upper.filter(t => t.y0 === 120).every(t => Math.abs(t.wW - 60) < 1e-6));
 // 牆中間一塊（左右＋高度都寫）：底下的磚包住那塊的轉角 → L 型
 const block = layout({ TL: 120, TW: 120, joint: 0.2, smallTh: 5, avoidTh: 5 }, 240.4, 240.4, cfgZ('30-90 高 30-90: 10×10 塊'), [], true);
 assert('smoke', '牆中間一塊：底下 120 磚包住那塊的轉角算 L 型', block.lcut === 1 && block.tiles.find(t => t.lcut).occ.length === 1, String(block.lcut));

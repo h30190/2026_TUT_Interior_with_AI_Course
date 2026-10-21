@@ -513,18 +513,33 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
       const [rx0, ry0, rx1, ry1] = L.rect;
       const pcs = rectMinus(L.rect, L.occ);
       if (!pcs.length) continue; // 整區都被上層蓋住
-      let segTiles, TL = p.TL, TW = p.TW;
-      const reg = { yMin: ry0, yMax: ry1, occ: L.occ };
-      if (z) {
-        TL = z.TL; TW = z.TW;
-        const zL = cfg.dir === 'H' ? TL : TW, zW = cfg.dir === 'H' ? TW : TL;
-        const zx = z.xoff !== undefined ? z.xoff : rx0; // 分區預設從分界線起磚
-        // 上下分段、腰帶從該段底邊起磚；整面高的分區跟著此面的垂直起磚
-        const zy = z.yoff !== undefined ? z.yoff : (z.y0 !== undefined && ry0 > EPS ? ry0 : startOf(fh, zW + p.joint, zW, cfg.yalign, cfg.yoff));
-        segTiles = generateZoneTiles(fw, fh, rx0, rx1, zx, zy, zL + p.joint, zW + p.joint, zL, zW, cfg, ops, th, reg);
-        segTiles.forEach(t => { t.zone = 1; });
-      } else {
-        segTiles = generateZoneTiles(fw, fh, rx0, rx1, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th, reg);
+      let segTiles = [], TL = p.TL, TW = p.TW;
+      // 橫跨整段寬度的上層（腰帶、上下分段）把這一層切成上下幾段：
+      // 最下面那段照原本的垂直起磚，腰帶上方那段從腰帶上緣重新起磚（使用者的做法）
+      const bands = L.occ.filter(o => o.x <= rx0 + EPS && o.x + o.w >= rx1 - EPS && o.y < ry1 - EPS && o.y + o.h > ry0 + EPS)
+        .sort((a, b) => a.y - b.y);
+      const parts = [];
+      let cur = ry0, restart = null;
+      for (const b of bands) {
+        if (b.y > cur + EPS) parts.push({ y0: cur, y1: b.y, base: restart });
+        if (b.y + b.h > cur) { cur = b.y + b.h; restart = cur; }
+      }
+      if (ry1 > cur + EPS) parts.push({ y0: cur, y1: ry1, base: restart });
+      for (const part of parts) {
+        const reg = { yMin: part.y0, yMax: part.y1, occ: L.occ };
+        if (z) {
+          TL = z.TL; TW = z.TW;
+          const zL = cfg.dir === 'H' ? TL : TW, zW = cfg.dir === 'H' ? TW : TL;
+          const zx = z.xoff !== undefined ? z.xoff : rx0; // 分區預設從分界線起磚
+          // 上下分段、腰帶從該段底邊起磚；整面高的分區跟著此面的垂直起磚
+          const zy = part.base !== null ? part.base
+            : z.yoff !== undefined ? z.yoff : (z.y0 !== undefined && ry0 > EPS ? ry0 : startOf(fh, zW + p.joint, zW, cfg.yalign, cfg.yoff));
+          const ts = generateZoneTiles(fw, fh, rx0, rx1, zx, zy, zL + p.joint, zW + p.joint, zL, zW, cfg, ops, th, reg);
+          ts.forEach(t => { t.zone = 1; });
+          segTiles = segTiles.concat(ts);
+        } else {
+          segTiles = segTiles.concat(generateZoneTiles(fw, fh, rx0, rx1, xBase, part.base !== null ? part.base : yBase, pitchL, pitchW, tL, tW, cfg, ops, th, reg));
+        }
       }
       const key = z ? `z${TL}x${TW}${z.name}` : 'main';
       segTiles.forEach(t => { t.gkey = key; t.glabel = matLabel(TL, TW, z ? z.name : ''); });
