@@ -253,8 +253,8 @@ const zoneB = layout({ L: 171, W: 207, H: 289, TL: 120, TW: 120, joint: 0.2, pri
   { dir: 'H', mode: 'grid', xalign: 'custom', xoff: 117, yalign: 'bottom', yoff: 0, zones: fz.B.zones }, []);
 const gMain = zoneB.groups.find(g => g.key === 'main'), gMosaic = zoneB.groups.find(g => g.key !== 'main');
 assert('smoke', '分區：壁磚區 3 片（117 寬的裁切磚 × 3 列）', gMain && gMain.full === 0 && gMain.cut === 3);
-assert('smoke', '分區：主秀壁 6 欄 × 20 列＝120 片，頂端 4cm 一列 6 片為小料（≥ 3cm 不畫紅圈）',
-  gMosaic && gMosaic.total === 120 && gMosaic.full === 114 && gMosaic.danger === 6 && gMosaic.avoid === 0 && gMosaic.label.includes('主秀壁'));
+assert('smoke', '分區：主秀壁 6 欄 × 20 列＝120 片，頂端 4cm 一列 6 片為小料並紅圈（同施工圖「避免小料」）',
+  gMosaic && gMosaic.total === 120 && gMosaic.full === 114 && gMosaic.danger === 6 && gMosaic.avoid === 6 && gMosaic.label.includes('主秀壁'));
 assert('smoke', '分區：不同尺寸的磚分開算理論片數（壁 3、主秀壁 119）', gMain && gMosaic && gMain.net === 3 && gMosaic.net === 119);
 assert('smoke', '分區文字「117-207: 14.8×14.8 主秀壁」可讀回、可寫出',
   vmCtx.formatZones(vmCtx.parseZones('117-207: 14.8×14.8 主秀壁; 0~50：30x60')) === '117-207: 14.8×14.8 主秀壁; 0-50: 30×60');

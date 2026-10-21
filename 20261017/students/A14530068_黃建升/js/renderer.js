@@ -275,7 +275,7 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
     box: [ox, yPx - 5, fw * sc, 10]
   });
 
-  // 最短邊 < 避免小料門檻（預設 3cm）的磚才畫紅圈標「避免小料」（文字留在面內，不會被畫布邊緣切掉）
+  // 最短邊 < 避免小料門檻（預設 5cm）的磚才畫紅圈標「避免小料」（文字留在面內，不會被畫布邊緣切掉）
   if (r.avoid > 0) {
     let t = null;
     for (const q of r.tiles) { if (q.avoid) { t = q; break; } }

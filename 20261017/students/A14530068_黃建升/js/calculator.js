@@ -47,7 +47,7 @@ function params() {
     joint: num('joint', 2) / 10,
     price: num('price', 0),
     smallTh: num('smallTh', 5),
-    avoidTh: num('avoidTh', 3)
+    avoidTh: num('avoidTh', 5)
   };
 }
 
@@ -112,7 +112,7 @@ function visiblePart(t, ops) {
 }
 
 // 小料判定（依黃建升的現場經驗）：只看裁切後露出部分的最短邊
-//   最短邊 < th.small（預設 5cm）＝小料，計入碎磚警示；再 < th.avoid（預設 3cm）＝圖上紅圈「避免小料」
+//   最短邊 < th.small（預設 5cm）＝小料，計入碎磚警示；再 < th.avoid（預設同為 5cm，可另調小）＝圖上紅圈「避免小料」
 //   磁磚本身短邊 ≤ th.small（例如小馬賽克）不列入
 function sliverOf(t, ops, th) {
   if (t.full || Math.min(t.tL, t.tW) <= th.small) return { danger: false, avoid: false, visMin: null };
@@ -122,7 +122,7 @@ function sliverOf(t, ops, th) {
 
 // 輔助函式：計算指定區間 [xMin, xMax] 內的磁磚陣列
 function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th) {
-  th = th || { small: 5, avoid: 3 };
+  th = th || { small: 5, avoid: 5 };
   const tiles = [];
   const r0 = Math.floor((0 - yBase + EPS) / pitchW);
   const r1 = Math.ceil((fh - yBase - EPS) / pitchW);
@@ -227,7 +227,7 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
   const tW = cfg.dir === 'H' ? p.TW : p.TL;
   const pitchL = tL + p.joint, pitchW = tW + p.joint;
   // 立面與地坪垂直起磚基準：預設由地面（Y=0）起磚向上排
-  const th = { small: p.smallTh || 5, avoid: p.avoidTh || 3 };
+  const th = { small: p.smallTh || 5, avoid: p.avoidTh || 5 };
   const xBase = startOf(fw, pitchL, tL, cfg.xalign, cfg.xoff);
   const yBase = startOf(fh, pitchW, tW, cfg.yalign, cfg.yoff);
 
