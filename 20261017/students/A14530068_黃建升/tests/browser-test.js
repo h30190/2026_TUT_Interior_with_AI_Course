@@ -187,6 +187,16 @@ function check(name, ok, info) {
     planRows === 4 && !(await page.evaluate(([a, b]) => betterScore(a, b), [before8, after8])) && errors.length === n,
     JSON.stringify({ before8, after8, err: errorsSince(n) }));
 
+  // 8b. 同一面混磚：按「＋腰帶」「＋上下分段」加進去，算料表多出那種磚
+  n = errors.length;
+  await page.click('button[data-p="demo"]');
+  await page.click('button[data-zone="B"][data-tpl^="高 100"]');
+  await page.click('button[data-zone="A"][data-tpl^="高 0"]');
+  const mixed = await page.evaluate(() => ({ b: $('B_zones').value, labels: computeAll(params()).flatMap(s => s.r.groups.map(g => s.key + ':' + g.label)) }));
+  check('混磚：B 面主秀壁＋腰帶、A 面上下分段，各自成一種磚算料',
+    mixed.b.includes('主秀壁') && mixed.b.includes('高 100-130') && mixed.labels.includes('B:腰帶 15×30') && mixed.labels.includes('A:下段 30×60') && errors.length === n,
+    JSON.stringify(mixed));
+
   // 9. 匯出 DXF（照施工圖畫法）
   n = errors.length;
   await page.click('button[data-p="demo"]');

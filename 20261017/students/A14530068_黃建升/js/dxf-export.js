@@ -187,10 +187,11 @@ function dxfTextW(s, h) {
 }
 
 // ── 磚縫線：每塊磚往外推半條縫，相鄰兩塊的邊就重合成一條；同一直線上的接起來；貼邊的不畫（外框會畫）；門窗裡面挖掉 ──
-function jointLines(tiles, fw, fh, joint, ops, outline) {
+// zrects：分區範圍（分區邊也當對齊參考）；磚身上的 t.occ（蓋在上面的分區）裡不畫這塊磚的縫
+function jointLines(tiles, fw, fh, joint, ops, outline, zrects) {
   const j2 = joint / 2;
   const refX = [0, fw], refY = [0, fh];
-  for (const o of ops) { refX.push(o.x, o.x + o.w); refY.push(o.y, o.y + o.h); }
+  for (const o of ops.concat(zrects || [])) { refX.push(o.x, o.x + o.w); refY.push(o.y, o.y + o.h); }
   const snap = (v, refs) => { for (const r of refs) if (Math.abs(v - r) <= joint + 1e-6) return r; return v; };
   const H = {}, V = {}, slant = [];
   const onOutline = (a, b) => {
@@ -232,7 +233,22 @@ function jointLines(tiles, fw, fh, joint, ops, outline) {
       Math.abs(p[1] - by0) < 1e-6 ? snap(Math.max(0, p[1] - j2), refY) : Math.abs(p[1] - by1) < 1e-6 ? snap(Math.min(fh, p[1] + j2), refY) : p[1]
     ];
     const q = pts.map(mv);
-    for (let i = 0; i < q.length; i++) add(q[i], q[(i + 1) % q.length]);
+    for (let i = 0; i < q.length; i++) {
+      const a = q[i], b = q[(i + 1) % q.length];
+      if (!t.occ) { add(a, b); continue; }
+      // 被上層分區蓋住的那段不畫
+      const horiz = Math.abs(a[1] - b[1]) < 1e-6, vert = Math.abs(a[0] - b[0]) < 1e-6;
+      if (!horiz && !vert) { add(a, b); continue; }
+      let segs = [[Math.min(horiz ? a[0] : a[1], horiz ? b[0] : b[1]), Math.max(horiz ? a[0] : a[1], horiz ? b[0] : b[1])]];
+      for (const o of t.occ) {
+        const c = horiz ? a[1] : a[0];
+        const [lo, hi] = horiz ? [o.y, o.y + o.h] : [o.x, o.x + o.w];
+        if (c <= lo + 0.01 || c >= hi - 0.01) continue;
+        const [h0, h1] = horiz ? [o.x, o.x + o.w] : [o.y, o.y + o.h];
+        segs = segs.flatMap(([u, v]) => (h1 <= u || h0 >= v) ? [[u, v]] : [[u, Math.min(v, h0)], [Math.max(u, h1), v]].filter(([m, w]) => w - m > 0.05));
+      }
+      for (const [u, v] of segs) add(horiz ? [u, a[1]] : [a[0], u], horiz ? [v, a[1]] : [a[0], v]);
+    }
   }
   // 同一直線上的線段接起來，再挖掉門窗裡面
   const merge = list => {
@@ -266,34 +282,17 @@ function jointLines(tiles, fw, fh, joint, ops, outline) {
 }
 
 // 一段面（x0～x1、高 fh）扣掉門窗後切成幾個長方形，給 Hatch 當外框（門窗裡面不填）
-function hatchRects(x0, x1, fh, ops) {
-  const xs = [x0, x1];
-  for (const o of ops) for (const v of [o.x, o.x + o.w]) if (v > x0 + EPS && v < x1 - EPS) xs.push(v);
-  xs.sort((a, b) => a - b);
-  const out = [];
-  for (let i = 0; i + 1 < xs.length; i++) {
-    const a = xs[i], b = xs[i + 1];
-    if (b - a <= EPS) continue;
-    const holes = ops.filter(o => o.x < b - EPS && o.x + o.w > a + EPS).map(o => [Math.max(0, o.y), Math.min(fh, o.y + o.h)]).sort((p, q) => p[0] - q[0]);
-    let y = 0;
-    for (const [h0, h1] of holes) { if (h0 - y > EPS) out.push([[a, y], [b, y], [b, h0], [a, h0]]); y = Math.max(y, h1); }
-    if (fh - y > EPS) out.push([[a, y], [b, y], [b, fh], [a, fh]]);
-  }
-  return out;
-}
-
-// 每種磁磚的 Hatch：依分區切段（同 layout），段內扣掉門窗；地坪有外框時照外框裁
+// 每種磁磚的 Hatch：此面的磚在最底層、分區依序往上蓋（同 layout），各區扣掉上層分區與門窗；地坪有外框時照外框裁
 function dxfHatches(d, s, p, map, outline, hmap, layer) {
   const { fw, fh, cfg } = s;
   const ops = s.key === 'floor' ? [] : s.ops;
-  const segs = (cfg.zones || []).length ? splitByZones(fw, cfg.zones) : [{ x0: 0, x1: fw, zone: null }];
   const fp = paramsFor(p, s.key); // 該面自己的磚尺寸（例如地坪 60×120、牆 120×120）
-  for (const seg of segs) {
-    const label = seg.zone ? matLabel(seg.zone.TL, seg.zone.TW, seg.zone.name) : matLabel(fp.TL, fp.TW);
+  for (const L of zoneLayers(fw, fh, cfg.zones || [])) {
+    const z = L.zone;
+    const label = z ? matLabel(z.TL, z.TW, z.name) : matLabel(fp.TL, fp.TW);
     const st = HATCH_STYLES[hmap[label] || 0];
-    const polys = outline
-      ? [clipPolygonRect(outline, seg.x0, 0, seg.x1, fh)]
-      : hatchRects(seg.x0, seg.x1, fh, ops);
+    const pcs = rectMinus(L.rect, L.occ.concat(ops));
+    const polys = pcs.map(q => outline ? clipPolygonRect(outline, q[0], q[1], q[2], q[3]) : [[q[0], q[1]], [q[2], q[1]], [q[2], q[3]], [q[0], q[3]]]);
     d.hatch(polys.map(q => q.map(pt => map(pt[0], pt[1]))), st.pat, layer, st.aci);
   }
 }
@@ -410,7 +409,8 @@ function dxfFace(d, s, p, map, outline, hmap) {
     return;
   }
   dxfHatches(d, s, p, map, outline, hmap, layer + '-HATCH');
-  for (const [a, b] of jointLines(r.tiles, fw, fh, p.joint, ops, outline)) d.line(map(a[0], a[1]), map(b[0], b[1]), layer);
+  const zrects = (cfg.zones || []).map(z => zoneRect(z, fw, fh));
+  for (const [a, b] of jointLines(r.tiles, fw, fh, p.joint, ops, outline, zrects)) d.line(map(a[0], a[1]), map(b[0], b[1]), layer);
   for (const o of ops) d.poly([[o.x, o.y], [o.x + o.w, o.y], [o.x + o.w, o.y + o.h], [o.x, o.y + o.h]].map(q => map(q[0], q[1])), true, '0', 4);
   const ov = faceOverlays[s.key];
   dxfOverlay(d, ov, map);
@@ -468,7 +468,7 @@ function buildDxf(p, rows) {
     if (prevH === null || Math.abs(s.fh - prevH) > 0.5) dxfChain(d, [0, s.fh], ox - DXF_DIM_OFF, true, map);
     prevH = s.fh;
     if (!s.cfg.skip) {
-      const ch = elevationChains(s.fw, s.fh, s.r, s.ops, chainMarks(s.cfg));
+      const ch = elevationChains(s.fw, s.fh, s.r, s.ops, chainMarks(s.cfg), zoneYMarks(s.cfg));
       dxfChain(d, ch.h, -DXF_DIM_OFF, false, map);
       const right = ch.v.filter(v => v < s.fh - 0.5);
       if (right.length > 1) dxfChain(d, right, ox + s.fw + 24, true, map);

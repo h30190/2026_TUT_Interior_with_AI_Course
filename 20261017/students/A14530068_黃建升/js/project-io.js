@@ -81,10 +81,13 @@ function validateProject(obj) {
       if (face.TL === undefined || face.TW === undefined) { delete face.TL; delete face.TW; }
     }
     if (f.zones !== undefined) {
-      const ok = Array.isArray(f.zones) ? f.zones.filter(z => z && [z.x0, z.x1, z.TL, z.TW].every(Number.isFinite)
-        && z.x1 > z.x0 && z.TL > 0 && z.TW > 0) : [];
+      // 左右範圍 x0～x1、上下範圍 y0～y1 至少要有一組（上下分段、腰帶只寫 y）
+      const range = (z, a, b) => z[a] === undefined && z[b] === undefined ? 0 : (Number.isFinite(z[a]) && Number.isFinite(z[b]) && z[b] > z[a] ? 1 : -1);
+      const ok = Array.isArray(f.zones) ? f.zones.filter(z => z && [z.TL, z.TW].every(Number.isFinite) && z.TL > 0 && z.TW > 0
+        && range(z, 'x0', 'x1') >= 0 && range(z, 'y0', 'y1') >= 0 && range(z, 'x0', 'x1') + range(z, 'y0', 'y1') > 0) : [];
       if (!Array.isArray(f.zones) || ok.length !== f.zones.length) warnings.push(`${k}.zones 有起迄或磚尺寸不正確的分區，已略過`);
-      face.zones = ok.map(z => ({ x0: z.x0, x1: z.x1, TL: z.TL, TW: z.TW, name: String(z.name || '') }));
+      face.zones = ok.map(z => Object.assign({ TL: z.TL, TW: z.TW, name: String(z.name || '') },
+        z.x0 !== undefined ? { x0: z.x0, x1: z.x1 } : {}, z.y0 !== undefined ? { y0: z.y0, y1: z.y1 } : {}));
     }
     if (f.overlay !== undefined) face.overlay = cleanOverlay(f.overlay);
     if (f.skip !== undefined) face.skip = !!f.skip;

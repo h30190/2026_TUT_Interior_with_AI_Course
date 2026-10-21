@@ -261,7 +261,10 @@ function buildPanels() {
       + `<div><label>此面磚 長×寬</label><input id="${k}_tile" type="text" placeholder="空白＝共用"></div>`
       + `<div><label>紅線 X (cm)</label><input id="${k}_marks" type="text" placeholder="例 59, 142"></div>`
       + `</div>`
-      + `<div><label>分區磚（起-迄: 磚 名稱）</label><input id="${k}_zones" type="text" placeholder="例 117-207: 14.8×14.8 主秀壁"></div>`
+      + `<div><label>分區磚（同一面混 2～3 種磚，分號隔開，後寫的蓋在上面）</label><input id="${k}_zones" type="text" placeholder="例 117-207: 14.8×14.8 主秀壁; 高 100-130: 15×30 腰帶"></div>`
+      + (k === 'floor' ? '' : `<div class="zone-add">加入：<button type="button" data-zone="${k}" data-tpl="0-60: 30×60 分區">＋左右分區</button>`
+        + `<button type="button" data-zone="${k}" data-tpl="高 0-120: 30×60 下段">＋上下分段</button>`
+        + `<button type="button" data-zone="${k}" data-tpl="高 100-130: 15×30 腰帶">＋腰帶</button></div>`)
       + (k === 'floor' ? `<div><label>外框頂點 x,y（由左上量，空白＝整個矩形）</label><input id="floor_outline" type="text" placeholder="例 0,29 117,29 117,0 207,0 207,172 0,172"></div>` : '')
       + `<label class="openable" style="margin-top:6px"><input type="checkbox" id="${k}_skip"> 此面不鋪磚</label>`;
     host.appendChild(blk);
@@ -797,6 +800,13 @@ function initApp() {
   FACE_KEYS.forEach(k => ['_dir', '_mode', '_xalign', '_yalign', '_skip'].forEach(s => $(k + s).addEventListener('change', refresh)));
   FACE_KEYS.forEach(k => ['_xoff', '_yoff', '_tile', '_marks', '_zones'].forEach(s => $(k + s).addEventListener('input', refresh)));
   $('floor_outline').addEventListener('input', e => { floorOutline = parseOutline(e.target.value); refresh(); });
+  // 分區快速加入：塞一段範本進去，數字再自己改
+  document.querySelectorAll('button[data-zone]').forEach(b => b.addEventListener('click', () => {
+    const inp = $(b.dataset.zone + '_zones');
+    inp.value = (inp.value.trim() ? inp.value.trim().replace(/[;；]$/, '') + '; ' : '') + b.dataset.tpl;
+    inp.focus();
+    refresh();
+  }));
 
   $('syncWalls').addEventListener('click', () => {
     ['B', 'C', 'D'].forEach(k => {

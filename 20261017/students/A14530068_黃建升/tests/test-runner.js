@@ -261,9 +261,45 @@ assert('smoke', '分區：主秀壁 6 欄 × 20 列＝120 片，頂端 4cm 一�
 assert('smoke', '分區：不同尺寸的磚分開算理論片數（壁 3、主秀壁 119）', gMain && gMosaic && gMain.net === 3 && gMosaic.net === 119);
 assert('smoke', '分區文字「117-207: 14.8×14.8 主秀壁」可讀回、可寫出',
   vmCtx.formatZones(vmCtx.parseZones('117-207: 14.8×14.8 主秀壁; 0~50：30x60')) === '117-207: 14.8×14.8 主秀壁; 0-50: 30×60');
-const overlap = vmCtx.splitByZones(200, [{ x0: 50, x1: 120, TL: 10, TW: 10 }, { x0: 100, x1: 150, TL: 20, TW: 20 }]);
-assert('smoke', '分區重疊時後一區從前一區結尾開始，整面不重複也不漏',
-  JSON.stringify(overlap.map(sg => [sg.x0, sg.x1, !!sg.zone])) === '[[0,50,false],[50,120,true],[120,150,true],[150,200,false]]');
+const layersOv = vmCtx.zoneLayers(200, 100, [{ x0: 50, x1: 120, TL: 10, TW: 10 }, { x0: 100, x1: 150, TL: 20, TW: 20 }]);
+const visOv = layersOv.map(L => vmCtx.rectMinus(L.rect, L.occ).map(q => [q[0], q[2]]));
+assert('smoke', '分區重疊時寫在後面的蓋在上面，整面不重複也不漏',
+  JSON.stringify(visOv) === '[[[0,50],[150,200]],[[50,100]],[[100,150]]]', JSON.stringify(visOv));
+
+// Test S10b: 同一面混 2～3 種磚——上下分段、腰帶（整面寬，寫在後面的蓋在上面）
+const pZ = { TL: 60, TW: 60, joint: 0.2, smallTh: 5, avoidTh: 5 };
+const cfgZ = zs => ({ dir: 'H', mode: 'grid', xalign: 'left', yalign: 'bottom', xoff: 0, yoff: 0, zones: vmCtx.parseZones(zs) });
+const twoBand = layout(pZ, 200, 280, cfgZ('高 0-120: 30×60 下段'), [], true);
+const gLow = twoBand.groups.find(g => g.name === '下段'), gUp = twoBand.groups.find(g => g.key === 'main');
+assert('smoke', '上下分段：下段 0～120 用 30×60、上段用此面 60×60，面積各自算、磚不跑出自己那段',
+  gLow && gUp && Math.abs(gLow.area - 200 * 120) < 1e-6 && Math.abs(gUp.area - 200 * 160) < 1e-6
+  && twoBand.tiles.filter(t => t.gkey === 'main').every(t => t.y0 >= 120 - 1e-6)
+  && twoBand.tiles.filter(t => t.gkey !== 'main').every(t => t.y0 + t.wW <= 120 + 1e-6 && t.tL === 30),
+  JSON.stringify({ low: gLow && [gLow.area, gLow.total], up: gUp && [gUp.area, gUp.total] }));
+const waist = layout(pZ, 200, 280, cfgZ('高 100-130: 15×30 腰帶'), [], true);
+const gWaist = waist.groups.find(g => g.name === '腰帶');
+assert('smoke', '腰帶：離地 100～130 一條 15×30（從腰帶底邊起磚，剛好 1 排），上下照常排此面的磚',
+  gWaist && Math.abs(gWaist.area - 200 * 30) < 1e-6 && waist.tiles.filter(t => t.gkey !== 'main').every(t => t.y0 >= 100 - 1e-6 && t.y0 + t.wW <= 130 + 1e-6)
+  && waist.tiles.filter(t => t.gkey !== 'main' && t.y0 < 101).length > 0 && !waist.tiles.some(t => t.gkey === 'main' && t.y0 < 129 && t.y0 + t.wW > 101 && t.x0 < 100 && !t.occ && t.y0 > 99));
+const both = layout(pZ, 207, 289, cfgZ('117-207: 14.8×14.8 主秀壁; 高 100-130: 15×30 腰帶'), [], true);
+const gMos = both.groups.find(g => g.name === '主秀壁'), gW2 = both.groups.find(g => g.name === '腰帶');
+assert('smoke', '主秀壁＋腰帶：腰帶寫在後面就橫跨主秀壁，主秀壁面積扣掉腰帶那段',
+  gMos && gW2 && Math.abs(gMos.area - 90 * (289 - 30)) < 1e-6 && Math.abs(gW2.area - 207 * 30) < 1e-6
+  && !both.tiles.some(t => t.gkey === gMos.key && t.y0 < 130 - 1e-6 && t.y0 + t.wW > 100 + 1e-6));
+// 牆中間一塊（左右＋高度都寫）：底下的磚包住那塊的轉角 → L 型
+const block = layout({ TL: 120, TW: 120, joint: 0.2, smallTh: 5, avoidTh: 5 }, 240.4, 240.4, cfgZ('30-90 高 30-90: 10×10 塊'), [], true);
+assert('smoke', '牆中間一塊：底下 120 磚包住那塊的轉角算 L 型', block.lcut === 1 && block.tiles.find(t => t.lcut).occ.length === 1, String(block.lcut));
+// 磚縫：底層的直縫不能穿過腰帶（腰帶裡只有腰帶自己的縫）
+const jlW = vmCtx.jointLines(waist.tiles, 200, 280, 0.2, [], null, vmCtx.parseZones('高 100-130: 15×30').map(z => vmCtx.zoneRect(z, 200, 280)));
+assert('smoke', '匯出 DXF：此面磚的直縫（60.1）在腰帶裡斷開，腰帶裡只畫腰帶自己的縫',
+  !jlW.some(l => l[0][0] === 60.1 && l[1][0] === 60.1 && Math.min(l[0][1], l[1][1]) < 115 && Math.max(l[0][1], l[1][1]) > 115)
+  && jlW.some(l => l[0][0] === 60.1 && Math.max(l[0][1], l[1][1]) <= 100.2));
+const zIO = vmCtx.validateProject({ format: 'tile-setting-out', version: 1, faces: { B: { fw: 200, fh: 280, zones: [{ y0: 100, y1: 130, TL: 15, TW: 30, name: '腰帶' }, { x0: 5, TL: 10, TW: 10 }] } } });
+assert('redteam', '資料檔：只寫高度的腰帶可以存讀；左右只寫一邊的分區略過並提醒',
+  zIO.project.faces.B.zones.length === 1 && zIO.project.faces.B.zones[0].y1 === 130 && zIO.project.faces.B.zones[0].x0 === undefined
+  && zIO.warnings.some(w => w.includes('B.zones')));
+assert('smoke', '分區文字：上下分段／腰帶／一塊都能讀回寫出',
+  vmCtx.formatZones(vmCtx.parseZones('高 0-120: 30×60 下段；高100~130：15x30 腰帶; 30-90 高 30-90: 10×10 塊')) === '高 0-120: 30×60 下段; 高 100-130: 15×30 腰帶; 30-90 高 30-90: 10×10 塊');
 
 // Test S11: 小料只看露出部分最短邊（< 5 小料、< 3 紅圈避免小料、磚本身 ≤ 5 不列入）
 const pTh = { TL: 120, TW: 120, joint: 0.2, price: 0, smallTh: 5, avoidTh: 3 };

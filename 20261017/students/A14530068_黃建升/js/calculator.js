@@ -108,6 +108,7 @@ function rowOffset(r, pitchL, mode) {
 
 // 磚被門窗遮住一部分時，回傳露出區塊的中心與短邊（讓「避免小料」圈在看得到的那一條）
 function visiblePart(t, ops) {
+  if (t.occ) ops = ops.concat(t.occ); // 被上層分區蓋住的部分也看不到
   const x0 = Math.max(t.x0, 0), x1 = x0 + t.wL;
   const y0 = Math.max(t.y0, 0), y1 = y0 + t.wW;
   for (const o of ops) {
@@ -166,12 +167,15 @@ function lCutOf(vx0, vy0, vx1, vy1, ops) {
   return null;
 }
 
-// 輔助函式：計算指定區間 [xMin, xMax] 內的磁磚陣列
-function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th) {
+// 輔助函式：計算指定區間 [xMin, xMax]（reg 有給時再限 [yMin, yMax]）內的磁磚陣列
+// reg.occ：蓋在上面的分區（上下分段、腰帶…）——被蓋住的部分不鋪這種磚，沒有門窗框可以收邊
+function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th, reg) {
   th = th || { small: 5, avoid: 5 };
+  const yMin = reg ? reg.yMin : 0, yMax = reg ? reg.yMax : fh;
+  const occAll = (reg && reg.occ) || [];
   const tiles = [];
-  const r0 = Math.floor((0 - yBase + EPS) / pitchW);
-  const r1 = Math.ceil((fh - yBase - EPS) / pitchW);
+  const r0 = Math.floor((yMin - yBase + EPS) / pitchW);
+  const r1 = Math.ceil((yMax - yBase - EPS) / pitchW);
   for (let r = r0; r <= r1; r++) {
     const off = rowOffset(r, pitchL, cfg.mode);
     const base = xBase + off;
@@ -181,18 +185,35 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
       const x0 = base + c * pitchL, x1 = x0 + tL;
       if (x1 <= xMin + EPS || x0 >= xMax - EPS) continue;
       const y0 = yBase + r * pitchW, y1 = y0 + tW;
-      if (y1 <= EPS || y0 >= fh - EPS) continue;
+      if (y1 <= yMin + EPS || y0 >= yMax - EPS) continue;
       // 牆底被地磚蓋住的切條：整條在蓋住範圍內就不用貼
       if (th.cover && y1 <= th.cover + EPS) continue;
-      const cutL = (x0 < xMin - EPS || x1 > xMax + EPS);
-      const cutW = (y0 < -EPS || y1 > fh + EPS);
-      let wL = Math.min(x1, xMax) - Math.max(x0, xMin);
-      let wW = Math.min(y1, fh) - Math.max(y0, 0);
+      let cutL = (x0 < xMin - EPS || x1 > xMax + EPS);
+      let cutW = (y0 < yMin - EPS || y1 > yMax + EPS);
+      let vx0 = Math.max(x0, xMin), vy0 = Math.max(y0, yMin);
+      let wL = Math.min(x1, xMax) - vx0;
+      let wW = Math.min(y1, yMax) - vy0;
+      // 上層分區蓋住的部分扣掉：整塊被蓋住就沒有這塊；剩下的範圍取外接框，蓋住轉角的另外記著（判斷 L 型、裁切）
+      let occ = null;
+      if (occAll.length) {
+        const hit = occAll.filter(o => o.x < vx0 + wL - EPS && o.x + o.w > vx0 + EPS && o.y < vy0 + wW - EPS && o.y + o.h > vy0 + EPS);
+        if (hit.length) {
+          const parts = rectMinus([vx0, vy0, vx0 + wL, vy0 + wW], hit);
+          if (!parts.length) continue;
+          const bx0 = Math.min(...parts.map(q => q[0])), by0 = Math.min(...parts.map(q => q[1]));
+          const bx1 = Math.max(...parts.map(q => q[2])), by1 = Math.max(...parts.map(q => q[3]));
+          if (bx0 > vx0 + EPS || bx1 < vx0 + wL - EPS) cutL = true;
+          if (by0 > vy0 + EPS || by1 < vy0 + wW - EPS) cutW = true;
+          vx0 = bx0; vy0 = by0; wL = bx1 - bx0; wW = by1 - by0;
+          const inside = hit.filter(o => o.x < bx1 - EPS && o.x + o.w > bx0 + EPS && o.y < by1 - EPS && o.y + o.h > by0 + EPS);
+          if (inside.length) occ = inside;
+        }
+      }
 
       // 地坪外框（L 形、斜牆）：裁掉外框外的部分；整塊在外面的不計料
       let clip = null;
       if (cfg.poly) {
-        const ax0 = Math.max(x0, xMin), ay0 = Math.max(y0, 0);
+        const ax0 = vx0, ay0 = vy0;
         const shape = clipPolygonRect(cfg.poly, ax0, ay0, ax0 + wL, ay0 + wW);
         const A = shape.length >= 3 ? polyArea(shape) : 0;
         if (A <= 0.01) continue;
@@ -213,17 +234,18 @@ function generateZoneTiles(fw, fh, xMin, xMax, xBase, yBase, pitchL, pitchW, tL,
       }
       if (covered) continue;
 
-      const full = !cutL && !cutW && !cutOp && !clip;
-      const t = { x0: Math.max(x0, xMin), y0, wL, wW, full, tL, tW };
+      const full = !cutL && !cutW && !cutOp && !clip && !occ;
+      const t = { x0: vx0, y0: vy0, wL, wW, full, tL, tW };
+      if (occ) t.occ = occ;
       if (clip) {
         // 被斜牆／缺角切到：記下實際形狀，外接框當作這塊磚的範圍
         const xs = clip.map(p => p[0]), ys = clip.map(p => p[1]);
         Object.assign(t, { poly: clip, x0: Math.min(...xs), y0: Math.min(...ys), wL: Math.max(...xs) - Math.min(...xs), wW: Math.max(...ys) - Math.min(...ys) });
       }
-      const lc = lCutOf(Math.max(x0, xMin), Math.max(y0, 0), Math.min(x1, xMax), Math.min(y1, fh), ops);
+      const lc = lCutOf(vx0, vy0, vx0 + wL, vy0 + wW, occ ? ops.concat(occ) : ops);
       if (lc) { t.lcut = true; t.lc = lc; }
       // 小料只看露出來的部分：牆底被地磚蓋住的那段當作遮住（整磚不受影響，仍算整磚）
-      const hide = th.cover && Math.max(y0, 0) < th.cover - EPS ? ops.concat([{ x: -1e6, y: -1e6, w: 2e6, h: 1e6 + th.cover }]) : ops;
+      const hide = th.cover && vy0 < th.cover - EPS ? ops.concat([{ x: -1e6, y: -1e6, w: 2e6, h: 1e6 + th.cover }]) : ops;
       tiles.push(Object.assign(t, sliverOf(t, hide, th)));
     }
   }
@@ -238,42 +260,79 @@ function startOf(len, pitch, t, align, off) {
   return 0;
 }
 
-// 分區磚「117-207: 14.8×14.8 主秀壁；…」→ [{ x0, x1, TL, TW, name }]（不在分區內的範圍沿用此面的磚）
+// 分區磚（同一面混 2～3 種磚），用分號隔開，寫在後面的蓋在前面的上面：
+//   左右分區「117-207: 14.8×14.8 主秀壁」＝距左 117～207、整面高
+//   上下分段／腰帶「高 0-120: 30×60 下段」「高 100-130: 15×30 腰帶」＝整面寬、離地 0～120
+//   兩個都寫「117-207 高 0-120: …」＝只在那一塊
+// → [{ x0?, x1?, y0?, y1?, TL, TW, name }]；沒寫的範圍＝整面；不在分區內的地方沿用此面的磚
 function parseZones(s) {
   const out = [];
+  const N = '(\\d+(?:\\.\\d+)?)', R = `${N}\\s*[-~～－]\\s*${N}`;
+  const re = new RegExp(`^\\s*(?:${R})?\\s*(?:高\\s*${R})?\\s*[:：]?\\s*${N}\\s*[*xX×]\\s*${N}\\s*(.*)$`);
   for (const part of String(s || '').split(/[;；\n]/)) {
-    const m = part.match(/(\d+(?:\.\d+)?)\s*[-~～－]\s*(\d+(?:\.\d+)?)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*[*xX×]\s*(\d+(?:\.\d+)?)\s*(.*)$/);
-    if (!m) continue;
-    const z = { x0: parseFloat(m[1]), x1: parseFloat(m[2]), TL: parseFloat(m[3]), TW: parseFloat(m[4]), name: m[5].trim() };
-    if (z.x1 > z.x0 && z.TL > 0 && z.TW > 0) out.push(z);
+    const m = part.match(re);
+    if (!m || (m[1] === undefined && m[3] === undefined)) continue;
+    const z = { TL: parseFloat(m[5]), TW: parseFloat(m[6]), name: m[7].trim() };
+    if (m[1] !== undefined) Object.assign(z, { x0: parseFloat(m[1]), x1: parseFloat(m[2]) });
+    if (m[3] !== undefined) Object.assign(z, { y0: parseFloat(m[3]), y1: parseFloat(m[4]) });
+    const okX = z.x0 === undefined || z.x1 > z.x0, okY = z.y0 === undefined || z.y1 > z.y0;
+    if (okX && okY && z.TL > 0 && z.TW > 0) out.push(z);
   }
   return out;
 }
 
 function formatZones(zones) {
-  return (zones || []).map(z => `${z.x0}-${z.x1}: ${z.TL}×${z.TW}${z.name ? ' ' + z.name : ''}`).join('; ');
+  return (zones || []).map(z => [z.x0 !== undefined ? `${z.x0}-${z.x1}` : '', z.y0 !== undefined ? `高 ${z.y0}-${z.y1}` : '']
+    .filter(Boolean).join(' ') + `: ${z.TL}×${z.TW}${z.name ? ' ' + z.name : ''}`).join('; ');
 }
 
-// 依分區把面寬切段：分區之外的段落用此面的磚（zone = null）
-function splitByZones(fw, zones) {
-  const zs = zones.map(z => Object.assign({}, z, { x0: Math.max(0, z.x0), x1: Math.min(fw, z.x1) }))
-    .filter(z => z.x1 - z.x0 > EPS).sort((a, b) => a.x0 - b.x0);
-  const segs = [];
-  let cur = 0;
-  for (const z of zs) {
-    const x0 = Math.max(z.x0, cur);
-    if (z.x1 - x0 <= EPS) continue; // 跟前一區重疊的部分略過
-    if (x0 - cur > EPS) segs.push({ x0: cur, x1: x0, zone: null });
-    segs.push({ x0, x1: z.x1, zone: z });
-    cur = z.x1;
+// 分區在這一面的範圍（沒寫的方向＝整面）
+function zoneRect(z, fw, fh) {
+  return {
+    x: Math.max(0, z.x0 !== undefined ? z.x0 : 0), y: Math.max(0, z.y0 !== undefined ? z.y0 : 0),
+    w: Math.min(fw, z.x1 !== undefined ? z.x1 : fw) - Math.max(0, z.x0 !== undefined ? z.x0 : 0),
+    h: Math.min(fh, z.y1 !== undefined ? z.y1 : fh) - Math.max(0, z.y0 !== undefined ? z.y0 : 0)
+  };
+}
+
+// 長方形 [x0, y0, x1, y1] 扣掉幾個長方形洞（{x, y, w, h}）→ 切成幾個長方形
+function rectMinus(r, holes) {
+  const [x0, y0, x1, y1] = r;
+  const xs = [x0, x1];
+  for (const o of holes) for (const v of [o.x, o.x + o.w]) if (v > x0 + EPS && v < x1 - EPS) xs.push(v);
+  xs.sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const a = xs[i], b = xs[i + 1];
+    if (b - a <= EPS) continue;
+    const hs = holes.filter(o => o.x < b - EPS && o.x + o.w > a + EPS).map(o => [Math.max(y0, o.y), Math.min(y1, o.y + o.h)])
+      .filter(h => h[1] > h[0]).sort((p, q) => p[0] - q[0]);
+    let y = y0;
+    for (const [h0, h1] of hs) { if (h0 - y > EPS) out.push([a, y, b, h0]); y = Math.max(y, h1); }
+    if (y1 - y > EPS) out.push([a, y, b, y1]);
   }
-  if (fw - cur > EPS) segs.push({ x0: cur, x1: fw, zone: null });
-  return segs;
+  return out;
 }
 
-// 尺寸鏈要標的分界：紅線＋分區起迄
+// 每一區（此面的磚＝最底層，分區依序往上蓋）實際範圍：自己的長方形扣掉蓋在上面的分區
+// → [{ zone, rect: [x0, y0, x1, y1], occ: 蓋在上面的分區長方形 }]
+function zoneLayers(fw, fh, zones) {
+  const rects = zones.map(z => zoneRect(z, fw, fh)).map(r => r.w > EPS && r.h > EPS ? r : null);
+  const layers = [{ zone: null, rect: [0, 0, fw, fh], occ: rects.filter(Boolean) }];
+  zones.forEach((z, i) => {
+    const r = rects[i];
+    if (r) layers.push({ zone: z, rect: [r.x, r.y, r.x + r.w, r.y + r.h], occ: rects.slice(i + 1).filter(Boolean) });
+  });
+  return layers;
+}
+
+// 尺寸鏈要標的分界：紅線＋分區左右起迄（上下分段的高度另外由 zoneYMarks 標）
 function chainMarks(cfg) {
-  return (cfg.marks || []).concat(...(cfg.zones || []).map(z => [z.x0, z.x1]));
+  return (cfg.marks || []).concat(...(cfg.zones || []).filter(z => z.x0 !== undefined).map(z => [z.x0, z.x1]));
+}
+
+function zoneYMarks(cfg) {
+  return [].concat(...(cfg.zones || []).filter(z => z.y0 !== undefined).map(z => [z.y0, z.y1]));
 }
 
 // 材料名稱：有匯入的材料就用「壁 120×120」，否則只寫尺寸
@@ -291,13 +350,15 @@ function cutPieceSize(t, ops, trim) {
   trim = trim === undefined ? 5 : trim;
   let x0 = Math.max(t.x0, 0), x1 = x0 + t.wL, y0 = Math.max(t.y0, 0), y1 = y0 + t.wW;
   if (!t.poly) {
-    for (const o of ops) {
+    // 門窗有框收邊，旁邊剩一點可以不切（trim）；上層分區沒有框，照實際切（0）
+    const occluders = ops.map(o => [o, trim]).concat((t.occ || []).map(o => [o, 0]));
+    for (const [o, tr] of occluders) {
       const ox1 = o.x + o.w, oy1 = o.y + o.h;
       if (ox1 <= x0 || o.x >= x1 || oy1 <= y0 || o.y >= y1) continue;
-      if (o.y <= y0 + trim && oy1 >= y1 - trim) {        // 開口（幾乎）蓋住整個高度：左右擇一留下
-        if (o.x <= x0 + trim) x0 = Math.min(x1, ox1); else if (ox1 >= x1 - trim) x1 = Math.max(x0, o.x);
-      } else if (o.x <= x0 + trim && ox1 >= x1 - trim) { // 蓋住整個寬度：上下擇一留下
-        if (o.y <= y0 + trim) y0 = Math.min(y1, oy1); else if (oy1 >= y1 - trim) y1 = Math.max(y0, o.y);
+      if (o.y <= y0 + tr && oy1 >= y1 - tr) {        // 開口（幾乎）蓋住整個高度：左右擇一留下
+        if (o.x <= x0 + tr) x0 = Math.min(x1, ox1); else if (ox1 >= x1 - tr) x1 = Math.max(x0, o.x);
+      } else if (o.x <= x0 + tr && ox1 >= x1 - tr) { // 蓋住整個寬度：上下擇一留下
+        if (o.y <= y0 + tr) y0 = Math.min(y1, oy1); else if (oy1 >= y1 - tr) y1 = Math.max(y0, o.y);
       }
     }
   }
@@ -439,26 +500,36 @@ function layout(p, fw, fh, cfg, ops, isElevation, col) {
     g.area += segArea; g.opArea += segOps;
   };
   // 開口落在 [x0, x1] 這一段的面積；可鋪面積（有地坪外框時只算外框內）
-  const opsAreaIn = (x0, x1) => ops.reduce((a, o) => a + Math.max(0, Math.min(x1, o.x + o.w) - Math.max(x0, o.x)) * o.h, 0);
   const areaIn = (x0, x1) => cfg.poly ? polyArea(clipPolygonRect(cfg.poly, x0, 0, x1, fh)) : (x1 - x0) * fh;
+  // 一區實際範圍（切成長方形）的面積與其中門窗面積
+  const piecesArea = pcs => pcs.reduce((a, q) => a + (cfg.poly ? polyArea(clipPolygonRect(cfg.poly, q[0], q[1], q[2], q[3])) : (q[2] - q[0]) * (q[3] - q[1])), 0);
+  const piecesOps = pcs => pcs.reduce((a, q) => a + ops.reduce((b, o) =>
+    b + Math.max(0, Math.min(q[2], o.x + o.w) - Math.max(q[0], o.x)) * Math.max(0, Math.min(q[3], o.y + o.h) - Math.max(q[1], o.y)), 0), 0);
 
   if (zones.length) {
-    for (const seg of splitByZones(fw, zones)) {
+    // 此面的磚在最底層，分區依序往上蓋（寫在後面的蓋在前面上面）
+    for (const L of zoneLayers(fw, fh, zones)) {
+      const z = L.zone;
+      const [rx0, ry0, rx1, ry1] = L.rect;
+      const pcs = rectMinus(L.rect, L.occ);
+      if (!pcs.length) continue; // 整區都被上層蓋住
       let segTiles, TL = p.TL, TW = p.TW;
-      if (seg.zone) {
-        TL = seg.zone.TL; TW = seg.zone.TW;
+      const reg = { yMin: ry0, yMax: ry1, occ: L.occ };
+      if (z) {
+        TL = z.TL; TW = z.TW;
         const zL = cfg.dir === 'H' ? TL : TW, zW = cfg.dir === 'H' ? TW : TL;
-        const zx = seg.zone.xoff !== undefined ? seg.zone.xoff : seg.x0; // 分區預設從分界線起磚
-        const zy = startOf(fh, zW + p.joint, zW, cfg.yalign, cfg.yoff);
-        segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, zx, zy, zL + p.joint, zW + p.joint, zL, zW, cfg, ops, th);
+        const zx = z.xoff !== undefined ? z.xoff : rx0; // 分區預設從分界線起磚
+        // 上下分段、腰帶從該段底邊起磚；整面高的分區跟著此面的垂直起磚
+        const zy = z.yoff !== undefined ? z.yoff : (z.y0 !== undefined && ry0 > EPS ? ry0 : startOf(fh, zW + p.joint, zW, cfg.yalign, cfg.yoff));
+        segTiles = generateZoneTiles(fw, fh, rx0, rx1, zx, zy, zL + p.joint, zW + p.joint, zL, zW, cfg, ops, th, reg);
         segTiles.forEach(t => { t.zone = 1; });
       } else {
-        segTiles = generateZoneTiles(fw, fh, seg.x0, seg.x1, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th);
+        segTiles = generateZoneTiles(fw, fh, rx0, rx1, xBase, yBase, pitchL, pitchW, tL, tW, cfg, ops, th, reg);
       }
-      const key = seg.zone ? `z${TL}x${TW}${seg.zone.name}` : 'main';
-      segTiles.forEach(t => { t.gkey = key; t.glabel = matLabel(TL, TW, seg.zone ? seg.zone.name : ''); });
+      const key = z ? `z${TL}x${TW}${z.name}` : 'main';
+      segTiles.forEach(t => { t.gkey = key; t.glabel = matLabel(TL, TW, z ? z.name : ''); });
       tiles = tiles.concat(segTiles);
-      addGroup(key, matLabel(TL, TW, seg.zone ? seg.zone.name : ''), TL, TW, segTiles, areaIn(seg.x0, seg.x1), opsAreaIn(seg.x0, seg.x1), seg.zone ? seg.zone.name : '');
+      addGroup(key, matLabel(TL, TW, z ? z.name : ''), TL, TW, segTiles, piecesArea(pcs), piecesOps(pcs), z ? z.name : '');
     }
   } else if (col && col.on && col.mode === 'independent' && col.x > 5 && col.x < fw - 5) {
     // 判斷是否啟用柱子獨立起磚模式：柱左側區間 [0, col.x]
@@ -566,9 +637,9 @@ function dimChainPoints(len, marks) {
   return pts.filter((v, i) => i === 0 || v - pts[i - 1] >= 0.5);
 }
 
-// 立面尺寸鏈：水平＝起磚線＋紅線＋門窗左右緣＋柱線；垂直＝起磚高＋窗台／窗頂＋門高
-function elevationChains(fw, fh, r, ops, marks) {
-  const hx = [r.xBase].concat(marks || []), vy = [r.yBase];
+// 立面尺寸鏈：水平＝起磚線＋紅線＋門窗左右緣＋柱線；垂直＝起磚高＋窗台／窗頂＋門高＋上下分段／腰帶高度（ymarks）
+function elevationChains(fw, fh, r, ops, marks, ymarks) {
+  const hx = [r.xBase].concat(marks || []), vy = [r.yBase].concat(ymarks || []);
   if (r.col && r.col.on) {
     const x0 = r.col.x0 !== undefined ? r.col.x0 : r.col.x;
     const x1 = r.col.x1 !== undefined ? r.col.x1 : r.col.x + (r.col.w || 0);

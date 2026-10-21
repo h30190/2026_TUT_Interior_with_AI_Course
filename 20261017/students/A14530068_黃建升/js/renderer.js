@@ -91,6 +91,11 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
       ctx.strokeStyle = '#d8d2c6';
       ctx.lineWidth = 0.6;
     }
+    if (drawStyle === 'line' && typeof ctx.fillStyle !== 'string') {
+      // Hatch 是透明底：先鋪白，上層分區的磚才蓋得住底下的磚
+      const pat = ctx.fillStyle;
+      ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.fillStyle = pat;
+    }
     ctx.fill();
     ctx.stroke();
 
@@ -646,8 +651,8 @@ function drawPlanCompass(ctx, cx, cy) {
 const DIM_COLOR = '#6b665e';
 
 // 立面外圍：下方水平尺寸鏈＋左側垂直尺寸鏈＋索引符號＋上方「由此線開始放樣」
-function drawElevIndex(ctx, ox, oy, fw, fh, sc, key, r, ops, marks) {
-  const ch = elevationChains(fw, fh, r, ops || [], marks);
+function drawElevIndex(ctx, ox, oy, fw, fh, sc, key, r, ops, marks, ymarks) {
+  const ch = elevationChains(fw, fh, r, ops || [], marks, ymarks);
   const baseY = oy + fh * sc;
   drawDimChain(ctx, ox, baseY + 14, 1, 0, sc, ch.h, DIM_COLOR);
   drawDimChain(ctx, ox - 10, baseY, 0, -1, sc, ch.v, DIM_COLOR);
@@ -979,7 +984,7 @@ function drawUnfold(p, rows) {
     facePosX[k] = { x: curX, y: oy, w: row.fw * s, h: bH };
 
     drawFaceBox(ctx, curX, oy, row.fw, row.fh, s, row.name, p, row.cfg, row.r, row.ops, { detail: false, faceKey: k });
-    drawElevIndex(ctx, curX, oy, row.fw, row.fh, s, k, row.r, row.ops, chainMarks(row.cfg));
+    drawElevIndex(ctx, curX, oy, row.fw, row.fh, s, k, row.r, row.ops, chainMarks(row.cfg), zoneYMarks(row.cfg));
     curX += row.fw * s + gap;
   }
 
@@ -1095,7 +1100,7 @@ function drawSingle(p, rows) {
     drawStartMarker(ctx, ox + Math.max(0, row.r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);
     drawStartMarkerV(ctx, oy + Math.max(0, row.r.yBase) * sc, ox - 40, oy - 10, oy + fh * sc + 10);
   } else {
-    const ch = elevationChains(fw, fh, row.r, row.ops, chainMarks(row.cfg));
+    const ch = elevationChains(fw, fh, row.r, row.ops, chainMarks(row.cfg), zoneYMarks(row.cfg));
     drawDimChain(ctx, ox, oy + fh * sc + 22, 1, 0, sc, ch.h, DIM_COLOR);
     drawDimChain(ctx, ox - 22, oy + fh * sc, 0, -1, sc, ch.v, DIM_COLOR);
     drawStartMarker(ctx, ox + Math.max(0, row.r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);

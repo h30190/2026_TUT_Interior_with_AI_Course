@@ -83,6 +83,9 @@ canvas{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff
 .joint-badge{font-size:10px;padding:2px 5px;background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9;border-radius:4px;font-weight:600}
 
 /* 🔒 鎖定／解鎖四面對縫切換按鈕 */
+.zone-add{display:flex;gap:4px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:4px}
+.zone-add button{padding:2px 6px;border:1px solid #c9c2b4;border-radius:4px;background:#fbfaf7;font-size:11px;cursor:pointer}
+.zone-add button:hover{border-color:#007acc;color:#007acc}
 .plan-search-btn{padding:6px 14px;border:1px solid #6a4c93;border-radius:6px;background:#6a4c93;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
 .plan-search-btn:hover{filter:brightness(1.12)}
 .plan-search-btn:disabled{opacity:.6;cursor:wait}
