@@ -727,7 +727,7 @@ function drawJointAlignmentGuide(ctx, px, py, pw, flR, bX, bY, bH, bR, sc) {
 }
 
 // 🏛️ 地坪平面圖中的結構柱繪製、尺寸標註與立面紅線垂直連動導引
-function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
+function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos, dims) {
   if (!col || !col.on) return;
   const colW = col.w || 50;
   const colD = col.d || 50;
@@ -807,12 +807,13 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
       type: 'columnFloor',
       faceKey: col.face,
       colX: col.x,
+      faceFw: dims && dims[col.face] ? dims[col.face].fw : pw / sc,
       ox: px, oy: py, fw: pw / sc, fh: ph / sc, sc,
       box: [cx - 6, cy - 2, Math.max(cw + 12, 28), Math.max(cd + 20, 36)]
     });
   } else if (col.face === 'D') {
-    // 依附地坪下方（D面門側）
-    cx = px + col.x * sc;
+    // 依附地坪下方（D面門側；立面左右跟平面相反）
+    cx = px + planPos('D', col.x, colW, dims) * sc;
     cy = py + ph - cd;
     ctx.fillStyle = '#2f2c28';
     ctx.fillRect(cx, cy, cw, cd);
@@ -827,14 +828,14 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
     ctx.fillText(`🏛️柱 ${colW}×${colD}`, cx + cw / 2, cy + cd / 2 + 3);
 
     interactiveTargets.push({
-      type: 'columnFloor', faceKey: col.face, colX: col.x,
+      type: 'columnFloor', faceKey: col.face, colX: col.x, faceFw: dims && dims[col.face] ? dims[col.face].fw : pw / sc,
       ox: px, oy: py, fw: pw / sc, fh: ph / sc, sc,
       box: [cx - 6, cy - 2, Math.max(cw + 12, 28), Math.max(cd + 8, 28)]
     });
   } else if (col.face === 'A') {
-    // 依附地坪左側（A面牆）
+    // 依附地坪左側（A面牆；立面左右跟平面相反）
     cx = px;
-    cy = py + col.x * sc;
+    cy = py + planPos('A', col.x, colW, dims) * sc;
     ctx.fillStyle = '#2f2c28';
     ctx.fillRect(cx, cy, cd, cw);
     ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.6;
@@ -845,7 +846,7 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
     ctx.setLineDash([]);
 
     interactiveTargets.push({
-      type: 'columnFloor', faceKey: col.face, colX: col.x,
+      type: 'columnFloor', faceKey: col.face, colX: col.x, faceFw: dims && dims[col.face] ? dims[col.face].fw : pw / sc,
       ox: px, oy: py, fw: pw / sc, fh: ph / sc, sc,
       box: [cx, cy - 6, Math.max(cd + 8, 28), Math.max(cw + 12, 28)]
     });
@@ -863,7 +864,7 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
     ctx.setLineDash([]);
 
     interactiveTargets.push({
-      type: 'columnFloor', faceKey: col.face, colX: col.x,
+      type: 'columnFloor', faceKey: col.face, colX: col.x, faceFw: dims && dims[col.face] ? dims[col.face].fw : pw / sc,
       ox: px, oy: py, fw: pw / sc, fh: ph / sc, sc,
       box: [cx - 4, cy - 6, Math.max(cd + 8, 28), Math.max(cw + 12, 28)]
     });
@@ -944,7 +945,7 @@ function drawUnfold(p, rows) {
   // 有匯入平面線稿時門已經畫在線稿裡，不再重畫一次
   if (!faceOverlays.floor) drawFloorPlanOpenings(ctx, px, py, planW, planH, s, allOps, dims);
   const col = columnParams();
-  drawFloorPlanColumn(ctx, px, py, planW, planH, s, col, facePosX[col.face || 'B']);
+  drawFloorPlanColumn(ctx, px, py, planW, planH, s, col, facePosX[col.face || 'B'], dims);
   drawPlanCompass(ctx, px + planW / 2, py + planH / 2);
 
   // 地坪外圍尺寸鏈與放樣起點（避開四面牆的門窗文字）

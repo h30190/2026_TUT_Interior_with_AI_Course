@@ -282,10 +282,10 @@ function initCanvasInteraction() {
           activeDrag = {
             type: t.type, faceKey: t.faceKey,
             ox: t.ox, oy: t.oy, fw: t.fw, fh: t.fh, sc: t.sc,
-            startX: t.colX, startMx: mx,
+            startX: t.colX, startMx: mx, startMy: my, faceFw: t.faceFw,
             curX: mx, curValX: t.colX
           };
-          cv.style.cursor = 'ew-resize';
+          cv.style.cursor = (t.type === 'columnFloor' && (t.faceKey === 'A' || t.faceKey === 'C')) ? 'ns-resize' : 'ew-resize';
           return;
         }
       } else if (t.type === 'settingOutX' && t.box) {
@@ -413,9 +413,11 @@ function initCanvasInteraction() {
       } else if (activeDrag.type === 'columnLine' || activeDrag.type === 'columnFloor') {
         let valX;
         if (activeDrag.type === 'columnFloor') {
+          // 平面上沿著牆拖：B 往右、C 往下為正；A、D 跟平面左右相反
           const colW = parseFloat($('col_w').value) || 50;
-          const deltaX = (mx - activeDrag.startMx) / activeDrag.sc;
-          valX = Math.max(0, Math.min(activeDrag.fw - colW, activeDrag.startX + deltaX));
+          const dx = (mx - activeDrag.startMx) / activeDrag.sc, dy = (my - activeDrag.startMy) / activeDrag.sc;
+          const along = { B: dx, C: dy, D: -dx, A: -dy }[activeDrag.faceKey] || dx;
+          valX = Math.max(0, Math.min((activeDrag.faceFw || activeDrag.fw) - colW, activeDrag.startX + along));
         } else {
           valX = Math.max(5, Math.min(activeDrag.fw - 5, (mx - activeDrag.ox) / activeDrag.sc));
         }
