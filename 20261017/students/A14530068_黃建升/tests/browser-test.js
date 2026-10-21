@@ -94,8 +94,13 @@ function check(name, ok, info) {
   check('DXF：B 面主秀壁分區、地坪 L 形外框、備註、3 種材料', dxf.zones.includes('主秀壁') && dxf.outline.split(' ').length >= 8 && dxf.notes === 1 && dxf.mats === 3, JSON.stringify(dxf));
   check('DXF 匯入過程沒有錯誤', errors.length === n, errorsSince(n));
 
-  // 5. 手動地坪外框
+  // 5. 換情境要清掉上一張圖的分區、紅線、各面磚尺寸
+  await page.click('button[data-p="demo"]');
   await page.click('button[data-p="living"]');
+  const leftover = await page.evaluate(() => ['floor', 'A', 'B', 'C', 'D'].map(k => $(k + '_zones').value + $(k + '_marks').value + $(k + '_tile').value + $(k + '_xoff').value).join('|'));
+  check('換情境：上一張圖的分區、紅線、磚尺寸、起磚點都清掉', leftover === '0|0|0|0|0', leftover);
+
+  // 6. 手動地坪外框
   const floorTotal = () => page.evaluate(() => computeAll(params()).find(r => r.key === 'floor').r.total);
   const rectTotal = await floorTotal();
   await page.fill('#floor_outline', '0,0 600,0 600,400 300,400 300,200 0,200');
@@ -103,7 +108,7 @@ function check(name, ok, info) {
   check(`手動輸入 L 形外框，地磚變少（${rectTotal} → ${lTotal}）`, lTotal < rectTotal);
   await page.fill('#floor_outline', '');
 
-  // 6. 匯出 PDF（A3 兩頁）與圖片
+  // 7. 匯出 PDF（A3 兩頁）與圖片
   n = errors.length;
   await page.click('button[data-p="demo"]');
   await page.click('#btnExportPdf');

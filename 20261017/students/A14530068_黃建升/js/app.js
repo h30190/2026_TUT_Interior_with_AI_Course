@@ -669,11 +669,11 @@ function initApp() {
       renderMaterialsUI();
       projectMeta = Object.assign({}, EMPTY_META);
       renderProjectMeta();
-      // 案例附帶各面起磚設定：其餘欄位回到預設，避免沿用上一個情境的起磚點
-      if (pr.cfg) {
+      // 換情境＝各面設定全部回到預設（再套上案例自己的起磚點、紅線、分區），不沿用上一張圖的分區、紅線、磚尺寸
+      {
         lockAllJoints = false;
         for (const k of FACE_KEYS) {
-          const c = Object.assign({}, DEFAULT_CFG[k], pr.cfg[k] || {});
+          const c = Object.assign({}, DEFAULT_CFG[k], (pr.cfg || {})[k] || {});
           ['dir', 'mode', 'xalign', 'yalign', 'xoff', 'yoff'].forEach(f => { $(k + '_' + f).value = c[f]; });
           $(k + '_tile').value = c.TL ? `${c.TL}×${c.TW}` : '';
           $(k + '_marks').value = (c.marks || []).join(', ');
