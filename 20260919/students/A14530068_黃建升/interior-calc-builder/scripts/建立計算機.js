@@ -572,9 +572,17 @@ var html = [
   '</body>',
   '</html>',
   ''
-].join('\n');
+].join('\n')
+  // 換行先統一成 LF：Windows 上 git（core.autocrlf=true）取出的 公式.js 是 CRLF，
+  // 原樣嵌進來會讓 HTML 混兩種換行（2026-11-17）
+  .replace(/\r\n/g, '\n');
 
 var 輸出路徑 = path.join(輸出資料夾, 設定.檔名);
+// 再沿用既有產出檔的換行寫法：Windows 取出來是 CRLF，改寫成 LF 檔案大小就變了，
+// git status 會因為大小不同直接判定「有改」（內容其實一樣）。沒有既有檔就用 LF。
+var 既有用CRLF = false;
+try { 既有用CRLF = /\r\n/.test(fs.readFileSync(輸出路徑, 'utf8')); } catch (e) { /* 第一次產生，沒有既有檔 */ }
+if (既有用CRLF) html = html.replace(/\n/g, '\r\n');
 fs.writeFileSync(輸出路徑, html, 'utf8');
 console.log('已產生：' + 輸出路徑);
 console.log('  ' + html.length + ' bytes，' + 設定.驗算.length + ' 組驗算，公式「' + 設定.公式 + '」');
