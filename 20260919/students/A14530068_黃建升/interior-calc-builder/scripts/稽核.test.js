@@ -65,7 +65,9 @@ function page(html = source) {
 }
 test('原有四組公式測試', ()=>{const r=run('公式.test.js');return {pass:r.status===0,detail:r.output};});
 test('原有十一項產出檢查', ()=>{const r=check(source);return {pass:r.status===0,detail:r.output};});
-test('重新產生與正式 HTML 完全一致', ()=>{const r=generate();return {pass:r.status===0 && fs.readFileSync(r.file,'utf8')===source,detail:r.output};});
+// 比內容不比換行：正式檔在 Windows 由 git 取出是 CRLF，暫存資料夾裡新產生的是 LF（2026-11-17）
+const 統一換行 = s => s.replace(/\r\n/g, '\n');
+test('重新產生與正式 HTML 完全一致', ()=>{const r=generate();return {pass:r.status===0 && 統一換行(fs.readFileSync(r.file,'utf8'))===統一換行(source),detail:r.output};});
 test('非預設輸入：實測周長 30 m', ()=>{
   const p=page(); const detail=p.change('perim',30);
   // (30×2.8−6)×2÷9×1.1 = 19.0666… L，進位為 6 加侖。
