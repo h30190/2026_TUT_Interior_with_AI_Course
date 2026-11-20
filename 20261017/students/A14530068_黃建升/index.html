@@ -8,10 +8,46 @@
 </head>
 <body>
 <h1>磁磚放樣施工圖系統（Tile Setting-Out Drawing）</h1>
-<div class="sub">上排 A/B/C/D 立面展開＋下排地坪平面索引｜畫布直接拖曳放樣紅線與門窗｜X光磁磚透視＋✨智慧消滅小料</div>
+<ol class="steps">
+  <li><b>拖 DXF 進來</b><span>立面施工圖、只有地坪都可以</span></li>
+  <li><b>確認</b><span>看提示，尺寸、門窗、材料對不對</span></li>
+  <li><b>🧠 自動找最佳起磚點</b><span>避開 L 型、小料，挑一個套用</span></li>
+  <li><b>出圖</b><span>📐 匯出 DXF 貼回 CAD／🖨️ PDF／💾 存資料檔</span></li>
+</ol>
 
 <div class="layout">
   <div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>施工圖資料檔</h2>
+      <button id="btnImportDxf" type="button" class="syncbtn" style="margin-bottom:8px">📐 匯入 DXF</button>
+      <div class="row2">
+        <button id="btnImportProject" type="button" class="syncbtn">📂 匯入資料檔</button>
+        <button id="btnExportProject" type="button" class="syncbtn">💾 匯出資料檔</button>
+      </div>
+      <input id="dxfFile" type="file" accept=".dxf" style="display:none">
+      <input id="projectFile" type="file" accept=".json,application/json" style="display:none">
+      <div id="projectMetaLine" class="syncnote" style="font-weight:600;color:var(--ink)"></div>
+      <div class="row3" style="margin-top:6px">
+        <div><label title="只給地坪平面時，平面圖上沒寫門高就用這個">只有地坪：門高</label><input id="doorH" type="number" value="210" min="100"></div>
+        <div><label title="平面看不出窗台高，找到的窗先用這個，再照實際改">窗台高</label><input id="winSill" type="number" value="90" min="0"></div>
+        <div><label title="平面看不出窗高，找到的窗先用這個，再照實際改">窗高</label><input id="winH" type="number" value="120" min="10"></div>
+      </div>
+      <div class="row3" style="margin-top:4px">
+        <div><label title="平面上靠牆的紅線＝半高檯（管道間、隱藏水箱），檯高看不出來先用這個">半高檯高</label><input id="ledgeH" type="number" value="110" min="10"></div>
+      </div>
+      <div class="syncnote">牆高用下方「空間高度 H」；窗的左右位置與寬度從平面量。匯入前會跳視窗讓你確認這些高度</div>
+      <div class="syncnote">DXF：AutoCAD「另存新檔」選 DXF（也可以直接把檔案拖進畫面）。有立面施工圖就照圖匯入；<b>只畫地坪平面也可以</b>——程式從平面四邊生成四面牆、找門，並自動套用最佳起磚點。資料檔（JSON）保存尺寸、起磚、紅線、門窗、材料。</div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">材料</h2>
+        <button id="btnAddMaterial" type="button" style="padding:4px 8px;font-size:11px;background:#8a7f6d;color:#fff;border:none;border-radius:4px;cursor:pointer">➕ 新增材料</button>
+      </div>
+      <div id="materialsContainer"></div>
+      <input id="materialPhotoFile" type="file" accept="image/*" style="display:none">
+    </div>
+
     <div class="card">
       <h2>空間與磁磚</h2>
       <div class="row2">
@@ -27,13 +63,19 @@
         <div><label>磁磚寬度 T_W (cm)</label><input id="TW" type="number" value="60"></div>
       </div>
       <div class="row2">
-        <div><label>磁磚單價 (元/片)</label><input id="price" type="number" value="0"></div>
+        <div><label>共用磁磚單價 (元/片)</label><input id="price" type="number" value="0" title="沒有材料資料時（例如內建案例）用這個單價；有材料時在「材料」卡片各自填"></div>
+        <div><label>備品 (%)</label><input id="spare" type="number" value="0" min="0" step="1"></div>
+      </div>
+      <div class="row2">
+        <div><label>小料門檻：最短邊 &lt; (cm)</label><input id="smallTh" type="number" value="5" step="0.5"></div>
+        <div><label>紅圈「避免小料」：&lt; (cm)</label><input id="avoidTh" type="number" value="5" step="0.5"></div>
+        <div><label title="地磚加黏著層會墊高，牆底這個高度以內被蓋住：整條在裡面的不用貼、不算小料">牆底被地磚蓋住 (cm)</label><input id="floorCover" type="number" value="1" step="0.5" min="0"></div>
       </div>
       <div class="presets">
         <button data-p="living">客廳大板磚（600×400×280，磚 120×60）</button>
         <button data-p="bedroom">主臥木紋磚（450×350×280，磚 15×75）</button>
         <button data-p="bath">浴室壁磚（240×180×240，磚 30×60）</button>
-        <button data-p="demo">施工圖案例：190×210×289（磚 30×60，A=171/B=207/C=172/D=210）</button>
+        <button data-p="demo">施工圖案例：浴室 207×171×289（壁磚 120×120，A=171/B=207/C=172/D=210，D 面門 86×239）</button>
       </div>
     </div>
 
@@ -52,6 +94,16 @@
         <button type="button" data-o="livingop">客廳：1玄關門 100×220 / 1落地窗 240×220 / 側窗 100×120（含柱）</button>
         <button type="button" data-o="bedroomop">臥室：1進門 90×210 / 1套房門 75×200 / 雙推窗 140×140</button>
       </div>
+    </div>
+
+    <!-- 🧱 半高檯（管道間、隱藏水箱、置物檯） -->
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">半高檯（管道間、隱藏水箱）</h2>
+        <button id="btnAddLedge" type="button" style="padding:4px 8px;font-size:11px;background:#b8352b;color:#fff;border:none;border-radius:4px;cursor:pointer">➕ 新增半高檯</button>
+      </div>
+      <div id="ledgesContainer"></div>
+      <div class="syncnote">檯的正面、側面跟上面的牆不在同一平面：跨過檯緣的磚會切開；包住檯角的磚算 L 型。「側面攤開」＝側面畫進這面立面（牆寬自動加檯深），攤開那條的上方沒有牆、不貼磚。</div>
     </div>
 
     <!-- 🏛️ 平面結構柱設定與立面放樣連動卡片 -->
@@ -98,6 +150,13 @@
         <button id="viewUnfold" class="on">📐 施工圖全景（立面排開＋地坪平面）</button>
         <button id="viewSingle">🔍 單面特寫放大</button>
       </div>
+      <div class="view style-toggle">
+        <button id="styleColor" class="on">🎨 彩色方案（給業主看損耗）</button>
+        <button id="styleLine">✏️ 施工線稿（給師傅放樣）</button>
+        <button id="btnExportPdf" title="A3 橫式兩頁：施工圖＋標題欄、材料表＋算料表；在列印視窗選「另存為 PDF」">🖨️ 匯出 PDF</button>
+        <button id="btnExportPng" title="下載目前畫面的高解析度圖片">🖼️ 下載圖片</button>
+        <button id="btnExportDxf" title="照施工圖畫法（壁磚／地磚分層磚縫、每種磚不同 Hatch、紅線、T-DIM 尺寸、避免小料）輸出 DXF，在 AutoCAD 用 INSERT 插入或開啟後複製貼上">📐 匯出 DXF</button>
+      </div>
       <div class="tabs" id="faceTabs" style="display:none">
         <button data-f="floor" class="on">地坪 L×W</button>
         <button data-f="A">A立面 L×H</button>
@@ -139,14 +198,24 @@
         </div>
       </div>
 
-      <canvas id="cv" width="1240" height="760"></canvas>
-      <div class="legend">
+      <canvas id="cv" width="1240" height="820"></canvas>
+      <div class="legend" id="legendColor">
         <span><i class="sw" style="background:var(--tile)"></i>整磚</span>
         <span><i class="sw" style="background:var(--cut)"></i>裁切修邊磚</span>
-        <span><i class="sw" style="background:var(--danger)"></i>危險小料（最短邊 &lt; 5cm）</span>
+        <span><i class="sw" style="background:#f08a7a"></i>小料（最短邊 &lt; 5cm）</span>
+        <span><i class="sw" style="background:#d62f2f"></i>避免小料（紅圈，預設 &lt; 5cm）</span>
+        <span><i class="sw" style="background:#fff;border:1.5px solid #d22;border-radius:50%"></i>避免L型（磚包住門窗轉角）</span>
         <span><i class="sw" style="background:#fff;border:1px dashed #2b2b2b"></i>壁地交接折線</span>
         <span><i class="sw" style="background:#eaf2fa;border:2px solid #3a76b5"></i>門窗開口（不鋪磚，可拖曳）</span>
         <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>🎯 紅色起磚靶心（可拖曳）</span>
+      </div>
+      <div class="legend" id="legendLine" style="display:none">
+        <span><i class="sw" style="background:#fff;border:1px solid #8c8c8c"></i>磁磚（灰線＝磚縫）</span>
+        <span><i class="sw" style="background:#fff;border-left:3px solid #d22"></i>紅線＝放樣基準線（可拖曳）</span>
+        <span><i class="sw" style="background:#fff;border-top:3px solid #7cb518"></i>綠箭頭＝由此線開始放樣</span>
+        <span><i class="sw" style="background:rgba(224,69,69,0.12)"></i>淡紅＝小料（&lt; 5cm）</span>
+        <span><i class="sw" style="background:#fff;border:1.5px solid #d22;border-radius:50%"></i>紅圈＝避免小料（預設 &lt; 5cm）／避免L型（包住門窗轉角）</span>
+        <span><i class="sw" style="background:#fff;border:2px solid #18a7c9"></i>門窗開口（不鋪磚，可拖曳）</span>
       </div>
       <div id="warn" class="warn" style="display:none">
         <span id="warnMsg"></span>
@@ -159,10 +228,12 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <h2>五面獨立排磚控制面板（地坪平面與四面立面）</h2>
         <div style="display:flex;gap:8px;align-items:center">
+          <button id="btnSearchPlans" class="plan-search-btn" title="比較幾種起磚方案：小料最少、不包住門窗轉角（L 型）、浪費最少">🧠 自動找最佳起磚點</button>
           <button id="btnLockJointsPanel" class="lock-toggle-btn">🔒 鎖定四面對縫（壁磚自動跟隨地磚）</button>
           <button id="syncWalls" class="syncbtn" style="width:auto;padding:6px 14px">一鍵同步四面牆（A→B/C/D）</button>
         </div>
       </div>
+      <div id="planResults" class="plan-results" style="display:none"></div>
       <div id="faceCfgs" class="face-cfgs-grid"></div>
       <div class="syncnote" style="margin-top:10px">
         💡 提示：鎖定四面對縫時，A、B、C、D 四面牆的垂直起磚線將自動隨地磚縫連動；點擊「解鎖」即可獨立自由調整各面起磚點。
@@ -179,10 +250,60 @@
         <tbody></tbody>
       </table>
       <div id="concl" class="concl"></div>
-      <div class="note">總叫料＝整磚＋裁切消耗（裁切磚不可回填復用）；損耗率＝(總叫料−理論片數)÷理論片數；理論片數＝淨面積（已扣門窗）÷單磚面積（向上取整）。碎磚警示＝裁切後最短邊長 &lt; 5cm 之危險小料數量（只要最短邊 ≥ 5cm 即視為安全可施工，面積不用顧慮）。開口完全覆蓋之磚不計料。</div>
+      <div id="quote" class="quote"></div>
+      <div class="note">總叫料＝整磚＋裁切消耗（裁切磚不可回填復用）；損耗率＝(總叫料−理論片數)÷理論片數；理論片數＝淨面積（已扣門窗）÷單磚面積（向上取整），不同尺寸的磚分開計算。小料＝裁切後露出部分的最短邊 &lt; 小料門檻（預設 5cm）；再小於「避免小料」門檻（預設 5cm，可調小只圈更窄的）者在圖上紅圈標示；磁磚本身短邊 ≤ 小料門檻（例如小馬賽克）不列入。開口完全覆蓋之磚不計料。</div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <h2 style="margin:0">✂️ 裁切清單與剩料回收</h2>
+        <label class="openable"><input type="checkbox" id="useReuse"> 報價／下單採用剩料回收</label>
+      </div>
+      <div id="cutlist"></div>
+      <div class="note">裁切清單：每面要切的磚，寬×高（cm，取到 0.5）；被門窗遮住的部分不用切。剩料回收：同一種磚大塊先切，切剩的料夠大就拿去切下一塊（每刀扣鋸路 0.3cm，剩料最短邊 &lt; 小料門檻就丟；長方形磚不轉向，避免紋路方向不對）。實際能不能用還要看切邊會不會露出來，所以預設不採用，勾選後報價與總叫料表才改用回收後片數。</div>
     </div>
   </div>
 </div>
+
+<!-- 📐 DXF 有多張施工圖時的選圖視窗 -->
+<div id="dxfSheetPicker" class="modal" style="display:none">
+  <div class="modal-box">
+    <h2>這個 DXF 裡有多張施工圖，要匯入哪一張？</h2>
+    <div class="row2" style="margin-bottom:10px">
+      <button id="btnBatchPdf" type="button" class="syncbtn">📚 全部匯出 PDF（總叫料表＋每張一頁）</button>
+      <button id="btnBatchCsv" type="button" class="syncbtn">📊 下載全案總叫料表 CSV</button>
+    </div>
+    <div id="dxfSheetList" class="sheet-list"></div>
+    <button id="dxfSheetCancel" type="button" class="lock-toggle-btn" style="margin-top:12px">取消</button>
+  </div>
+</div>
+
+<!-- 🏠 只有地坪平面：點選要做的浴室 -->
+<div id="planPicker" class="modal" style="display:none">
+  <div class="modal-box" style="width:min(1000px,96vw)">
+    <h2>只有地坪平面：點一下要做的浴室</h2>
+    <div class="syncnote" id="planPickerNote">紅框是程式找到的房間，點紅框或點在浴室中間都可以。</div>
+    <canvas id="planCanvas" width="960" height="580" style="width:100%;border:1px solid #d9d2c3;border-radius:6px;cursor:crosshair;background:#fff"></canvas>
+    <div id="planRoomList" class="sheet-list" style="margin-top:8px"></div>
+    <button id="planPickerCancel" type="button" class="lock-toggle-btn" style="margin-top:12px">取消</button>
+  </div>
+</div>
+
+<!-- 📏 只有地坪平面：匯入前確認平面看不出來的高度、要出哪幾面立面 -->
+<div id="planConfirm" class="modal" style="display:none">
+  <div class="modal-box" style="width:min(820px,96vw)">
+    <h2>匯入前確認高度</h2>
+    <div class="syncnote" id="planConfirmNote"></div>
+    <div id="planConfirmBody" class="pc-body"></div>
+    <div class="row2" style="margin-top:12px">
+      <button id="planConfirmOk" type="button" class="syncbtn">✔ 確定匯入</button>
+      <button id="planConfirmCancel" type="button" class="lock-toggle-btn">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🖨️ 匯出 PDF 用的出圖頁（螢幕上不顯示，列印時只印這裡） -->
+<div id="printSheet"></div>
 
 <!-- 🔍 X 光磁磚透視檢查器浮動視窗 -->
 <div id="tileInspector" class="tile-inspector" style="display:none"></div>
@@ -191,8 +312,15 @@
 <script src="js/config.js"></script>
 <script src="js/columns.js"></script>
 <script src="js/openings.js"></script>
+<script src="js/ledges.js"></script>
 <script src="js/calculator.js"></script>
 <script src="js/renderer.js"></script>
+<script src="js/project-io.js"></script>
+<script src="js/dxf-import.js"></script>
+<script src="js/materials.js"></script>
+<script src="js/export.js"></script>
+<script src="js/dxf-template.js"></script>
+<script src="js/dxf-export.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

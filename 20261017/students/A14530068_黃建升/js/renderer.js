@@ -14,8 +14,9 @@ function clearInteractiveTargets() {
 
 // 支援高解析度（Retina 2x）與加大圖面尺寸
 function setupHiDPICanvas(cv) {
-  const dpr = Math.max(window.devicePixelRatio || 1, 2);
-  const cssW = 1240, cssH = 760;
+  // 匯出 PDF／圖片時暫時用更高解析度（window.__exportDpr）
+  const dpr = window.__exportDpr || Math.max(window.devicePixelRatio || 1, 2);
+  const cssW = CANVAS_W, cssH = CANVAS_H;
   if (cv.width !== cssW * dpr || cv.height !== cssH * dpr) {
     cv.width = cssW * dpr;
     cv.height = cssH * dpr;
@@ -28,6 +29,34 @@ function setupHiDPICanvas(cv) {
   return { ctx, dpr, width: cssW, height: cssH };
 }
 
+// 施工線稿的磁磚 Hatch（對照 DXF 的 HATCH_STYLES：ANSI31 斜線、ANSI34 粗細組、ANSI37 交叉、ANSI32 雙線、NET 方格）
+const hatchCache = new WeakMap();
+function hatchPattern(ctx, idx) {
+  let byCtx = hatchCache.get(ctx);
+  if (!byCtx) hatchCache.set(ctx, byCtx = {});
+  if (byCtx[idx]) return byCtx[idx];
+  const st = HATCH_STYLES[idx] || HATCH_STYLES[0];
+  const S = 12;
+  const c = document.createElement('canvas');
+  c.width = S; c.height = S;
+  const g = c.getContext('2d');
+  g.strokeStyle = aciColor(st.aci); g.globalAlpha = 0.75; g.lineWidth = 0.8;
+  const diag = (off, dir) => {
+    // 45° 線（dir 1 ／、-1 ＼），畫三段讓接縫連續
+    for (const k of [-S, 0, S]) {
+      g.beginPath();
+      if (dir > 0) { g.moveTo(k + off, S); g.lineTo(k + off + S, 0); } else { g.moveTo(k + off, 0); g.lineTo(k + off + S, S); }
+      g.stroke();
+    }
+  };
+  if (st.pat === 'ANSI31') diag(0, 1);
+  else if (st.pat === 'ANSI34') { diag(0, 1); diag(2.5, 1); }
+  else if (st.pat === 'ANSI37') { diag(0, 1); diag(0, -1); }
+  else if (st.pat === 'ANSI32') { diag(0, 1); diag(6, 1); }
+  else { g.beginPath(); g.moveTo(0, 0.5); g.lineTo(S, 0.5); g.moveTo(0.5, 0); g.lineTo(0.5, S); g.stroke(); }
+  return (byCtx[idx] = ctx.createPattern(c, 'repeat'));
+}
+
 // 繪製磁磚網格
 function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
   for (const t of tiles) {
@@ -38,11 +67,37 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
       : oy + Math.max(t.y0, 0) * sc;
     const pw = t.wL * sc, ph = t.wW * sc;
 
-    ctx.fillStyle = t.danger ? '#e04545' : (t.full ? '#efe9df' : '#f2b48c');
-    ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = '#d8d2c6';
-    ctx.lineWidth = 0.6;
-    ctx.strokeRect(px, py, pw, ph);
+    // 被地坪外框（斜牆、缺角）切到的磚畫實際形狀，其餘畫矩形
+    ctx.beginPath();
+    if (t.poly) {
+      t.poly.forEach((q, i) => {
+        const x = ox + q[0] * sc, y = isElevation ? oy + (fh - q[1]) * sc : oy + q[1] * sc;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      });
+      ctx.closePath();
+    } else {
+      ctx.rect(px, py, pw, ph);
+    }
+    if (drawStyle === 'line') {
+      // 線稿：只畫磚縫，小料淡紅底提醒
+      // 每種磚不同 Hatch；小料、L 型改淡紅底提醒
+      ctx.fillStyle = t.avoid ? 'rgba(224, 69, 69, 0.30)' : (t.danger || t.lcut ? 'rgba(224, 69, 69, 0.12)'
+        : (t.hatch !== undefined ? hatchPattern(ctx, t.hatch) : '#ffffff'));
+      ctx.strokeStyle = '#8c8c8c';
+      ctx.lineWidth = 0.7;
+    } else {
+      // 分區磚（例如主秀壁）整磚改用淡藍，一眼分得出兩種材料
+      ctx.fillStyle = t.avoid ? '#d62f2f' : t.danger ? '#f08a7a' : t.lcut ? '#f3c96b' : (t.full ? (t.zone ? '#dfe9f2' : '#efe9df') : '#f2b48c');
+      ctx.strokeStyle = '#d8d2c6';
+      ctx.lineWidth = 0.6;
+    }
+    if (drawStyle === 'line' && typeof ctx.fillStyle !== 'string') {
+      // Hatch 是透明底：先鋪白，上層分區的磚才蓋得住底下的磚
+      const pat = ctx.fillStyle;
+      ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.fillStyle = pat;
+    }
+    ctx.fill();
+    ctx.stroke();
 
     interactiveTargets.push({
       type: 'tile',
@@ -53,13 +108,96 @@ function drawTiles(ctx, ox, oy, fw, fh, sc, tiles, faceName, isElevation) {
   }
 }
 
+// AutoCAD 色號 → 畫面顏色（1–9 標準色；10–249 依色相輪；7 白在白底畫成黑）
+function aciColor(aci) {
+  const base = { 1: '#e02020', 2: '#c8a400', 3: '#1f9d3a', 4: '#13a8c4', 5: '#2347d6', 6: '#d020c8', 7: '#222222', 8: '#7f7f7f', 9: '#b0b0b0' };
+  if (base[aci]) return base[aci];
+  if (aci >= 250 && aci <= 255) return ['#333', '#505050', '#696969', '#828282', '#bebebe', '#d0d0d0'][aci - 250];
+  if (aci < 10 || aci > 249) return '#444444';
+  const hue = Math.floor((aci - 10) / 10) * 15, k = aci % 10;
+  const val = [1, 1, 0.8, 0.8, 0.6, 0.6, 0.5, 0.5, 0.3, 0.3][k], sat = k % 2 ? 0.5 : 1;
+  const light = val * (1 - sat / 2), s2 = light === 0 || light === 1 ? 0 : (val - light) / Math.min(light, 1 - light);
+  return `hsl(${hue}, ${Math.round(s2 * 100)}%, ${Math.round(light * 100 * 0.9)}%)`;
+}
+
+// 匯入的設備線稿、文字與備註（照原施工圖的位置與顏色）；備註文字超出面框時往內推
+function drawOverlay(ctx, ox, oy, fw, fh, sc, ov, isElevation) {
+  if (!ov) return;
+  const P = p => [ox + p[0] * sc, isElevation ? oy + (fh - p[1]) * sc : oy + p[1] * sc];
+  ctx.save();
+  ctx.lineWidth = 0.8; ctx.lineJoin = 'round';
+  for (const pl of ov.polys) {
+    ctx.strokeStyle = aciColor(pl.c);
+    ctx.beginPath();
+    pl.pts.forEach((p, i) => { const [x, y] = P(p); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.stroke();
+  }
+  ctx.textAlign = 'left';
+  for (const t of ov.texts) {
+    const size = Math.max(7, t.h * sc);
+    ctx.font = `${size}px sans-serif`; ctx.fillStyle = aciColor(t.c);
+    const [x, y] = P([t.x, t.y]);
+    t.text.split('\n').forEach((ln, i) => ctx.fillText(ln, x, (t.top ? y + size : y) + i * size * 1.2));
+  }
+  for (const n of ov.notes) {
+    const col = aciColor(n.c);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+    for (const l of n.leaders) {
+      ctx.beginPath();
+      l.forEach((p, i) => { const [x, y] = P(p); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+      ctx.stroke();
+      const [ax, ay] = P(l[0]), [bx, by] = P(l[1]);
+      const ang = Math.atan2(ay - by, ax - bx);
+      ctx.beginPath(); ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - 7 * Math.cos(ang - 0.35), ay - 7 * Math.sin(ang - 0.35));
+      ctx.lineTo(ax - 7 * Math.cos(ang + 0.35), ay - 7 * Math.sin(ang + 0.35));
+      ctx.closePath(); ctx.fill();
+    }
+    const size = Math.max(10, Math.min(13, n.h * sc));
+    ctx.font = `bold ${size}px sans-serif`;
+    const lines = n.text.split('\n');
+    const w = Math.max(...lines.map(s => ctx.measureText(s).width));
+    let [x, y] = P([n.x, n.y]);
+    x = Math.max(ox + 2, Math.min(ox + fw * sc - w - 2, x));
+    y = Math.max(oy + 2, Math.min(oy + fh * sc - lines.length * size * 1.25 - 2, y));
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.fillRect(x - 2, y - 1, w + 4, lines.length * size * 1.25 + 2);
+    ctx.fillStyle = col;
+    lines.forEach((ln, i) => ctx.fillText(ln, x, y + size + i * size * 1.25 - 2));
+  }
+  ctx.restore();
+}
+
 // 正統建築立面門窗樣式（雙線門樘、窗框、接地）
 function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
   for (const o of ops) {
+    if (o.void) continue; // 半高檯造成的空白另外畫（drawLedges）
     const px = ox + o.x * sc;
     const py = oy + (fh - (o.y + o.h)) * sc;
     const pw = o.w * sc, ph = o.h * sc;
     const isDrag = (activeDrag && activeDrag.type === o.kind && activeDrag.faceKey === faceKey);
+
+    if (drawStyle === 'line') {
+      // 線稿：門窗只畫青色外框與內框（同施工圖）
+      const thk = Math.max(3, 4.5 * sc);
+      ctx.save();
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = isDrag ? '#d22' : '#18a7c9'; ctx.lineWidth = isDrag ? 2 : 1.4;
+      ctx.strokeRect(px, py, pw, ph);
+      ctx.lineWidth = 0.9;
+      if (o.kind === 'door') ctx.strokeRect(px + thk, py + thk, pw - thk * 2, ph - thk);
+      else ctx.strokeRect(px + thk, py + thk, pw - thk * 2, ph - thk * 2);
+      if (pw > 36) {
+        ctx.fillStyle = '#0f7f99'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(`${o.kind === 'door' ? '門' : '窗'} ${o.w}×${o.h}`, px + pw / 2, py + ph / 2);
+      }
+      ctx.restore();
+      interactiveTargets.push({
+        type: o.kind, faceKey: faceKey, op: o,
+        box: [px, py, pw, ph], ox, oy, fw, fh, sc
+      });
+      continue;
+    }
 
     ctx.save();
     ctx.fillStyle = '#ffffff';
@@ -127,8 +265,26 @@ function drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, faceKey) {
   }
 }
 
+// 半高檯：不貼磚的空白（攤開側面上方、被檯擋住的牆、地坪被檯佔掉的地方）淡灰底，檯的外框畫紅線（同使用者施工圖）
+function drawLedges(ctx, ox, oy, fw, fh, sc, faceKey, ops, p) {
+  if (typeof ledgeList === 'undefined' || !ledgeList.length) return;
+  const isElev = faceKey !== 'floor';
+  const X = x => ox + x * sc, Y = y => isElev ? oy + (fh - y) * sc : oy + y * sc;
+  ctx.save();
+  ctx.fillStyle = '#efece6';
+  for (const o of (ops || []).filter(q => q.void)) {
+    const y0 = Y(o.y), y1 = Y(o.y + o.h);
+    ctx.fillRect(X(o.x), Math.min(y0, y1), o.w * sc, Math.abs(y1 - y0));
+  }
+  ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.3;
+  for (const [a, b] of ledgeOutlineSegs(faceKey, faceDims(p))) {
+    ctx.beginPath(); ctx.moveTo(X(a[0]), Y(a[1])); ctx.lineTo(X(b[0]), Y(b[1])); ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // 紅色放樣基準線 ＋ 🎯 起磚十字靶 ＋ 起磚點明確標註 ＋ CAD 鎖點
-function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail) {
+function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail, ops) {
   const xPx = ox + Math.max(0, r.xBase) * sc;
   const yPx = isElevation
     ? oy + (fh - Math.max(0, r.yBase)) * sc
@@ -141,39 +297,35 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
   ctx.beginPath(); ctx.moveTo(xPx, oy); ctx.lineTo(xPx, oy + fh * sc); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(ox, yPx); ctx.lineTo(ox + fw * sc, yPx); ctx.stroke();
 
-  // 🎯 起磚十字靶心
+  // 🎯 起磚十字靶心（線稿只留小紅點，仍可拖曳）
   const isTargetActive = activeDrag && activeDrag.type === 'origin' && activeDrag.faceKey === faceKey;
+  const lineStyle = drawStyle === 'line';
   ctx.fillStyle = isTargetActive ? '#ff3838' : '#d22';
-  ctx.beginPath(); ctx.arc(xPx, yPx, 7, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath(); ctx.arc(xPx, yPx, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(xPx, yPx, lineStyle ? 4 : 7, 0, Math.PI * 2); ctx.fill();
+  if (!lineStyle) {
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(xPx, yPx, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
 
-  // 📍 起磚點明確標註 (CAD 座標標籤)
+  // 📍 起磚點明確標註 (CAD 座標標籤；線稿改由尺寸鏈表達)
   const xVal = Math.round(r.xBase * 10) / 10;
   const yVal = Math.round(r.yBase * 10) / 10;
   const tagText = `⌖ 起磚點 (X:${xVal}, Y:${yVal})`;
   ctx.font = 'bold 10px sans-serif';
   const tagW = ctx.measureText(tagText).width + 10;
   const tagX = (xPx + tagW + 10 < ox + fw * sc) ? xPx + 8 : xPx - tagW - 8;
-  const tagY = (yPx - 16 > oy) ? yPx - 10 : yPx + 16;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-  ctx.fillRect(tagX, tagY - 10, tagW, 14);
-  ctx.strokeStyle = '#d22'; ctx.lineWidth = 1;
-  ctx.strokeRect(tagX, tagY - 10, tagW, 14);
-  ctx.fillStyle = '#b22'; ctx.textAlign = 'left';
-  ctx.fillText(tagText, tagX + 5, tagY + 1);
-
-  // X 距左尺寸引導標註
-  if (r.xBase > 0.5) {
-    const dimY = oy - 4;
+  // 不壓到面頂的面別標題列
+  const tagY = Math.max(oy + 34, (yPx - 16 > oy) ? yPx - 10 : yPx + 16);
+  if (!lineStyle) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.fillRect(tagX, tagY - 10, tagW, 14);
     ctx.strokeStyle = '#d22'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(ox, dimY); ctx.lineTo(xPx, dimY); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(ox, dimY - 3); ctx.lineTo(ox, dimY + 3); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(xPx, dimY - 3); ctx.lineTo(xPx, dimY + 3); ctx.stroke();
-    ctx.fillStyle = '#d22'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(`距左 X=${xVal}`, (ox + xPx) / 2, dimY - 3);
+    ctx.strokeRect(tagX, tagY - 10, tagW, 14);
+    ctx.fillStyle = '#b22'; ctx.textAlign = 'left';
+    ctx.fillText(tagText, tagX + 5, tagY + 1);
   }
+  // （距左 X 改由面外的分段尺寸鏈標示）
 
   // 註冊互動目標
   interactiveTargets.push({
@@ -188,24 +340,47 @@ function drawSettingOut(ctx, ox, oy, fw, fh, sc, r, faceKey, isElevation, detail
     box: [ox, yPx - 5, fw * sc, 10]
   });
 
-  // 碎磚處標註「避免小料」
-  if (r.danger > 0) {
-    let t = null;
-    for (const q of r.tiles) { if (q.danger) { t = q; break; } }
-    if (t) {
-      const cx = ox + (Math.max(t.x0, 0) + t.wL / 2) * sc;
-      const cy = isElevation
-        ? oy + (fh - (Math.max(t.y0, 0) + t.wW / 2)) * sc
-        : oy + (Math.max(t.y0, 0) + t.wW / 2) * sc;
-      const ex = cx < ox + fw * sc / 2 ? ox - 10 : ox + fw * sc + 10;
-      const ey = cy < oy + fh * sc / 2 ? oy - 10 : oy + fh * sc + 10;
-      ctx.strokeStyle = '#d22'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
-      ctx.fillStyle = '#d22'; ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = ex < ox ? 'right' : 'left';
-      ctx.fillText('避免小料 (<5cm)', ex + (ex < ox ? -4 : 4), ey + 3);
-    }
+  // 最短邊 < 避免小料門檻（預設 5cm）的磚才畫紅圈標「避免小料」（文字留在面內，不會被畫布邊緣切掉）
+  if (r.avoid > 0) {
+    // 同一橫排／直排的小料只圈一次，第一個寫「避免小料」
+    sliverMarks(r.tiles, ops || []).forEach((vis, mi) => {
+      const cx = ox + vis.cx * sc;
+      const cy = isElevation ? oy + (fh - vis.cy) * sc : oy + vis.cy * sc;
+      const rad = Math.max(6, Math.min(14, vis.minDim * sc / 2 + 3));
+      ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
+      if (mi) return;
+      const label = '避免小料';
+      ctx.font = 'bold 11px sans-serif';
+      const lw = ctx.measureText(label).width;
+      const toLeft = cx + rad + 6 + lw > ox + fw * sc;
+      const lx = toLeft ? cx - rad - 6 - lw : cx + rad + 6;
+      const ly = Math.max(oy + 34, Math.min(oy + fh * sc - 6, cy + 4));
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fillRect(lx - 2, ly - 11, lw + 4, 14);
+      ctx.fillStyle = '#d22'; ctx.textAlign = 'left';
+      ctx.fillText(label, lx, ly);
+    });
   }
+  // L 型切割：紅圈圈在磚包住的門窗轉角，第一個寫「避免L型」
+  const lts = r.tiles.filter(q => q.lcut);
+  lts.forEach((q, i) => {
+    const cx = ox + q.lc[0] * sc;
+    const cy = isElevation ? oy + (fh - q.lc[1]) * sc : oy + q.lc[1] * sc;
+    ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI * 2); ctx.stroke();
+    if (i) return;
+    const label = '避免L型';
+    ctx.font = 'bold 11px sans-serif';
+    const lw = ctx.measureText(label).width;
+    const toLeft = cx + 14 + lw > ox + fw * sc;
+    const lx = toLeft ? cx - 14 - lw : cx + 14;
+    const ly = Math.max(oy + 34, Math.min(oy + fh * sc - 6, cy - 6));
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillRect(lx - 2, ly - 11, lw + 4, 14);
+    ctx.fillStyle = '#d22'; ctx.textAlign = 'left';
+    ctx.fillText(label, lx, ly);
+  });
   ctx.restore();
 }
 
@@ -216,12 +391,48 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   ctx.fillStyle = '#fff'; ctx.fillRect(ox, oy, fw * sc, fh * sc);
 
   drawTiles(ctx, ox, oy, fw, fh, sc, r.tiles, name, isElevation);
+  if (cfg.skip) {
+    // 不鋪磚：灰色斜線網底＋字
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ox, oy, fw * sc, fh * sc); ctx.clip();
+    ctx.strokeStyle = '#d6d2ca'; ctx.lineWidth = 1;
+    for (let d = -fh * sc; d < fw * sc; d += 12) { ctx.beginPath(); ctx.moveTo(ox + d, oy + fh * sc); ctx.lineTo(ox + d + fh * sc, oy); ctx.stroke(); }
+    ctx.fillStyle = '#8a857c'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('不鋪磚', ox + fw * sc / 2, oy + fh * sc / 2);
+    ctx.restore();
+  }
   if (ops && ops.length) {
     drawElevationOpenings(ctx, ox, oy, fw, fh, sc, ops, opts.faceKey || 'A');
   }
+  drawLedges(ctx, ox, oy, fw, fh, sc, opts.faceKey || 'A', ops, p);
+
+  // 地坪實際外框（L 形）：缺角留白，外框描粗線（有匯入牆線時牆線已經畫了）
+  if (opts.faceKey === 'floor' && floorOutline && !faceOverlays.floor) {
+    ctx.save();
+    ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    floorOutline.forEach((p, i) => { const x = ox + p[0] * sc, y = oy + p[1] * sc; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.closePath(); ctx.stroke();
+    ctx.restore();
+  }
+
+  // 匯入的設備（馬桶、臉盆…）與備註，畫在磁磚上、紅線下
+  drawOverlay(ctx, ox, oy, fw, fh, sc, faceOverlays[opts.faceKey], isElevation);
+
+  // 施工圖紅線（分界、門框、對縫基準）：整面高度的紅色實線
+  const reds = (cfg.marks || []).concat(cfg.jogs || []);
+  if (reds.length) {
+    ctx.save();
+    ctx.strokeStyle = '#d22'; ctx.lineWidth = 1.2;
+    for (const m of reds) {
+      if (m <= 0 || m >= fw) continue;
+      ctx.beginPath(); ctx.moveTo(ox + m * sc, oy); ctx.lineTo(ox + m * sc, oy + fh * sc); ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   // 繪製放樣基準線與起磚點
-  drawSettingOut(ctx, ox, oy, fw, fh, sc, r, opts.faceKey || 'A', isElevation, !!opts.detail);
+  if (!cfg.skip) drawSettingOut(ctx, ox, oy, fw, fh, sc, r, opts.faceKey || 'A', isElevation, !!opts.detail, ops);
 
   // 🏛️ 結構柱分界紅線繪製（支援主面與相鄰角隅立面雙面呈現！）
   if (r.col && r.col.on) {
@@ -339,26 +550,135 @@ function drawFaceBox(ctx, ox, oy, fw, fh, sc, name, p, cfg, r, ops, opts) {
   // 外牆線（粗黑線）
   ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1.6; ctx.strokeRect(ox, oy, fw * sc, fh * sc);
 
-  // 頂部面別資訊標籤
+  // 頂部面別資訊標籤（線稿不寫，面別看下方索引符號）
+  if (drawStyle === 'line') return;
   ctx.fillStyle = '#2b2b2b'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
   const dirTxt = cfg.dir === 'H' ? '橫貼' : '直貼';
   const xTxt = XALIGN_NAMES[cfg.xalign] || '靠左';
   const yTxt = YALIGN_NAMES[cfg.yalign] || '由地起';
-  ctx.fillText(`${name} ${fw}×${fh}｜${dirTxt}·${MODE_NAMES[cfg.mode]}·X:${xTxt}·Y:${yTxt}`, ox + 4, oy + 15);
+  // 面寬不夠時只寫面別與尺寸，避免標題超出框外
+  const fullTitle = `${name} ${fw}×${fh}｜${dirTxt}·${MODE_NAMES[cfg.mode]}·X:${xTxt}·Y:${yTxt}`;
+  const title = ctx.measureText(fullTitle).width < fw * sc - 8 ? fullTitle : `${name} ${fw}×${fh}`;
+  ctx.fillText(title, ox + 4, oy + 15);
 }
 
-// 立面下方：圓圈索引標記 ⒶⒷⒸⒹ ＋ 尺寸標註線
-function drawElevIndex(ctx, ox, oy, fw, fh, sc, key, r) {
-  const cy = oy + fh * sc + 18;
-  ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(ox, cy); ctx.lineTo(ox + fw * sc, cy); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(ox, cy - 4); ctx.lineTo(ox, cy + 4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(ox + fw * sc, cy - 4); ctx.lineTo(ox + fw * sc, cy + 4); ctx.stroke();
+function fmtLen(v) {
+  const r = Math.round(v * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
 
-  ctx.fillStyle = '#2b2b2b'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(CIRCLED[key], ox + fw * sc / 2, cy + 18);
-  ctx.font = '10px sans-serif'; ctx.fillStyle = '#7a756c';
-  ctx.fillText(fw + ' cm', ox + fw * sc / 2, cy - 5);
+// 分段尺寸鏈：pts 為沿線 cm 座標（已排序）；(ax, ay) 為 0 點像素位置，(dx, dy) 為方向（水平 1,0／往上 0,-1／往下 0,1）
+// 水平鏈文字寫在線上方，垂直鏈文字轉 90° 寫在線左側
+function drawDimChain(ctx, ax, ay, dx, dy, sc, pts, color) {
+  if (!pts || pts.length < 2) return;
+  const P = v => [ax + dx * v * sc, ay + dy * v * sc];
+  const vertical = dx === 0;
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 0.8;
+  ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  const [sx, sy] = P(pts[0]), [ex, ey] = P(pts[pts.length - 1]);
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+  for (const v of pts) {
+    const [x, y] = P(v);
+    ctx.beginPath();
+    if (vertical) { ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); }
+    else { ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 5); }
+    ctx.moveTo(x - 3, y + 3); ctx.lineTo(x + 3, y - 3); // 建築尺寸斜線端點
+    ctx.stroke();
+  }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const len = pts[i + 1] - pts[i];
+    if (len * sc < 16) continue; // 太短的段寫不下，只留端點
+    const [mx, my] = P((pts[i] + pts[i + 1]) / 2);
+    if (vertical) {
+      ctx.save(); ctx.translate(mx - 4, my); ctx.rotate(-Math.PI / 2);
+      ctx.fillText(fmtLen(len), 0, 0); ctx.restore();
+    } else {
+      ctx.fillText(fmtLen(len), mx, my - 4);
+    }
+  }
+  ctx.restore();
+}
+
+const START_GREEN = '#7cb518';
+
+// 「由此線開始放樣」：起磚線上方的綠色雙向箭頭（對照施工圖畫法）
+function drawStartMarker(ctx, xPx, topY, minX, maxX) {
+  const ay = topY - 12;
+  const lx = Math.max(minX, xPx - 36), rx = Math.min(maxX, xPx + 36);
+  ctx.save();
+  ctx.strokeStyle = START_GREEN; ctx.fillStyle = START_GREEN; ctx.lineWidth = 1.3;
+  ctx.beginPath(); ctx.moveTo(xPx, topY); ctx.lineTo(xPx, ay); ctx.moveTo(lx, ay); ctx.lineTo(rx, ay); ctx.stroke();
+  if (lx < xPx - 4) { ctx.beginPath(); ctx.moveTo(lx, ay); ctx.lineTo(lx + 6, ay - 3.5); ctx.lineTo(lx + 6, ay + 3.5); ctx.closePath(); ctx.fill(); }
+  if (rx > xPx + 4) { ctx.beginPath(); ctx.moveTo(rx, ay); ctx.lineTo(rx - 6, ay - 3.5); ctx.lineTo(rx - 6, ay + 3.5); ctx.closePath(); ctx.fill(); }
+  // 起磚線貼在面的邊緣時，文字往面內對齊，才不會跟隔壁面的標示疊在一起
+  ctx.font = '11px sans-serif';
+  if (rx - xPx < 20) { ctx.textAlign = 'right'; ctx.fillText('由此線開始放樣', rx, ay - 4); }
+  else if (xPx - lx < 20) { ctx.textAlign = 'left'; ctx.fillText('由此線開始放樣', lx, ay - 4); }
+  else { ctx.textAlign = 'center'; ctx.fillText('由此線開始放樣', (lx + rx) / 2, ay - 4); }
+  ctx.restore();
+}
+
+// 垂直方向的放樣起點（地坪左側）：橫向引線＋上下雙向箭頭＋直排文字
+function drawStartMarkerV(ctx, yPx, rightX, minY, maxY) {
+  const ax = rightX - 12;
+  const ty = Math.max(minY, yPx - 36), by = Math.min(maxY, yPx + 36);
+  ctx.save();
+  ctx.strokeStyle = START_GREEN; ctx.fillStyle = START_GREEN; ctx.lineWidth = 1.3;
+  ctx.beginPath(); ctx.moveTo(rightX, yPx); ctx.lineTo(ax, yPx); ctx.moveTo(ax, ty); ctx.lineTo(ax, by); ctx.stroke();
+  if (ty < yPx - 4) { ctx.beginPath(); ctx.moveTo(ax, ty); ctx.lineTo(ax - 3.5, ty + 6); ctx.lineTo(ax + 3.5, ty + 6); ctx.closePath(); ctx.fill(); }
+  if (by > yPx + 4) { ctx.beginPath(); ctx.moveTo(ax, by); ctx.lineTo(ax - 3.5, by - 6); ctx.lineTo(ax + 3.5, by - 6); ctx.closePath(); ctx.fill(); }
+  ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.translate(ax - 5, (ty + by) / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('由此線開始放樣', 0, 0);
+  ctx.restore();
+}
+
+// 立面索引符號：黑色三角帽＋白底圓圈字母（同施工圖）
+function drawIndexSymbol(ctx, cx, cy, key) {
+  ctx.save();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath(); ctx.moveTo(cx - 15, cy + 1); ctx.lineTo(cx + 15, cy + 1); ctx.lineTo(cx, cy - 18); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#1a1a1a'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(key, cx, cy + 1);
+  ctx.restore();
+}
+
+// 地坪中央視角符號：圓心＋四向三角指向 A/B/C/D 立面（同施工圖）
+function drawPlanCompass(ctx, cx, cy) {
+  ctx.save();
+  ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.2;
+  const dirs = [['B', 0, -1], ['D', 0, 1], ['A', -1, 0], ['C', 1, 0]];
+  for (const [, dx, dy] of dirs) {
+    ctx.beginPath();
+    ctx.moveTo(cx + dx * 19, cy + dy * 19);
+    ctx.lineTo(cx + dx * 7 - dy * 8, cy + dy * 7 - dx * 8);
+    ctx.lineTo(cx + dx * 7 + dy * 8, cy + dy * 7 + dx * 8);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const [k, dx, dy] of dirs) {
+    const tx = cx + dx * 28, ty = cy + dy * 28;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.fillRect(tx - 6, ty - 7, 12, 14);
+    ctx.fillStyle = '#1a1a1a'; ctx.fillText(k, tx, ty + 1);
+  }
+  ctx.restore();
+}
+
+const DIM_COLOR = '#6b665e';
+
+// 立面外圍：下方水平尺寸鏈＋左側垂直尺寸鏈＋索引符號＋上方「由此線開始放樣」
+function drawElevIndex(ctx, ox, oy, fw, fh, sc, key, r, ops, marks, ymarks) {
+  const ch = elevationChains(fw, fh, r, ops || [], marks, ymarks);
+  const baseY = oy + fh * sc;
+  drawDimChain(ctx, ox, baseY + 14, 1, 0, sc, ch.h, DIM_COLOR);
+  drawDimChain(ctx, ox - 10, baseY, 0, -1, sc, ch.v, DIM_COLOR);
+  drawIndexSymbol(ctx, ox + fw * sc / 2, baseY + 38, key);
+  if (r.tiles.length || r.total) drawStartMarker(ctx, ox + Math.max(0, r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);
 }
 
 // 地坪平面圖中的四面牆正統門窗圖例（支援 A/B/C/D 任意多個門與窗）
@@ -368,7 +688,7 @@ function drawFloorPlanOpenings(ctx, px, py, pw, ph, sc, allOps, dims) {
 
   // 1. B 面（地坪上方水平牆）
   (allOps.B || []).forEach(o => {
-    const ox = px + o.x * sc, ow = o.w * sc;
+    const ox = px + planPos('B', o.x, o.w, dims) * sc, ow = o.w * sc;
     if (o.kind === 'window') {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(ox, py - wallThk / 2, ow, wallThk);
       ctx.strokeStyle = '#2b5a8c'; ctx.lineWidth = 1.4; ctx.strokeRect(ox, py - wallThk / 2, ow, wallThk);
@@ -389,9 +709,9 @@ function drawFloorPlanOpenings(ctx, px, py, pw, ph, sc, allOps, dims) {
     }
   });
 
-  // 2. D 面（地坪下方水平牆）
+  // 2. D 面（地坪下方水平牆；立面左右跟平面相反）
   (allOps.D || []).forEach(o => {
-    const ox = px + o.x * sc, ow = o.w * sc;
+    const ox = px + planPos('D', o.x, o.w, dims) * sc, ow = o.w * sc;
     if (o.kind === 'door') {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(ox, py + ph - wallThk / 2, ow, wallThk);
       ctx.strokeStyle = '#888888'; ctx.lineWidth = 0.8;
@@ -412,9 +732,9 @@ function drawFloorPlanOpenings(ctx, px, py, pw, ph, sc, allOps, dims) {
     }
   });
 
-  // 3. A 面（地坪左側垂直牆）
+  // 3. A 面（地坪左側垂直牆；立面左右跟平面相反）
   (allOps.A || []).forEach(o => {
-    const oy = py + o.x * sc, ow = o.w * sc;
+    const oy = py + planPos('A', o.x, o.w, dims) * sc, ow = o.w * sc;
     if (o.kind === 'door') {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(px - wallThk / 2, oy, wallThk, ow);
       ctx.strokeStyle = '#888888'; ctx.lineWidth = 0.8;
@@ -437,7 +757,7 @@ function drawFloorPlanOpenings(ctx, px, py, pw, ph, sc, allOps, dims) {
 
   // 4. C 面（地坪右側垂直牆）
   (allOps.C || []).forEach(o => {
-    const oy = py + o.x * sc, ow = o.w * sc;
+    const oy = py + planPos('C', o.x, o.w, dims) * sc, ow = o.w * sc;
     if (o.kind === 'door') {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(px + pw - wallThk / 2, oy, wallThk, ow);
       ctx.strokeStyle = '#888888'; ctx.lineWidth = 0.8;
@@ -482,7 +802,7 @@ function drawJointAlignmentGuide(ctx, px, py, pw, flR, bX, bY, bH, bR, sc) {
 }
 
 // 🏛️ 地坪平面圖中的結構柱繪製、尺寸標註與立面紅線垂直連動導引
-function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
+function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos, dims) {
   if (!col || !col.on) return;
   const colW = col.w || 50;
   const colD = col.d || 50;
@@ -562,12 +882,13 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
       type: 'columnFloor',
       faceKey: col.face,
       colX: col.x,
+      faceFw: dims && dims[col.face] ? dims[col.face].fw : pw / sc,
       ox: px, oy: py, fw: pw / sc, fh: ph / sc, sc,
       box: [cx - 6, cy - 2, Math.max(cw + 12, 28), Math.max(cd + 20, 36)]
     });
   } else if (col.face === 'D') {
-    // 依附地坪下方（D面門側）
-    cx = px + col.x * sc;
+    // 依附地坪下方（D面門側；立面左右跟平面相反）
+    cx = px + planPos('D', col.x, colW, dims) * sc;
     cy = py + ph - cd;
     ctx.fillStyle = '#2f2c28';
     ctx.fillRect(cx, cy, cw, cd);
@@ -582,14 +903,14 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
     ctx.fillText(`🏛️柱 ${colW}×${colD}`, cx + cw / 2, cy + cd / 2 + 3);
 
     interactiveTargets.push({
-      type: 'columnFloor', faceKey: col.face, colX: col.x,
+      type: 'columnFloor', faceKey: col.face, colX: col.x, faceFw: dims && dims[col.face] ? dims[col.face].fw : pw / sc,
       ox: px, oy: py, fw: pw / sc, fh: ph / sc, sc,
       box: [cx - 6, cy - 2, Math.max(cw + 12, 28), Math.max(cd + 8, 28)]
     });
   } else if (col.face === 'A') {
-    // 依附地坪左側（A面牆）
+    // 依附地坪左側（A面牆；立面左右跟平面相反）
     cx = px;
-    cy = py + col.x * sc;
+    cy = py + planPos('A', col.x, colW, dims) * sc;
     ctx.fillStyle = '#2f2c28';
     ctx.fillRect(cx, cy, cd, cw);
     ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1.6;
@@ -600,7 +921,7 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
     ctx.setLineDash([]);
 
     interactiveTargets.push({
-      type: 'columnFloor', faceKey: col.face, colX: col.x,
+      type: 'columnFloor', faceKey: col.face, colX: col.x, faceFw: dims && dims[col.face] ? dims[col.face].fw : pw / sc,
       ox: px, oy: py, fw: pw / sc, fh: ph / sc, sc,
       box: [cx, cy - 6, Math.max(cd + 8, 28), Math.max(cw + 12, 28)]
     });
@@ -618,7 +939,7 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
     ctx.setLineDash([]);
 
     interactiveTargets.push({
-      type: 'columnFloor', faceKey: col.face, colX: col.x,
+      type: 'columnFloor', faceKey: col.face, colX: col.x, faceFw: dims && dims[col.face] ? dims[col.face].fw : pw / sc,
       ox: px, oy: py, fw: pw / sc, fh: ph / sc, sc,
       box: [cx - 4, cy - 6, Math.max(cd + 8, 28), Math.max(cw + 12, 28)]
     });
@@ -626,7 +947,27 @@ function drawFloorPlanColumn(ctx, px, py, pw, ph, sc, col, targetFacePos) {
   ctx.restore();
 }
 
-// 視角 1：施工圖全景（加大畫面，縮小邊距）
+// 匯入線稿的範圍（該面座標），用來讓尺寸鏈避開牆線
+function overlayExtent(ov) {
+  let x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  for (const pl of ov.polys) for (const p of pl.pts) {
+    if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1];
+  }
+  return { x0, y0, x1, y1 };
+}
+
+// 地坪四面牆門窗文字標籤最寬者（決定左側尺寸鏈要讓出多少空間）
+function planLabelWidth(ctx, ops) {
+  ctx.save(); ctx.font = 'bold 9px sans-serif';
+  let w = 0;
+  for (const o of ops || []) {
+    w = Math.max(w, ctx.measureText(`${o.kind === 'door' ? '🚪' : '🪟'} ${o.name || ''} ${o.w}`).width);
+  }
+  ctx.restore();
+  return w;
+}
+
+// 視角 1：施工圖全景（上排四面立面排開＋下排地坪平面，外圍尺寸鏈與放樣起點）
 function drawUnfold(p, rows) {
   clearInteractiveTargets();
   const cv = $('cv');
@@ -638,20 +979,23 @@ function drawUnfold(p, rows) {
   const allOps = openings(dims);
 
   const order = ['A', 'B', 'C', 'D'];
-  const gap = 20; // 緊湊間隔
+  const gap = 30;          // 立面間距（容納左側垂直尺寸鏈）
+  const padL = 34, padR = 16;
+  const padT = 34;         // 立面上方「由此線開始放樣」
+  const elevBottom = 58;   // 立面下方尺寸鏈＋索引符號
+  const planTop = 40;      // 地坪上方放樣標示與 B 牆門窗標籤
+  const planBottom = 48;   // 地坪下方 D 牆門窗標籤＋尺寸鏈
   const topH = Math.max(...order.map(k => byKey[k].fh));
   const Lf = byKey.floor.fw, Wf = byKey.floor.fh;
-  const pad = 16; // 最小化邊距以放大圖面
 
-  // 顯著放大圖面比例
   const s = Math.min(
-    (cvW - 2 * pad - (order.length - 1) * gap) / order.reduce((a, k) => a + byKey[k].fw, 0),
-    (cvH - 2 * pad - 55) / (topH + Wf)
+    (cvW - padL - padR - (order.length - 1) * gap) / order.reduce((a, k) => a + byKey[k].fw, 0),
+    (cvH - padT - elevBottom - planTop - planBottom - 8) / (topH + Wf)
   );
 
   const rowW = order.reduce((a, k) => a + byKey[k].fw * s, 0) + (order.length - 1) * gap;
-  let curX = (cvW - rowW) / 2;
-  const elevY = pad + 10;
+  let curX = padL + (cvW - padL - padR - rowW) / 2;
+  const elevY = padT;
 
   const facePosX = {};
   for (const k of order) {
@@ -661,52 +1005,87 @@ function drawUnfold(p, rows) {
     facePosX[k] = { x: curX, y: oy, w: row.fw * s, h: bH };
 
     drawFaceBox(ctx, curX, oy, row.fw, row.fh, s, row.name, p, row.cfg, row.r, row.ops, { detail: false, faceKey: k });
-    drawElevIndex(ctx, curX, oy, row.fw, row.fh, s, k, row.r);
+    drawElevIndex(ctx, curX, oy, row.fw, row.fh, s, k, row.r, row.ops, chainMarks(row.cfg), zoneYMarks(row.cfg));
     curX += row.fw * s + gap;
   }
 
   // 下排：地坪平面圖（X 座標完全垂直對齊 B 立面）
   const planW = Lf * s, planH = Wf * s;
   const px = facePosX.B.x;
-  const py = elevY + topH * s + 62;
+  const py = elevY + topH * s + elevBottom + planTop;
+  const flR = byKey.floor.r;
 
-  drawJointAlignmentGuide(ctx, px, py, planW, byKey.floor.r, facePosX.B.x, facePosX.B.y, facePosX.B.h, byKey.B.r, s);
-  drawFaceBox(ctx, px, py, Lf, Wf, s, '地坪平面', p, byKey.floor.cfg, byKey.floor.r, [], { detail: false, faceKey: 'floor' });
-  drawFloorPlanOpenings(ctx, px, py, planW, planH, s, allOps, dims);
+  drawJointAlignmentGuide(ctx, px, py, planW, flR, facePosX.B.x, facePosX.B.y, facePosX.B.h, byKey.B.r, s);
+  drawFaceBox(ctx, px, py, Lf, Wf, s, '地坪平面', p, byKey.floor.cfg, flR, byKey.floor.ops, { detail: false, faceKey: 'floor' });
+  // 有匯入平面線稿時門已經畫在線稿裡，不再重畫一次
+  if (!faceOverlays.floor) drawFloorPlanOpenings(ctx, px, py, planW, planH, s, allOps, dims);
   const col = columnParams();
-  drawFloorPlanColumn(ctx, px, py, planW, planH, s, col, facePosX[col.face || 'B']);
+  drawFloorPlanColumn(ctx, px, py, planW, planH, s, col, facePosX[col.face || 'B'], dims);
+  drawPlanCompass(ctx, px + planW / 2, py + planH / 2);
 
-  // 四向立面索引箭頭指南針（指針 B 朝上直指正上方 B 立面！）
-  ctx.fillStyle = '#2b2b2b'; ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1.3;
-  ctx.font = 'bold 13px sans-serif';
-  const arrow = (ax, ay, dir, label) => {
-    ctx.save(); ctx.translate(ax, ay);
-    const rot = { up: -Math.PI / 2, down: Math.PI / 2, left: Math.PI, right: 0 }[dir];
-    ctx.rotate(rot);
-    ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(4, 0); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(1, -4); ctx.lineTo(1, 4); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    ctx.textAlign = 'center';
-    const off = { up: [0, -14], down: [0, 20], left: [-22, 4], right: [22, 4] }[dir];
-    ctx.fillText(label, ax + off[0], ay + off[1]);
-  };
+  // 地坪外圍尺寸鏈與放樣起點（避開四面牆的門窗文字）
+  const fch = floorChains(Lf, Wf, flR, Object.assign({}, allOps, { floor: byKey.floor.ops }), chainMarks(byKey.floor.cfg), dims);
+  // 有匯入平面線稿時，尺寸鏈讓到牆線外面；沒有時讓開四面牆的門窗文字
+  const ov = faceOverlays.floor;
+  const oe = ov ? overlayExtent(ov) : null;
+  const botY = oe ? py + Math.max(Wf, oe.y1) * s + 14 : py + planH + ((allOps.D || []).length ? 40 : 14);
+  drawDimChain(ctx, px, botY, 1, 0, s, fch.h, DIM_COLOR);
+  const leftX = oe ? px + Math.min(0, oe.x0) * s - 10
+    : px - 10 - ((allOps.A || []).length ? planLabelWidth(ctx, allOps.A) + 12 : 0);
+  drawDimChain(ctx, leftX, py, 0, 1, s, fch.v, DIM_COLOR);
+  const markTop = oe ? py + Math.min(0, oe.y0) * s : py - ((allOps.B || []).length ? 14 : 0);
+  drawStartMarker(ctx, px + Math.max(0, flR.xBase) * s, markTop, px - 10, px + planW + 10);
+  drawStartMarkerV(ctx, py + Math.max(0, flR.yBase) * s, leftX - 16, py - 10, py + planH + 10);
 
-  arrow(px + planW / 2, py - 6, 'up', 'Ⓑ 立面（直對）');
-  arrow(px + planW / 2, py + planH + 6, 'down', 'Ⓓ 立面');
-  arrow(px - 6, py + planH / 2, 'left', 'Ⓐ 立面');
-  arrow(px + planW + 6, py + planH / 2, 'right', 'Ⓒ 立面');
+  // 材料（匯入施工圖時照圖上的材料標註列出；沒有就列共用磁磚規格）
+  ctx.textAlign = 'left';
+  let ty = py + 14;
+  if (projectMaterials.length) {
+    for (const m of projectMaterials) {
+      // 有材質照片時畫在文字左邊（同施工圖材料表）
+      const img = typeof materialPhoto === 'function' ? materialPhoto(m) : null;
+      const tx = img ? padR + 52 : padR;
+      const top = ty;
+      if (img) {
+        const k = Math.min(46 / img.naturalWidth, 46 / img.naturalHeight);
+        ctx.drawImage(img, padR, ty - 11, img.naturalWidth * k, img.naturalHeight * k);
+      }
+      ctx.fillStyle = '#c0703a'; ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(m.role, tx, ty); ty += 15;
+      ctx.fillStyle = '#3a3a3a'; ctx.font = '10.5px sans-serif';
+      [m.code, m.spec, '填縫劑：' + (m.grout || '')].filter(t => t && t.trim()).forEach(t => { ctx.fillText(t, tx, ty); ty += 13; });
+      ty = Math.max(ty, img ? top + 40 : ty) + 6;
+    }
+  } else {
+    ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif';
+    [
+      '【施工圖規格】',
+      `磁磚：${p.TL}×${p.TW} cm（縫寬 ${p.joint} cm）`,
+      `工法：橫/直貼與起磚依各面設定`,
+      '對縫：地磚縫垂直向上連通 B/D 壁磚',
+      '收邊：轉角陽角處倒 45 度背切收邊'
+    ].forEach((t, i) => ctx.fillText(t, padR, py + 14 + i * 16));
+    ty = py + 14 + 5 * 16;
+  }
+  // 施工線稿：磁磚 Hatch 圖例（同匯出 DXF）
+  if (drawStyle === 'line') {
+    const hmap = hatchIndexMap(rows);
+    ty += 6;
+    ctx.fillStyle = '#3a3a3a'; ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('磁磚圖例', padR, ty); ty += 6;
+    for (const label of Object.keys(hmap)) {
+      ctx.fillStyle = hatchPattern(ctx, hmap[label]);
+      ctx.fillRect(padR, ty, 26, 14);
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 0.8; ctx.strokeRect(padR, ty, 26, 14);
+      ctx.fillStyle = '#3a3a3a'; ctx.font = '10.5px sans-serif';
+      ctx.fillText(label, padR + 32, ty + 11);
+      ty += 20;
+    }
+  }
+  ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif';
 
-  // 材料規格與操作說明
-  ctx.fillStyle = '#5a544b'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
-  const spec = [
-    '【施工圖規格】',
-    `磁磚：${p.TL}×${p.TW} cm（縫寬 ${p.joint} cm）`,
-    `工法：橫/直貼與起磚依各面設定`,
-    '對縫：地磚縫垂直向上連通 B/D 壁磚',
-    '收邊：轉角陽角處倒 45 度背切收邊'
-  ];
-  spec.forEach((t, i) => ctx.fillText(t, pad, py + 14 + i * 16));
-
+  // 操作說明只在螢幕上看，匯出 PDF／圖片時不畫
+  if (window.__exportDpr) { drawActiveDragGuide(ctx); return; }
   ctx.textAlign = 'right';
   const spec2 = [
     '【CAD 互動放樣說明】',
@@ -715,12 +1094,12 @@ function drawUnfold(p, rows) {
     '🧲 自動鎖點＝接近門框/窗台/柱線自動吸附',
     '🔗 一鍵對縫＝壁磚垂直縫精確對齊地磚'
   ];
-  spec2.forEach((t, i) => ctx.fillText(t, cvW - pad, py + 14 + i * 16));
+  spec2.forEach((t, i) => ctx.fillText(t, cvW - padR, py + 14 + i * 16));
 
   drawActiveDragGuide(ctx);
 }
 
-// 視角 2：單面特寫放樣＋外圍尺寸線
+// 視角 2：單面特寫放樣＋外圍分段尺寸鏈
 function drawSingle(p, rows) {
   clearInteractiveTargets();
   const cv = $('cv');
@@ -729,25 +1108,24 @@ function drawSingle(p, rows) {
 
   const row = rows.find(s => s.key === face);
   const fw = row.fw, fh = row.fh;
-  const pad = 60;
+  const pad = 64;
   const sc = Math.min((cvW - 2 * pad) / fw, (cvH - 2 * pad) / fh);
   const ox = (cvW - fw * sc) / 2, oy = (cvH - fh * sc) / 2;
 
   drawFaceBox(ctx, ox, oy, fw, fh, sc, row.name, p, row.cfg, row.r, row.ops, { detail: true, faceKey: face });
 
-  ctx.strokeStyle = '#8a7f6d'; ctx.lineWidth = 1; ctx.fillStyle = '#8a7f6d';
-  ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
-  const dimY = oy + fh * sc + 24;
-  ctx.beginPath(); ctx.moveTo(ox, dimY); ctx.lineTo(ox + fw * sc, dimY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(ox, dimY - 4); ctx.lineTo(ox, dimY + 4); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(ox + fw * sc, dimY - 4); ctx.lineTo(ox + fw * sc, dimY + 4); ctx.stroke();
-  ctx.fillText(fw + ' cm', ox + fw * sc / 2, dimY + 14);
-
-  const dimX = ox - 24;
-  ctx.save(); ctx.translate(dimX, oy + fh * sc / 2); ctx.rotate(-Math.PI / 2);
-  ctx.beginPath(); ctx.moveTo(-fh * sc / 2, 0); ctx.lineTo(fh * sc / 2, 0); ctx.stroke();
-  ctx.fillText(fh + ' cm', 0, -6);
-  ctx.restore();
+  if (face === 'floor') {
+    const ch = floorChains(fw, fh, row.r, {}, chainMarks(row.cfg));
+    drawDimChain(ctx, ox, oy + fh * sc + 22, 1, 0, sc, ch.h, DIM_COLOR);
+    drawDimChain(ctx, ox - 22, oy, 0, 1, sc, ch.v, DIM_COLOR);
+    drawStartMarker(ctx, ox + Math.max(0, row.r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);
+    drawStartMarkerV(ctx, oy + Math.max(0, row.r.yBase) * sc, ox - 40, oy - 10, oy + fh * sc + 10);
+  } else {
+    const ch = elevationChains(fw, fh, row.r, row.ops, chainMarks(row.cfg), zoneYMarks(row.cfg));
+    drawDimChain(ctx, ox, oy + fh * sc + 22, 1, 0, sc, ch.h, DIM_COLOR);
+    drawDimChain(ctx, ox - 22, oy + fh * sc, 0, -1, sc, ch.v, DIM_COLOR);
+    drawStartMarker(ctx, ox + Math.max(0, row.r.xBase) * sc, oy, ox - 10, ox + fw * sc + 10);
+  }
 
   drawActiveDragGuide(ctx);
 }
@@ -809,6 +1187,11 @@ function drawActiveDragGuide(ctx) {
 }
 
 function draw(p, rows) {
+  p = p || params();
+  rows = rows || computeAll(p);
+  // 每塊磚記下用哪一組 Hatch（施工線稿與圖例用）
+  const hmap = hatchIndexMap(rows);
+  for (const s of rows) for (const t of s.r.tiles) t.hatch = hmap[t.glabel];
   if (view === 'unfold') drawUnfold(p, rows);
   else drawSingle(p, rows);
 
