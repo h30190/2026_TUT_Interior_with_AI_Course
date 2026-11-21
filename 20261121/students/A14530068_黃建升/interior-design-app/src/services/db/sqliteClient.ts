@@ -63,6 +63,7 @@ export function getDb(): SQLite.SQLiteDatabase | null {
         conversation_id INTEGER NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        image_uri TEXT,
         created_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS app_kv_store (
@@ -71,6 +72,11 @@ export function getDb(): SQLite.SQLiteDatabase | null {
         updated_at TEXT NOT NULL
       );
     `);
+    try {
+      db.execSync('ALTER TABLE messages ADD COLUMN image_uri TEXT;');
+    } catch {
+      // 欄位已存在則略過
+    }
     dbInstance = db;
     return db;
   } catch {

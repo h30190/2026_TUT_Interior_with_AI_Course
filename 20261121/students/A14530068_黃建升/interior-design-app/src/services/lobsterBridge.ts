@@ -338,13 +338,19 @@ function buildOfflineContextualConverseReply(
   history: ChatMessageItem[]
 ): string {
   const userMsgs = history.filter((m) => m.role === 'user');
-  const latestUser = userMsgs[userMsgs.length - 1]?.content || '';
+  const latestMsg = userMsgs[userMsgs.length - 1];
+  const latestUser = latestMsg?.content || '';
+  const hasPhoto = !!latestMsg?.imageUri;
   const prevUser =
     userMsgs.length >= 2 ? userMsgs[userMsgs.length - 2]?.content : null;
 
   const contextPrefix = prevUser
     ? `承接您上一句提到的「${prevUser.slice(0, 18)}」，`
     : '';
+
+  if (hasPhoto) {
+    return `${contextPrefix}📷 已收到您上傳的現場照片與說明「${latestUser}」！\n建議現場重點檢核：\n1. 收邊與水平垂直基準是否符合施工圖面\n2. 隱蔽管線或防水交接面是否已拉捲尺拍照留存\n3. 若需標註紅點派工，可點下方「＋ ➔ 📍 照片釘紅點」工具。（離線模式，僅供示範）`;
+  }
 
   if (latestUser.includes('浴室') || latestUser.includes('防水') || latestUser.includes('洩水')) {
     return `${contextPrefix}針對「${latestUser}」：浴室地坪泥作建議乾區洩水坡度抓 1/100、濕區淋浴間抓 1/50～1/60；防水層淋浴區塗刷至少 180cm 以上並做 48 小時滿水試水。（離線模式，僅供示範）`;
@@ -360,28 +366,84 @@ function buildOfflineContextualConverseReply(
 }
 
 /**
- * 任務 5：第五個頁籤 💬「問助理」多輪對話請求
- * - 每次傳送整段對話歷史 (OpenAI messages 格式，含 system)
- * - 優先呼叫 Server 端 POST /v1/chat/converse（回純文字）；連不上 Strata 時降級本地語料並標明「離線模式，僅供示範」
+ * 任務 5 + 多功能拍照傳圖對話請求：
+ * - 若附帶照片 Base64，優先嘗試 OpenAI Vision 多模態格式；若本機為純文字模型則自動無縫轉為文字描述格式送給 Strata
  */
 export async function sendChatConverseMessages(
   history: ChatMessageItem[],
-  config: LobsterBridgeConfig
+  config: LobsterBridgeConfig,
+  latestImageBase64?: string | null
 ): Promise<string> {
   if (config.mode === 'remote_api') {
+    const headers = buildRequestHeaders(config.apiKey);
+
+    // 1. 若有附帶照片 base64，先嘗試以 OpenAI Vision 多模態格式呼叫 /v1/chat/completions
+    if (latestImageBase64 && history.length > 0) {
+      try {
+        const completionsUrl = resolveChatCompletionsUrl(config.endpointUrl);
+        const visionMessages = [
+          { role: 'system', content: CONVERSE_SYSTEM_PROMPT },
+          ...history.slice(0, -1).map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text:
+                  history[history.length - 1].content ||
+                  '請幫我檢視這張室內設計／工地現場照片並提供專業建議。',
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${latestImageBase64}`,
+                },
+              },
+            ],
+          },
+        ];
+
+        const vRes = await fetch(completionsUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: config.modelId || 'auto',
+            messages: visionMessages,
+            temperature: 0.5,
+          }),
+        });
+
+        if (vRes.ok) {
+          const vData = (await vRes.json()) as {
+            choices?: { message?: { content?: string } }[];
+          };
+          const vText = vData.choices?.[0]?.message?.content;
+          if (vText) {
+            return vText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+          }
+        }
+      } catch {
+        // 若上游為純文字模型不支援 image_url，自動降級走下方純文字 converse
+      }
+    }
+
+    // 2. 純文字多輪對話（若該則訊息有照片，自動標記 [附上現場照片] 供文字模型理解上下文）
     const converseUrl = resolveConverseUrl(config.endpointUrl);
     const openAiMessages = [
       { role: 'system' as const, content: CONVERSE_SYSTEM_PROMPT },
       ...history.map((m) => ({
         role: m.role,
-        content: m.content,
+        content: m.imageUri ? `[附上案場照片] ${m.content}` : m.content,
       })),
     ];
 
     try {
       const response = await fetch(converseUrl, {
         method: 'POST',
-        headers: buildRequestHeaders(config.apiKey),
+        headers,
         body: JSON.stringify({
           model: config.modelId || 'auto',
           messages: openAiMessages,
@@ -392,7 +454,6 @@ export async function sendChatConverseMessages(
       if (response.ok) {
         const rawText = (await response.text()).trim();
         if (rawText) {
-          // 若上游或直連伺服器回傳的是 JSON 格式，亦兼容提取 content
           if (rawText.startsWith('{')) {
             try {
               const parsed = JSON.parse(rawText) as {
@@ -405,7 +466,7 @@ export async function sendChatConverseMessages(
                   .trim();
               }
             } catch {
-              // 直接當純文字回傳
+              // 直接回傳純文字
             }
           }
           return rawText;

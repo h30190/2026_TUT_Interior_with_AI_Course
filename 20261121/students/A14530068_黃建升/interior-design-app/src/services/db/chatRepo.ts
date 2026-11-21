@@ -7,7 +7,7 @@ import {
 import { formatNowTimestamp, getDb } from './sqliteClient';
 
 const WELCOME_ASSISTANT_GREETING =
-  '黃設計師你好！我是氣韻居所的工務助理。有任何室內設計尺寸、泥作防水、木作水電工序或預算問題，直接問我就好！';
+  '黃設計師你好！我是氣韻居所的工務助理。你可以直接打字問我，或點左下角「＋／📷」拍照、上傳案場照片讓我幫你看圖分析！';
 
 let fallbackConversations: ChatConversationSummary[] = [];
 let fallbackMessages: ChatMessageItem[] = [];
@@ -71,8 +71,8 @@ export function createNewConversationInSQLite(): ChatConversationSummary {
       );
       const convId = Number(res.lastInsertRowId);
       db.runSync(
-        'INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)',
-        [convId, 'assistant', WELCOME_ASSISTANT_GREETING, nowStr]
+        'INSERT INTO messages (conversation_id, role, content, image_uri, created_at) VALUES (?, ?, ?, ?, ?)',
+        [convId, 'assistant', WELCOME_ASSISTANT_GREETING, null, nowStr]
       );
       return {
         id: convId,
@@ -101,6 +101,7 @@ export function createNewConversationInSQLite(): ChatConversationSummary {
       conversationId: nextId,
       role: 'assistant',
       content: WELCOME_ASSISTANT_GREETING,
+      imageUri: null,
       createdAt: nowStr,
     },
   ];
@@ -118,9 +119,10 @@ export function loadMessagesForConversationFromSQLite(
         conversation_id: number;
         role: string;
         content: string;
+        image_uri: string | null;
         created_at: string;
       }>(
-        'SELECT id, conversation_id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC',
+        'SELECT id, conversation_id, role, content, image_uri, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC',
         [conversationId]
       );
       return rows.map((r) => ({
@@ -128,6 +130,7 @@ export function loadMessagesForConversationFromSQLite(
         conversationId: r.conversation_id,
         role: (r.role as ChatRole) || 'assistant',
         content: r.content,
+        imageUri: r.image_uri,
         createdAt: r.created_at,
       }));
     } catch {
@@ -140,13 +143,16 @@ export function loadMessagesForConversationFromSQLite(
 export function appendMessageToConversationInSQLite(
   conversationId: number,
   role: ChatRole,
-  content: string
+  content: string,
+  imageUri?: string | null
 ): {
   messages: ChatMessageItem[];
   conversations: ChatConversationSummary[];
 } {
   const nowStr = formatNowTimestamp();
-  const trimmedContent = content.trim();
+  const trimmedContent =
+    content.trim() || (imageUri ? '📷 [已傳送現場照片]' : '');
+  const cleanImageUri = imageUri ?? null;
   const db = getDb();
 
   if (db) {
@@ -157,8 +163,8 @@ export function appendMessageToConversationInSQLite(
       );
 
       db.runSync(
-        'INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)',
-        [conversationId, role, trimmedContent, nowStr]
+        'INSERT INTO messages (conversation_id, role, content, image_uri, created_at) VALUES (?, ?, ?, ?, ?)',
+        [conversationId, role, trimmedContent, cleanImageUri, nowStr]
       );
 
       if (role === 'user' && !existingUserMsg) {
@@ -194,6 +200,7 @@ export function appendMessageToConversationInSQLite(
     conversationId,
     role,
     content: trimmedContent,
+    imageUri: cleanImageUri,
     createdAt: nowStr,
   };
   fallbackMessages = [...fallbackMessages, newMsg];

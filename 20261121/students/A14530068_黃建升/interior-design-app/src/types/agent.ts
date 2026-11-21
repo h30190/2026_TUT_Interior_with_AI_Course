@@ -145,6 +145,7 @@ export interface ChatMessageItem {
   conversationId: number;
   role: ChatRole;
   content: string;
+  imageUri?: string | null;
   createdAt: string;
 }
 

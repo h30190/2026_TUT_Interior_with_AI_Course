@@ -2,14 +2,22 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import {
+  ChatAttachmentBar,
+  PendingPhotoAttachment,
+} from '../components/ChatAttachmentBar';
 import { ChatConversationList } from '../components/ChatConversationList';
-import { sendChatConverseMessages } from '../services/lobsterBridge';
+import {
+  sendChatConverseMessages,
+  shareViaIOS,
+} from '../services/lobsterBridge';
 import {
   appendMessageToConversationInSQLite,
   createNewConversationInSQLite,
@@ -44,6 +52,11 @@ export function ChatAgent({ bridgeConfig }: Props) {
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [highlightedMsgId, setHighlightedMsgId] = useState<number | null>(null);
 
+  // 多功能列展開狀態與待發送照片
+  const [showToolsDrawer, setShowToolsDrawer] = useState<boolean>(false);
+  const [pendingPhoto, setPendingPhoto] =
+    useState<PendingPhotoAttachment | null>(null);
+
   const flatListRef = useRef<FlatList<ChatMessageItem>>(null);
 
   const invertedMessages = useMemo(
@@ -76,7 +89,7 @@ export function ChatAgent({ bridgeConfig }: Props) {
               viewPosition: 0.5,
             });
           } catch {
-            // ignore scroll index boundary
+            // ignore
           }
         }, 180);
       }
@@ -91,6 +104,7 @@ export function ChatAgent({ bridgeConfig }: Props) {
     setActiveConvId(created.id);
     setMessages(loadedMsgs);
     setHighlightedMsgId(null);
+    setPendingPhoto(null);
     setLayer('chat');
   };
 
@@ -115,17 +129,24 @@ export function ChatAgent({ bridgeConfig }: Props) {
 
   const handleSendMessage = async () => {
     const trimmed = inputText.trim();
-    if (!trimmed || isThinking) {
+    if ((!trimmed && !pendingPhoto) || isThinking) {
       return;
     }
 
+    const photoToSend = pendingPhoto;
+    const messageText =
+      trimmed || '請幫我檢視這張案場照片並提供施工與驗收建議。';
+
     setInputText('');
+    setPendingPhoto(null);
+    setShowToolsDrawer(false);
     setHighlightedMsgId(null);
 
     const afterUser = appendMessageToConversationInSQLite(
       activeConvId,
       'user',
-      trimmed
+      messageText,
+      photoToSend?.uri ?? null
     );
     setMessages(afterUser.messages);
     setConversations(afterUser.conversations);
@@ -133,18 +154,23 @@ export function ChatAgent({ bridgeConfig }: Props) {
     setIsThinking(true);
     const replyText = await sendChatConverseMessages(
       afterUser.messages,
-      bridgeConfig
+      bridgeConfig,
+      photoToSend?.base64 ?? null
     );
 
     const afterAi = appendMessageToConversationInSQLite(
       activeConvId,
       'assistant',
-      replyText
+      replyText,
+      null
     );
     setMessages(afterAi.messages);
     setConversations(afterAi.conversations);
     setIsThinking(false);
   };
+
+  const canSend =
+    (inputText.trim().length > 0 || pendingPhoto !== null) && !isThinking;
 
   return (
     <View style={styles.container}>
@@ -217,16 +243,29 @@ export function ChatAgent({ bridgeConfig }: Props) {
                     isUser ? styles.bubbleRowRight : styles.bubbleRowLeft,
                   ]}
                 >
-                  <View
+                  <Pressable
                     style={[
                       styles.bubble,
                       isUser ? styles.userBubble : styles.aiBubble,
                       isHighlighted && styles.highlightedBubble,
                     ]}
+                    onLongPress={() =>
+                      void shareViaIOS('氣韻居所・對話訊息', item.content)
+                    }
                   >
                     {isHighlighted && (
                       <Text style={styles.highlightTag}>🔍 搜尋定位訊息</Text>
                     )}
+
+                    {/* 若訊息附帶照片，於氣泡內直接渲染照片 */}
+                    {item.imageUri && (
+                      <Image
+                        source={{ uri: item.imageUri }}
+                        style={styles.bubbleImage}
+                        resizeMode="cover"
+                      />
+                    )}
+
                     <Text
                       style={[
                         styles.bubbleText,
@@ -242,31 +281,63 @@ export function ChatAgent({ bridgeConfig }: Props) {
                         isUser ? styles.userBubbleTime : styles.aiBubbleTime,
                       ]}
                     >
-                      {isUser ? '黃設計師' : '工務助理'} ・ {item.createdAt}
+                      {isUser ? '黃設計師' : '工務助理'} ・ {item.createdAt}（長按可分享）
                     </Text>
-                  </View>
+                  </Pressable>
                 </View>
               );
             }}
           />
 
+          {/* 多功能附件與拍照抽屜列 */}
+          <ChatAttachmentBar
+            expanded={showToolsDrawer}
+            pendingPhoto={pendingPhoto}
+            bridgeConfig={bridgeConfig}
+            onSelectPhoto={(photo) => setPendingPhoto(photo)}
+            onQuickPrompt={(text) => {
+              setInputText((prev) => (prev ? `${prev} ${text}` : text));
+              setShowToolsDrawer(false);
+            }}
+          />
+
+          {/* 底部輸入列：左側「＋📷」多功能按鈕 ＋ 輸入框 ＋ 發送鈕 */}
           <View style={styles.inputBar}>
+            <Pressable
+              style={[
+                styles.plusToolBtn,
+                showToolsDrawer && styles.plusToolBtnActive,
+              ]}
+              onPress={() => setShowToolsDrawer((v) => !v)}
+            >
+              <Text
+                style={[
+                  styles.plusToolBtnText,
+                  showToolsDrawer && styles.plusToolBtnTextActive,
+                ]}
+              >
+                {showToolsDrawer ? '✕' : '＋📷'}
+              </Text>
+            </Pressable>
+
             <TextInput
               style={styles.chatInput}
               value={inputText}
               onChangeText={setInputText}
-              placeholder="問問工務助理（施工、材料、尺寸、預算）..."
+              placeholder={
+                pendingPhoto
+                  ? '輸入照片問題（或直接點發送）...'
+                  : '問問助理，或點左邊「＋📷」拍照傳圖...'
+              }
               placeholderTextColor={IOS_THEME.colors.textMuted}
               multiline
               maxLength={800}
             />
+
             <Pressable
-              style={[
-                styles.sendBtn,
-                (!inputText.trim() || isThinking) && styles.sendBtnDisabled,
-              ]}
+              style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
               onPress={() => void handleSendMessage()}
-              disabled={!inputText.trim() || isThinking}
+              disabled={!canSend}
             >
               <Text style={styles.sendBtnText}>發送</Text>
             </Pressable>
@@ -375,6 +446,13 @@ const styles = StyleSheet.create({
     color: IOS_THEME.colors.warning,
     marginBottom: 4,
   },
+  bubbleImage: {
+    width: 210,
+    height: 155,
+    borderRadius: IOS_THEME.radius.sm,
+    marginBottom: 8,
+    backgroundColor: '#1E2220',
+  },
   bubbleText: {
     fontSize: 14,
     lineHeight: 21,
@@ -411,6 +489,28 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: IOS_THEME.colors.border,
     gap: 8,
+  },
+  plusToolBtn: {
+    backgroundColor: IOS_THEME.colors.accentSoft,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.accent,
+    borderRadius: IOS_THEME.radius.md,
+    paddingHorizontal: 11,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusToolBtnActive: {
+    backgroundColor: IOS_THEME.colors.primary,
+    borderColor: IOS_THEME.colors.primary,
+  },
+  plusToolBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: IOS_THEME.colors.primary,
+  },
+  plusToolBtnTextActive: {
+    color: '#FFFFFF',
   },
   chatInput: {
     flex: 1,
