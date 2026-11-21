@@ -1,0 +1,436 @@
+import React, { useState } from 'react';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import {
+  buildLocalNegotiationScripts,
+  generateNegotiationScripts,
+  shareViaIOS,
+} from '../services/lobsterBridge';
+import {
+  addNegotiatorScenarioToSQLite,
+  loadNegotiatorScenariosFromSQLite,
+  removeNegotiatorScenarioFromSQLite,
+} from '../services/storage';
+import { IOS_THEME } from '../theme/iosTheme';
+import {
+  LobsterBridgeConfig,
+  NegotiatorOutputs,
+  NegotiatorPersona,
+  NegotiatorScenario,
+} from '../types/agent';
+
+interface Props {
+  bridgeConfig: LobsterBridgeConfig;
+}
+
+const PERSONA_TABS: {
+  id: NegotiatorPersona;
+  title: string;
+  badge: string;
+  desc: string;
+}[] = [
+  {
+    id: 'consultant',
+    title: '🕊️ 溫柔顧問',
+    badge: '對業主（白臉）',
+    desc: '強調安全、美感與長期品質，讓業主安心接受建議或追加',
+  },
+  {
+    id: 'contract',
+    title: '🛡️ 合約護航',
+    badge: '對奧客（黑臉）',
+    desc: '不失禮貌但踩死合約條款、追加費用與工期免責界線',
+  },
+  {
+    id: 'foreman',
+    title: '🔨 工地阿兄',
+    badge: '對工班師傅',
+    desc: '直接講尺寸、收尾標準、完工期限與拉捲尺拍照驗收',
+  },
+  {
+    id: 'neighbor',
+    title: '🏢 管委會安撫',
+    badge: '對鄰居／總幹事',
+    desc: '合規時段聲明、減噪防塵承諾與敦親睦鄰致意',
+  },
+];
+
+export function NegotiatorAgent({ bridgeConfig }: Props) {
+  const [scenarios, setScenarios] = useState<NegotiatorScenario[]>(() =>
+    loadNegotiatorScenariosFromSQLite()
+  );
+  const [rawInput, setRawInput] = useState<string>(
+    () => scenarios[0]?.rawInput || ''
+  );
+  const [newScenarioTitle, setNewScenarioTitle] = useState<string>('');
+  const [activePersona, setActivePersona] =
+    useState<NegotiatorPersona>('consultant');
+  const [outputs, setOutputs] = useState<NegotiatorOutputs>(() =>
+    buildLocalNegotiationScripts(scenarios[0]?.rawInput || '')
+  );
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+
+  const handleGenerate = async (customText?: string) => {
+    const targetText = customText ?? rawInput;
+    setIsGenerating(true);
+    const result = await generateNegotiationScripts(targetText, bridgeConfig);
+    setOutputs(result);
+    setIsGenerating(false);
+  };
+
+  const handleSaveAsScenario = () => {
+    if (!rawInput.trim()) {
+      Alert.alert('提示', '請先在下方輸入現場狀況文字再儲存為常用情境。');
+      return;
+    }
+    const next = addNegotiatorScenarioToSQLite(newScenarioTitle, rawInput);
+    setScenarios(next);
+    setNewScenarioTitle('');
+    Alert.alert('已存入 SQLite', '已新增至您的常用溝通情境按鈕！');
+  };
+
+  const handleDeleteScenario = (id: string) => {
+    const next = removeNegotiatorScenarioFromSQLite(id);
+    setScenarios(next);
+  };
+
+  const currentScript = outputs[activePersona];
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.heroCard}>
+        <Text style={styles.heroTag}>
+          AGENT 01 ・ {bridgeConfig.mode === 'remote_api' ? `🦞 Strata AI (${bridgeConfig.modelId})` : '⚡ 本地智慧語料模式'}
+        </Text>
+        <Text style={styles.heroTitle}>🗣️ 黑白臉話術轉換器</Text>
+        <Text style={styles.heroDesc}>
+          點選或自行新增常用棘手情境（自動保存於 SQLite），一鍵請 AI 轉換成給業主、奧客、師傅或管委會的 LINE 訊息。
+        </Text>
+      </View>
+
+      <Text style={styles.sectionTitle}>
+        ⚡ 點選常用情境（長按可刪除單顆・亦可於下方自行新增）
+      </Text>
+      <View style={styles.chipWrap}>
+        {scenarios.map((item) => {
+          const selected = rawInput === item.rawInput;
+          return (
+            <Pressable
+              key={item.id}
+              style={[styles.chip, selected && styles.chipSelected]}
+              onPress={() => {
+                setRawInput(item.rawInput);
+                void handleGenerate(item.rawInput);
+              }}
+              onLongPress={() => handleDeleteScenario(item.id)}
+            >
+              <Text
+                style={[styles.chipText, selected && styles.chipTextSelected]}
+              >
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={styles.inputCard}>
+        <Text style={styles.inputLabel}>📝 你心裡想講的大白話／現場狀況：</Text>
+        <TextInput
+          style={styles.textInput}
+          value={rawInput}
+          onChangeText={setRawInput}
+          multiline
+          placeholder="例如：跟業主說這面牆不能打，管線移走要加三萬..."
+          placeholderTextColor={IOS_THEME.colors.textMuted}
+        />
+
+        <View style={styles.saveScenarioRow}>
+          <TextInput
+            style={styles.scenarioTitleInput}
+            value={newScenarioTitle}
+            onChangeText={setNewScenarioTitle}
+            placeholder="輸入短標題（選填）存為上方常用按鈕..."
+            placeholderTextColor={IOS_THEME.colors.textMuted}
+          />
+          <Pressable
+            style={styles.saveScenarioBtn}
+            onPress={handleSaveAsScenario}
+          >
+            <Text style={styles.saveScenarioBtnText}>➕ 存為常用</Text>
+          </Pressable>
+        </View>
+
+        <Pressable
+          style={styles.generateBtn}
+          onPress={() => void handleGenerate()}
+        >
+          <Text style={styles.generateBtnText}>
+            {isGenerating
+              ? '⏳ AI 正在轉換 4 種角色話術...'
+              : `✨ 立即用 ${bridgeConfig.mode === 'remote_api' ? 'Strata AI' : '本地引擎'} 轉換話術`}
+          </Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.sectionTitle}>🎭 選擇發送對象角色</Text>
+      <View style={styles.personaGrid}>
+        {PERSONA_TABS.map((tab) => {
+          const active = activePersona === tab.id;
+          return (
+            <Pressable
+              key={tab.id}
+              style={[styles.personaBtn, active && styles.personaBtnActive]}
+              onPress={() => setActivePersona(tab.id)}
+            >
+              <Text
+                style={[
+                  styles.personaTitle,
+                  active && styles.personaTitleActive,
+                ]}
+              >
+                {tab.title}
+              </Text>
+              <Text
+                style={[
+                  styles.personaBadge,
+                  active && styles.personaBadgeActive,
+                ]}
+              >
+                {tab.badge}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={styles.outputCard}>
+        <Text style={styles.outputHint}>
+          {PERSONA_TABS.find((t) => t.id === activePersona)?.desc}
+        </Text>
+        <View style={styles.scriptBox}>
+          <Text style={styles.scriptText} selectable>
+            {currentScript}
+          </Text>
+        </View>
+        <Pressable
+          style={styles.shareBtn}
+          onPress={() =>
+            void shareViaIOS('氣韻居所・溝通訊息', currentScript)
+          }
+        >
+          <Text style={styles.shareBtnText}>
+            📤 呼叫手機分享選單（直傳 LINE / 拷貝）
+          </Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  content: { padding: IOS_THEME.spacing.md, paddingBottom: 40 },
+  heroCard: {
+    backgroundColor: IOS_THEME.colors.primary,
+    borderRadius: IOS_THEME.radius.lg,
+    padding: IOS_THEME.spacing.md,
+    marginBottom: IOS_THEME.spacing.md,
+  },
+  heroTag: {
+    color: '#D7C4B0',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  heroDesc: {
+    color: '#DCE2DF',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: IOS_THEME.colors.textMain,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: IOS_THEME.spacing.md,
+  },
+  chip: {
+    backgroundColor: IOS_THEME.colors.card,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.border,
+    borderRadius: IOS_THEME.radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chipSelected: {
+    backgroundColor: IOS_THEME.colors.accent,
+    borderColor: IOS_THEME.colors.accent,
+  },
+  chipText: {
+    fontSize: 12,
+    color: IOS_THEME.colors.textMain,
+    fontWeight: '600',
+  },
+  chipTextSelected: {
+    color: '#FFFFFF',
+  },
+  inputCard: {
+    backgroundColor: IOS_THEME.colors.card,
+    borderRadius: IOS_THEME.radius.md,
+    padding: IOS_THEME.spacing.md,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.border,
+    marginBottom: IOS_THEME.spacing.md,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: IOS_THEME.colors.textSecondary,
+    marginBottom: 8,
+  },
+  textInput: {
+    backgroundColor: IOS_THEME.colors.background,
+    borderRadius: IOS_THEME.radius.sm,
+    padding: 12,
+    fontSize: 14,
+    color: IOS_THEME.colors.textMain,
+    minHeight: 74,
+    textAlignVertical: 'top',
+    marginBottom: 10,
+  },
+  saveScenarioRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  scenarioTitleInput: {
+    flex: 1,
+    backgroundColor: IOS_THEME.colors.background,
+    borderRadius: IOS_THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 12,
+    color: IOS_THEME.colors.textMain,
+  },
+  saveScenarioBtn: {
+    backgroundColor: IOS_THEME.colors.accent,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderRadius: IOS_THEME.radius.sm,
+  },
+  saveScenarioBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  generateBtn: {
+    backgroundColor: IOS_THEME.colors.primary,
+    borderRadius: IOS_THEME.radius.sm,
+    minHeight: IOS_THEME.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  generateBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  personaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: IOS_THEME.spacing.md,
+  },
+  personaBtn: {
+    width: '48.5%',
+    backgroundColor: IOS_THEME.colors.card,
+    borderRadius: IOS_THEME.radius.md,
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: IOS_THEME.colors.border,
+  },
+  personaBtnActive: {
+    borderColor: IOS_THEME.colors.accent,
+    backgroundColor: IOS_THEME.colors.accentSoft,
+  },
+  personaTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: IOS_THEME.colors.textMain,
+    marginBottom: 2,
+  },
+  personaTitleActive: {
+    color: IOS_THEME.colors.primary,
+  },
+  personaBadge: {
+    fontSize: 11,
+    color: IOS_THEME.colors.textSecondary,
+  },
+  personaBadgeActive: {
+    color: IOS_THEME.colors.accent,
+    fontWeight: '700',
+  },
+  outputCard: {
+    backgroundColor: IOS_THEME.colors.card,
+    borderRadius: IOS_THEME.radius.lg,
+    padding: IOS_THEME.spacing.md,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.border,
+  },
+  outputHint: {
+    fontSize: 12,
+    color: IOS_THEME.colors.accent,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  scriptBox: {
+    backgroundColor: IOS_THEME.colors.background,
+    borderRadius: IOS_THEME.radius.md,
+    padding: 14,
+    marginBottom: 14,
+  },
+  scriptText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: IOS_THEME.colors.textMain,
+  },
+  shareBtn: {
+    backgroundColor: IOS_THEME.colors.accent,
+    borderRadius: IOS_THEME.radius.sm,
+    minHeight: IOS_THEME.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});
