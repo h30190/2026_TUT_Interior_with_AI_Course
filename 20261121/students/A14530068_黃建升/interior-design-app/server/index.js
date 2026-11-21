@@ -141,6 +141,99 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
+/**
+ * 網路搜尋（免費 DuckDuckGo Instant Answer API，不需金鑰）
+ */
+function webSearch(query) {
+  return new Promise((resolve) => {
+    try {
+      const targetUrl = new URL(
+        `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`
+      );
+      const req = https.request(
+        targetUrl,
+        { method: 'GET', headers: { 'User-Agent': 'qi-yun-pocket-agent/1.0' }, timeout: 8000 },
+        (res) => {
+          let raw = '';
+          res.on('data', (c) => (raw += c));
+          res.on('end', () => {
+            try {
+              const d = JSON.parse(raw);
+              const bits = [];
+              if (d.AbstractText) bits.push(`${d.AbstractText}（來源：${d.AbstractURL || 'DuckDuckGo'}）`);
+              if (Array.isArray(d.RelatedTopics)) {
+                for (const t of d.RelatedTopics.slice(0, 3)) {
+                  if (t?.Text) bits.push(t.Text);
+                }
+              }
+              resolve(bits.join('\n') || '（搜尋沒有結果）');
+            } catch {
+              resolve('（搜尋解析失敗）');
+            }
+          });
+        }
+      );
+      req.on('error', () => resolve('（搜尋連線失敗）'));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve('（搜尋逾時）');
+      });
+      req.end();
+    } catch {
+      resolve('（搜尋發生錯誤）');
+    }
+  });
+}
+
+const SEARCH_MARKER = /\[SEARCH:\s*([^\]]+)\]/i;
+
+/**
+ * 呼叫上游一次 chat completions，回傳訊息文字
+ */
+function callUpstreamText(payload, envConfig, authHeader) {
+  return new Promise((resolve, reject) => {
+    const forwardBody = Buffer.from(JSON.stringify(payload), 'utf8');
+    const targetUrl = new URL(`${envConfig.UPSTREAM_BASE_URL.replace(/\/+$/, '')}/chat/completions`);
+    const client = targetUrl.protocol === 'https:' ? https : http;
+    const upstreamReq = client.request(
+      targetUrl,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': forwardBody.length,
+          Authorization: authHeader,
+        },
+        timeout: 30000,
+      },
+      (upstreamRes) => {
+        const respChunks = [];
+        upstreamRes.on('data', (c) => respChunks.push(c));
+        upstreamRes.on('end', () => {
+          const textBody = Buffer.concat(respChunks).toString('utf8');
+          if ((upstreamRes.statusCode || 500) >= 400) {
+            reject(new Error(textBody.slice(0, 300)));
+            return;
+          }
+          try {
+            const parsed = JSON.parse(textBody);
+            resolve(parsed?.choices?.[0]?.message?.content || '');
+          } catch {
+            resolve(textBody);
+          }
+        });
+      }
+    );
+    upstreamReq.on('error', reject);
+    upstreamReq.on('timeout', () => {
+      upstreamReq.destroy();
+      reject(new Error('Upstream Strata request timed out'));
+    });
+    upstreamReq.write(forwardBody);
+    upstreamReq.end();
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   setCorsHeaders(res);
 
@@ -274,10 +367,10 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // /v1/chat/converse 解析上游 JSON 並回傳純文字
+        // /v1/chat/converse 解析上游 JSON 並回傳純文字（含網路搜尋一輪）
         const respChunks = [];
         upstreamRes.on('data', (c) => respChunks.push(c));
-        upstreamRes.on('end', () => {
+        upstreamRes.on('end', async () => {
           const textBody = Buffer.concat(respChunks).toString('utf8');
           if ((upstreamRes.statusCode || 500) >= 400) {
             res.writeHead(upstreamRes.statusCode || 502, {
@@ -288,10 +381,35 @@ const server = http.createServer(async (req, res) => {
           }
           try {
             const parsed = JSON.parse(textBody);
-            const rawContent =
-              parsed?.choices?.[0]?.message?.content || '';
+            let rawContent = parsed?.choices?.[0]?.message?.content || '';
+
+            const searchMatch = rawContent.match(SEARCH_MARKER);
+            if (searchMatch) {
+              const query = searchMatch[1].trim();
+              console.log(`[Strata Proxy] 觸發網路搜尋：${query}`);
+              const searchResult = await webSearch(query);
+              const followUpMessages = [
+                ...payload.messages,
+                { role: 'assistant', content: rawContent },
+                {
+                  role: 'user',
+                  content: `【網路搜尋結果（DuckDuckGo）】\n${searchResult}\n\n請根據以上搜尋結果回答使用者原本的問題，並標註來源。`,
+                },
+              ];
+              try {
+                rawContent = await callUpstreamText(
+                  { ...payload, messages: followUpMessages },
+                  envConfig,
+                  authHeader
+                );
+              } catch (err) {
+                rawContent = `（已取得搜尋結果，但二次提問失敗：${err.message}）\n搜尋結果：\n${searchResult}`;
+              }
+            }
+
             const cleanText = rawContent
               .replace(/<think>[\s\S]*?<\/think>/gi, '')
+              .replace(SEARCH_MARKER, '')
               .trim();
             res.writeHead(200, {
               'Content-Type': 'text/plain; charset=utf-8',

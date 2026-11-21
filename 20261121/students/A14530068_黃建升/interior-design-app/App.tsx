@@ -9,10 +9,6 @@ import {
   View,
 } from 'react-native';
 import { ChatAgent } from './src/agents/ChatAgent';
-import { ChiefEngineerAgent } from './src/agents/ChiefEngineerAgent';
-import { ClientSandboxAgent } from './src/agents/ClientSandboxAgent';
-import { NegotiatorAgent } from './src/agents/NegotiatorAgent';
-import { PinpointAgent } from './src/agents/PinpointAgent';
 import { BridgeSettingsModal } from './src/components/BridgeSettingsModal';
 import { DEFAULT_LOBSTER_CONFIG } from './src/services/lobsterBridge';
 import {
@@ -20,22 +16,9 @@ import {
   saveBridgeConfigToSQLite,
 } from './src/services/storage';
 import { IOS_THEME } from './src/theme/iosTheme';
-import { AgentTabId, LobsterBridgeConfig } from './src/types/agent';
-
-const AGENT_TABS: {
-  id: AgentTabId;
-  icon: string;
-  label: string;
-}[] = [
-  { id: 'negotiator', icon: '🗣️', label: '溝通談判' },
-  { id: 'engineer', icon: '📐', label: '老工務長' },
-  { id: 'pinpoint', icon: '📸', label: '看圖指派' },
-  { id: 'sandbox', icon: '🎭', label: '客戶沙盒' },
-  { id: 'chat', icon: '💬', label: '問助理' },
-];
+import { LobsterBridgeConfig } from './src/types/agent';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<AgentTabId>('negotiator');
   const [bridgeConfig, setBridgeConfig] = useState<LobsterBridgeConfig>(() =>
     loadBridgeConfigFromSQLite(DEFAULT_LOBSTER_CONFIG)
   );
@@ -58,10 +41,11 @@ export default function App() {
     >
       <StatusBar style="dark" />
 
+      {/* 極簡頂部標題列：品牌名稱 ＋ 右上角模型/API Key 設定按鈕 */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.brandSub}>QI-YUN LIVING ・ AI POCKET AGENTS</Text>
-          <Text style={styles.brandTitle}>氣韻居所・隨身智囊團</Text>
+          <Text style={styles.brandSub}>QI-YUN LIVING ・ AI AGENT</Text>
+          <Text style={styles.brandTitle}>氣韻居所・AI 助理</Text>
         </View>
         <Pressable
           style={styles.lobsterBadge}
@@ -70,40 +54,18 @@ export default function App() {
           <Text style={styles.lobsterBadgeText} numberOfLines={1}>
             🦞{' '}
             {bridgeConfig.mode === 'local_engine'
-              ? '本地語料'
+              ? '離線模式'
               : bridgeConfig.modelId || 'Strata'}
           </Text>
         </Pressable>
       </View>
 
+      {/* 主畫面：純粹的多會話 AI 對話視窗 */}
       <View style={styles.body}>
-        {activeTab === 'negotiator' && (
-          <NegotiatorAgent bridgeConfig={bridgeConfig} />
-        )}
-        {activeTab === 'engineer' && <ChiefEngineerAgent />}
-        {activeTab === 'pinpoint' && <PinpointAgent />}
-        {activeTab === 'sandbox' && <ClientSandboxAgent />}
-        {activeTab === 'chat' && <ChatAgent bridgeConfig={bridgeConfig} />}
+        <ChatAgent bridgeConfig={bridgeConfig} />
       </View>
 
-      <View style={styles.tabBar}>
-        {AGENT_TABS.map((tab) => {
-          const active = activeTab === tab.id;
-          return (
-            <Pressable
-              key={tab.id}
-              style={[styles.tabItem, active && styles.tabItemActive]}
-              onPress={() => setActiveTab(tab.id)}
-            >
-              <Text style={styles.tabIcon}>{tab.icon}</Text>
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
+      {/* 模型切換・API Key・連線紀錄設定彈窗 */}
       <BridgeSettingsModal
         visible={showBridgeModal}
         bridgeConfig={bridgeConfig}
@@ -121,7 +83,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: IOS_THEME.spacing.iosTopSafe,
-    paddingBottom: 12,
+    paddingBottom: 10,
     paddingHorizontal: IOS_THEME.spacing.md,
     backgroundColor: IOS_THEME.colors.card,
     borderBottomWidth: 1,
@@ -149,10 +111,10 @@ const styles = StyleSheet.create({
     backgroundColor: IOS_THEME.colors.accentSoft,
     borderWidth: 1,
     borderColor: IOS_THEME.colors.accent,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: IOS_THEME.radius.pill,
-    maxWidth: 155,
+    maxWidth: 165,
   },
   lobsterBadgeText: {
     fontSize: 12,
@@ -161,38 +123,5 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: IOS_THEME.colors.card,
-    borderTopWidth: 1,
-    borderTopColor: IOS_THEME.colors.border,
-    paddingTop: 8,
-    paddingBottom: IOS_THEME.spacing.iosBottomSafe,
-    paddingHorizontal: 8,
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: IOS_THEME.radius.sm,
-    minHeight: IOS_THEME.minTouchTarget,
-  },
-  tabItemActive: {
-    backgroundColor: IOS_THEME.colors.accentSoft,
-  },
-  tabIcon: {
-    fontSize: 18,
-    marginBottom: 2,
-  },
-  tabLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: IOS_THEME.colors.textSecondary,
-  },
-  tabLabelActive: {
-    color: IOS_THEME.colors.primary,
-    fontWeight: '800',
   },
 });

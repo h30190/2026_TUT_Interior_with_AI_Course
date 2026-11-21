@@ -1,24 +1,33 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { shareViaIOS } from '../services/lobsterBridge';
+import {
+  generateAiClientSandboxDiagnosis,
+  shareViaIOS,
+} from '../services/lobsterBridge';
+import {
+  addLifestyleTagToSQLite,
+  insertSandboxRecordToSQLite,
+  loadLifestyleTagsFromSQLite,
+  loadSandboxHistoryFromSQLite,
+  removeSandboxRecordFromSQLite,
+} from '../services/storage';
 import { IOS_THEME } from '../theme/iosTheme';
+import {
+  ClientSandboxRecord,
+  LobsterBridgeConfig,
+} from '../types/agent';
 
-const LIFESTYLE_TAGS = [
-  '🐾 有養貓／狗毛孩',
-  '🍳 常下廚需中島輕食',
-  '🧹 依賴掃地機器人',
-  '📦 需要海量隱藏收納',
-  '💻 居家遠距辦公書房',
-  '🍷 喜歡招待朋友小酌',
-  '🧘 偏好留白與自然光',
-  '👴 需兼顧長輩無障礙',
-];
+interface Props {
+  bridgeConfig: LobsterBridgeConfig;
+}
 
 const STYLE_MOODS = [
   { id: 'warm_wood', name: '溫潤木質氣韻', desc: '橡木實木皮＋藝術塗料＋暖白光' },
@@ -26,73 +35,128 @@ const STYLE_MOODS = [
   { id: 'modern_stone', name: '現代俐落石材感', desc: '薄板磁磚＋鐵件玻璃＋線性燈帶' },
 ];
 
-export function ClientSandboxAgent() {
+export function ClientSandboxAgent({ bridgeConfig }: Props) {
+  const [clientName, setClientName] = useState<string>('林公館・初談沙盒');
+  const [lifestyleTags, setLifestyleTags] = useState<string[]>(() =>
+    loadLifestyleTagsFromSQLite()
+  );
   const [selectedTags, setSelectedTags] = useState<string[]>([
     '🐾 有養貓／狗毛孩',
     '🍳 常下廚需中島輕食',
     '🧹 依賴掃地機器人',
   ]);
+  const [newTagInput, setNewTagInput] = useState<string>('');
   const [selectedMood, setSelectedMood] = useState<string>('warm_wood');
-  // 預算比重（硬裝 % vs 軟裝家電 %）
   const [hardDecorRatio, setHardDecorRatio] = useState<number>(65);
+
+  const [aiDiagnosis, setAiDiagnosis] = useState<string>('');
+  const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
+  const [savedRecords, setSavedRecords] = useState<ClientSandboxRecord[]>(() =>
+    loadSandboxHistoryFromSQLite()
+  );
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
+    setAiDiagnosis('');
+  };
+
+  const handleAddCustomTag = () => {
+    const trimmed = newTagInput.trim();
+    if (!trimmed) {
+      return;
+    }
+    const nextTags = addLifestyleTagToSQLite(trimmed);
+    setLifestyleTags(nextTags);
+    setSelectedTags((prev) => Array.from(new Set([...prev, trimmed])));
+    setNewTagInput('');
   };
 
   const currentMood =
     STYLE_MOODS.find((m) => m.id === selectedMood) ?? STYLE_MOODS[0];
   const softDecorRatio = 100 - hardDecorRatio;
 
-  const buildDiagnosisReport = () => {
-    const petNote = selectedTags.includes('🐾 有養貓／狗毛孩')
-      ? '• 毛孩友善動線：建議採用超耐磨防滑地板、耐抓貓抓布沙發，並於玄關或陽台櫃體下方預留隱藏式貓砂盆與自動餵食器插座。'
-      : '• 材質維護建議：可大膽採用天然木皮與特殊塗料，營造溫潤觸感。';
-
-    const kitchenNote = selectedTags.includes('🍳 常下廚需中島輕食')
-      ? '• 餐廚核心配置：建議配置 95cm 以上回字型中島動線，並於中島側邊整合 IH 爐與嵌入式電器櫃專迴。'
-      : '• 餐廚配置：以俐落高機能收納為主，放大客廳視覺景深。';
-
-    const robotNote = selectedTags.includes('🧹 依賴掃地機器人')
-      ? '• 清潔機電整合：全室取消門檻高低差，衣櫃或玄關鞋櫃下方懸空 18cm 並預留上下水與充電座。'
-      : '• 收納落地面積最大化：櫃體採落地踢腳板設計，減少灰塵死角。';
-
+  const buildFallbackDiagnosisReport = () => {
     return [
       `🌿【氣韻居所・空間氣質與需求診斷書】`,
+      `屋主／案名：${clientName}`,
       `偏好空間調性：${currentMood.name}（${currentMood.desc}）`,
       `理想預算配置：硬裝基礎工程 ${hardDecorRatio}% ／ 軟裝家具家電 ${softDecorRatio}%`,
       `已選生活重心：${selectedTags.join('、') || '尚未勾選'}`,
       `━━━━━━━━━━━━━━`,
-      `✨ AI 設計師初步空間建議：`,
-      petNote,
-      kitchenNote,
-      robotNote,
-      `━━━━━━━━━━━━━━`,
-      `（本診斷書由《氣韻居所》隨身顧問 Agent 生成，完全不含敏感報價，可直接分享留存）`,
+      `✨ 空間配置建議（點選上方「請 Strata AI 深度生成」可由 AI 量身撰寫）：`,
+      `• 針對所選需求（${selectedTags.slice(0, 3).join('、')}），建議優先於平面放樣階段鎖定水電專用迴路與隱藏式收納動線。`,
+      `• 硬裝 ${hardDecorRatio}% 配比建議集中於基礎防水、木作造型天花與高頻率接觸之五金櫃體。`,
     ].join('\n');
   };
 
-  const report = buildDiagnosisReport();
+  const activeReport = aiDiagnosis || buildFallbackDiagnosisReport();
+
+  const handleGenerateByStrataAi = async () => {
+    setIsGeneratingAi(true);
+    const reply = await generateAiClientSandboxDiagnosis(
+      clientName,
+      currentMood.name,
+      currentMood.desc,
+      selectedTags,
+      hardDecorRatio,
+      bridgeConfig
+    );
+    setAiDiagnosis(reply);
+    setIsGeneratingAi(false);
+  };
+
+  const handleSaveRecord = () => {
+    const nextList = insertSandboxRecordToSQLite(
+      clientName,
+      currentMood.name,
+      selectedTags,
+      hardDecorRatio,
+      activeReport
+    );
+    setSavedRecords(nextList);
+    Alert.alert('已存入 SQLite', '此筆客戶初談沙盒診斷已歸檔保存！');
+  };
+
+  const handleDeleteRecord = (id: string) => {
+    const nextList = removeSandboxRecordFromSQLite(id);
+    setSavedRecords(nextList);
+  };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.safeBanner}>
         <Text style={styles.safeBannerText}>
-          🔒 零機密客戶展示模式：此頁面無任何內部成本與其他客戶資料，可放心將 iPhone 遞給客戶自己點選互動
+          🔒 零機密客戶展示模式：此頁可放心遞給屋主點選，支援自訂需求標籤、Strata AI 深度生成診斷書與 SQLite 初談紀錄歸檔
         </Text>
       </View>
 
       <View style={styles.heroCard}>
-        <Text style={styles.heroTag}>AGENT 04 ・ 客戶初談互動沙盒</Text>
+        <Text style={styles.heroTag}>
+          AGENT 04 ・ 客戶初談沙盒 ＆ Strata AI 診斷 ＆ SQLite 歸檔
+        </Text>
         <Text style={styles.heroTitle}>🎭 氣韻空間氣質診斷器</Text>
         <Text style={styles.heroDesc}>
-          邀請屋主點選喜愛的生活場景與預算比重，Agent 即時生成專屬的《空間氣質診斷書》。
+          邀請屋主點選或新增日常場景與預算比重，一鍵呼叫 Strata AI 量身撰寫《空間氣質診斷書》並存入初談資料庫。
         </Text>
       </View>
 
-      {/* 1. 空間美學基調 */}
+      <View style={styles.clientBar}>
+        <Text style={styles.clientLabel}>屋主／案名：</Text>
+        <TextInput
+          style={styles.clientInput}
+          value={clientName}
+          onChangeText={setClientName}
+          placeholder="輸入客戶稱呼或案名..."
+          placeholderTextColor={IOS_THEME.colors.textMuted}
+        />
+      </View>
+
       <Text style={styles.sectionTitle}>1. 您偏好的空間氣韻基調</Text>
       <View style={styles.moodList}>
         {STYLE_MOODS.map((m) => {
@@ -101,11 +165,12 @@ export function ClientSandboxAgent() {
             <Pressable
               key={m.id}
               style={[styles.moodCard, active && styles.moodCardActive]}
-              onPress={() => setSelectedMood(m.id)}
+              onPress={() => {
+                setSelectedMood(m.id);
+                setAiDiagnosis('');
+              }}
             >
-              <Text
-                style={[styles.moodName, active && styles.moodNameActive]}
-              >
+              <Text style={[styles.moodName, active && styles.moodNameActive]}>
                 {m.name}
               </Text>
               <Text style={styles.moodDesc}>{m.desc}</Text>
@@ -114,10 +179,11 @@ export function ClientSandboxAgent() {
         })}
       </View>
 
-      {/* 2. 生活型態多選 */}
-      <Text style={styles.sectionTitle}>2. 點選您家的日常場景（可複選）</Text>
+      <Text style={styles.sectionTitle}>
+        2. 點選或新增您家的日常場景（可複選・自訂標籤自動存 SQLite）
+      </Text>
       <View style={styles.tagWrap}>
-        {LIFESTYLE_TAGS.map((tag) => {
+        {lifestyleTags.map((tag) => {
           const active = selectedTags.includes(tag);
           return (
             <Pressable
@@ -133,7 +199,19 @@ export function ClientSandboxAgent() {
         })}
       </View>
 
-      {/* 3. 硬裝 vs 軟裝預算天平 */}
+      <View style={styles.addTagRow}>
+        <TextInput
+          style={styles.addTagInput}
+          value={newTagInput}
+          onChangeText={setNewTagInput}
+          placeholder="新增自訂生活需求（如：🎹 需要放鋼琴／👶 嬰兒車收納）..."
+          placeholderTextColor={IOS_THEME.colors.textMuted}
+        />
+        <Pressable style={styles.addTagBtn} onPress={handleAddCustomTag}>
+          <Text style={styles.addTagBtnText}>➕ 新增</Text>
+        </Pressable>
+      </View>
+
       <Text style={styles.sectionTitle}>3. 預算配置天平（點擊調整比重）</Text>
       <View style={styles.balanceCard}>
         <View style={styles.balanceHeader}>
@@ -152,39 +230,77 @@ export function ClientSandboxAgent() {
         <View style={styles.balanceControlRow}>
           <Pressable
             style={styles.balanceBtn}
-            onPress={() =>
-              setHardDecorRatio((r) => Math.max(40, r - 5))
-            }
+            onPress={() => {
+              setHardDecorRatio((r) => Math.max(40, r - 5));
+              setAiDiagnosis('');
+            }}
           >
             <Text style={styles.balanceBtnText}>◀ 強化軟裝家具</Text>
           </Pressable>
           <Pressable
             style={styles.balanceBtn}
-            onPress={() =>
-              setHardDecorRatio((r) => Math.min(80, r + 5))
-            }
+            onPress={() => {
+              setHardDecorRatio((r) => Math.min(80, r + 5));
+              setAiDiagnosis('');
+            }}
           >
             <Text style={styles.balanceBtnText}>強化硬裝木作 ▶</Text>
           </Pressable>
         </View>
       </View>
 
-      {/* 4. 即時診斷書 */}
+      <Pressable
+        style={styles.aiGenBtn}
+        onPress={() => void handleGenerateByStrataAi()}
+      >
+        <Text style={styles.aiGenBtnText}>
+          {isGeneratingAi
+            ? '⏳ Strata AI 正在為屋主量身撰寫空間氣質診斷書...'
+            : '🤖 請 Strata AI 根據上方勾選條件深度生成《空間氣質診斷書》'}
+        </Text>
+      </Pressable>
+
       <View style={styles.diagnosisCard}>
         <Text style={styles.diagnosisText} selectable>
-          {report}
+          {activeReport}
         </Text>
-        <Pressable
-          style={styles.shareBtn}
-          onPress={() =>
-            void shareViaIOS('氣韻居所・空間氣質診斷書', report)
-          }
-        >
-          <Text style={styles.shareBtnText}>
-            📤 將診斷書分享給屋主留存（LINE / AirDrop）
-          </Text>
-        </Pressable>
+        <View style={styles.actionRow}>
+          <Pressable style={styles.saveBtn} onPress={handleSaveRecord}>
+            <Text style={styles.saveBtnText}>💾 存入初談紀錄</Text>
+          </Pressable>
+          <Pressable
+            style={styles.shareBtn}
+            onPress={() =>
+              void shareViaIOS(`${clientName}・空間氣質診斷書`, activeReport)
+            }
+          >
+            <Text style={styles.shareBtnText}>📤 分享給屋主</Text>
+          </Pressable>
+        </View>
       </View>
+
+      <Text style={styles.sectionTitle}>
+        🗂️ 已存檔客戶初談沙盒紀錄（SQLite 保存・共 {savedRecords.length} 筆）
+      </Text>
+      {savedRecords.map((rec) => (
+        <View key={rec.id} style={styles.historyCard}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyTitle}>
+              {rec.clientName} ・ {rec.moodName}（硬裝 {rec.hardDecorRatio}%）
+            </Text>
+            <Pressable
+              style={styles.delBtn}
+              onPress={() => handleDeleteRecord(rec.id)}
+            >
+              <Text style={styles.delBtnText}>刪除</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.historyDate}>{rec.createdAt}</Text>
+          <Text style={styles.historyPreview} numberOfLines={3}>
+            {rec.diagnosisText}
+          </Text>
+        </View>
+      ))}
     </ScrollView>
   );
 }
@@ -225,22 +341,39 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 6,
   },
-  heroDesc: {
-    color: '#FFF6EE',
+  heroDesc: { color: '#FFF6EE', fontSize: 13, lineHeight: 19 },
+  clientBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: IOS_THEME.colors.card,
+    borderRadius: IOS_THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  clientLabel: {
     fontSize: 13,
-    lineHeight: 19,
+    fontWeight: '700',
+    color: IOS_THEME.colors.textSecondary,
+    marginRight: 8,
+  },
+  clientInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: IOS_THEME.colors.primary,
+    paddingVertical: 4,
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: IOS_THEME.colors.textMain,
     marginBottom: 8,
     marginTop: 4,
   },
-  moodList: {
-    gap: 8,
-    marginBottom: IOS_THEME.spacing.md,
-  },
+  moodList: { gap: 8, marginBottom: IOS_THEME.spacing.md },
   moodCard: {
     backgroundColor: IOS_THEME.colors.card,
     borderRadius: IOS_THEME.radius.md,
@@ -258,18 +391,13 @@ const styles = StyleSheet.create({
     color: IOS_THEME.colors.textMain,
     marginBottom: 2,
   },
-  moodNameActive: {
-    color: IOS_THEME.colors.primary,
-  },
-  moodDesc: {
-    fontSize: 12,
-    color: IOS_THEME.colors.textSecondary,
-  },
+  moodNameActive: { color: IOS_THEME.colors.primary },
+  moodDesc: { fontSize: 12, color: IOS_THEME.colors.textSecondary },
   tagWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: IOS_THEME.spacing.md,
+    marginBottom: 8,
   },
   tagBtn: {
     backgroundColor: IOS_THEME.colors.card,
@@ -288,16 +416,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: IOS_THEME.colors.textMain,
   },
-  tagTextActive: {
-    color: '#FFFFFF',
+  tagTextActive: { color: '#FFFFFF' },
+  addTagRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: IOS_THEME.spacing.md,
   },
+  addTagInput: {
+    flex: 1,
+    backgroundColor: IOS_THEME.colors.card,
+    borderRadius: IOS_THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 12,
+    color: IOS_THEME.colors.textMain,
+  },
+  addTagBtn: {
+    backgroundColor: IOS_THEME.colors.primary,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderRadius: IOS_THEME.radius.sm,
+  },
+  addTagBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   balanceCard: {
     backgroundColor: IOS_THEME.colors.card,
     borderRadius: IOS_THEME.radius.md,
     padding: 14,
     borderWidth: 1,
     borderColor: IOS_THEME.colors.border,
-    marginBottom: IOS_THEME.spacing.md,
+    marginBottom: 12,
   },
   balanceHeader: {
     flexDirection: 'row',
@@ -316,10 +465,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 12,
   },
-  barFillHard: {
-    height: '100%',
-    backgroundColor: IOS_THEME.colors.primary,
-  },
+  barFillHard: { height: '100%', backgroundColor: IOS_THEME.colors.primary },
   balanceControlRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -337,12 +483,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: IOS_THEME.colors.primary,
   },
+  aiGenBtn: {
+    backgroundColor: IOS_THEME.colors.primary,
+    borderRadius: IOS_THEME.radius.sm,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  aiGenBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   diagnosisCard: {
     backgroundColor: IOS_THEME.colors.card,
     borderRadius: IOS_THEME.radius.lg,
     padding: IOS_THEME.spacing.md,
     borderWidth: 1,
     borderColor: IOS_THEME.colors.border,
+    marginBottom: 16,
   },
   diagnosisText: {
     fontSize: 13,
@@ -353,16 +508,64 @@ const styles = StyleSheet.create({
     borderRadius: IOS_THEME.radius.sm,
     marginBottom: 12,
   },
+  actionRow: { flexDirection: 'row', gap: 10 },
+  saveBtn: {
+    flex: 1,
+    backgroundColor: IOS_THEME.colors.primary,
+    borderRadius: IOS_THEME.radius.sm,
+    minHeight: IOS_THEME.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   shareBtn: {
+    flex: 1,
     backgroundColor: IOS_THEME.colors.accent,
     borderRadius: IOS_THEME.radius.sm,
     minHeight: IOS_THEME.minTouchTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shareBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  shareBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  historyCard: {
+    backgroundColor: IOS_THEME.colors.card,
+    borderRadius: IOS_THEME.radius.md,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.border,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  historyTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: IOS_THEME.colors.primary,
+    flex: 1,
+  },
+  delBtn: {
+    backgroundColor: IOS_THEME.colors.dangerBg,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: IOS_THEME.radius.sm,
+  },
+  delBtnText: {
+    color: IOS_THEME.colors.danger,
+    fontSize: 11,
     fontWeight: '700',
+  },
+  historyDate: {
+    fontSize: 11,
+    color: IOS_THEME.colors.textSecondary,
+    marginBottom: 6,
+  },
+  historyPreview: {
+    fontSize: 12,
+    color: IOS_THEME.colors.textMain,
+    lineHeight: 17,
   },
 });

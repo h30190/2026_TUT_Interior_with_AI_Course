@@ -2,10 +2,17 @@ import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'qiyun_pocket_v1.db';
 let dbInstance: SQLite.SQLiteDatabase | null = null;
+let idCounter = 1000;
+const memoryKvFallback: Record<string, string> = {};
 
 export function formatNowTimestamp(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+export function generateUniqueId(prefix: string): string {
+  idCounter += 1;
+  return `${prefix}-${Date.now()}-${idCounter}`;
 }
 
 /**
@@ -58,10 +65,65 @@ export function getDb(): SQLite.SQLiteDatabase | null {
         content TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS app_kv_store (
+        store_key TEXT PRIMARY KEY,
+        json_value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
     dbInstance = db;
     return db;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 通用 SQLite JSON 鍵值讀取（含預設種子資料自動初始化）
+ */
+export function readKvJson<T>(key: string, defaultVal: T): T {
+  const db = getDb();
+  if (db) {
+    try {
+      const row = db.getFirstSync<{ json_value: string }>(
+        'SELECT json_value FROM app_kv_store WHERE store_key = ?',
+        [key]
+      );
+      if (!row) {
+        writeKvJson(key, defaultVal);
+        return defaultVal;
+      }
+      return JSON.parse(row.json_value) as T;
+    } catch {
+      // fallback below
+    }
+  }
+  if (key in memoryKvFallback) {
+    try {
+      return JSON.parse(memoryKvFallback[key]) as T;
+    } catch {
+      return defaultVal;
+    }
+  }
+  return defaultVal;
+}
+
+/**
+ * 通用 SQLite JSON 鍵值寫入
+ */
+export function writeKvJson<T>(key: string, val: T): void {
+  const jsonStr = JSON.stringify(val);
+  memoryKvFallback[key] = jsonStr;
+  const db = getDb();
+  if (!db) {
+    return;
+  }
+  try {
+    db.runSync(
+      'INSERT OR REPLACE INTO app_kv_store (store_key, json_value, updated_at) VALUES (?, ?, ?)',
+      [key, jsonStr, formatNowTimestamp()]
+    );
+  } catch {
+    // fallback in memory
   }
 }

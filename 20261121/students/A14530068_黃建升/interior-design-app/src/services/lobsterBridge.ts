@@ -439,3 +439,90 @@ export function buildPinpointDispatchReport(
 
   return [header, ...lines, footer].join('\n');
 }
+
+/**
+ * 老工務長 Agent：呼叫 Strata AI 針對特定空間與預留尺寸撰寫專業勸退／動線分析說帖
+ */
+export async function generateAiErgonomicAdvice(
+  space: string,
+  title: string,
+  currentCm: number,
+  minLimit: number,
+  comfortMin: number,
+  config: LobsterBridgeConfig
+): Promise<string> {
+  const prompt = `空間：${space}「${title}」，目前業主想只留 ${currentCm}cm（舒適標準為 ${comfortMin}cm，極限底線為 ${minLimit}cm）。請用老工務長專業口吻，寫一段 100 字內、能當場給業主看的生活動線風險與尺寸調整建議。`;
+  return sendChatConverseMessages(
+    [
+      {
+        id: 1,
+        conversationId: 0,
+        role: 'user',
+        content: prompt,
+        createdAt: '',
+      },
+    ],
+    config
+  );
+}
+
+/**
+ * 看圖指派 Agent：呼叫 Strata AI 將照片紅點清單潤飾並補充各工種驗收標準
+ */
+export async function generateAiEnhancedPinpointReport(
+  projectName: string,
+  pins: PinMarker[],
+  config: LobsterBridgeConfig
+): Promise<string> {
+  const baseReport = buildPinpointDispatchReport(projectName, pins);
+  if (pins.length === 0) {
+    return baseReport;
+  }
+  const prompt = `請幫我把以下工地紅點指派單，潤飾成發給工班群組的專業派工指令，並針對裡面的工種補充 2 點關鍵驗收提醒：\n${baseReport}`;
+  return sendChatConverseMessages(
+    [
+      {
+        id: 1,
+        conversationId: 0,
+        role: 'user',
+        content: prompt,
+        createdAt: '',
+      },
+    ],
+    config
+  );
+}
+
+/**
+ * 客戶沙盒 Agent：呼叫 Strata AI 根據屋主勾選的生活場景與預算比重，真實生成客製化《空間氣質診斷書》
+ */
+export async function generateAiClientSandboxDiagnosis(
+  clientName: string,
+  moodName: string,
+  moodDesc: string,
+  selectedTags: string[],
+  hardDecorRatio: number,
+  config: LobsterBridgeConfig
+): Promise<string> {
+  const softRatio = 100 - hardDecorRatio;
+  const prompt = [
+    `屋主案名：${clientName || '貴賓屋主'}`,
+    `偏好調性：${moodName}（${moodDesc}）`,
+    `日常場景需求：${selectedTags.join('、') || '一般住宅需求'}`,
+    `預算天平：硬裝基礎工程 ${hardDecorRatio}% vs 軟裝家具家電 ${softRatio}%`,
+    '請以「氣韻居所」設計總監黃建升的角度，為這位屋主撰寫一份約 180 字、分點條列的《空間氣質與機能配置診斷書》（包含材質建議、動線重點與預算分配建議，不出現具體金額數字）。',
+  ].join('\n');
+
+  return sendChatConverseMessages(
+    [
+      {
+        id: 1,
+        conversationId: 0,
+        role: 'user',
+        content: prompt,
+        createdAt: '',
+      },
+    ],
+    config
+  );
+}

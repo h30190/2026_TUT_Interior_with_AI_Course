@@ -13,26 +13,33 @@ import {
   View,
 } from 'react-native';
 import { PinpointHistorySection } from '../components/PinpointHistorySection';
+import { TRADE_CATEGORIES } from '../data/presets';
 import {
-  QUICK_ISSUE_TAGS,
-  TRADE_CATEGORIES,
-} from '../data/presets';
-import { buildPinpointDispatchReport } from '../services/lobsterBridge';
+  buildPinpointDispatchReport,
+  generateAiEnhancedPinpointReport,
+} from '../services/lobsterBridge';
 import {
+  addIssueTagToSQLite,
   insertDispatchHistoryRecord,
   loadActivePinpointWorkspace,
   loadDispatchHistoryList,
+  loadIssueTagsMapFromSQLite,
   removeDispatchHistoryRecord,
   saveActivePinpointWorkspace,
 } from '../services/storage';
 import { IOS_THEME } from '../theme/iosTheme';
 import {
   DispatchHistoryRecord,
+  LobsterBridgeConfig,
   PinMarker,
   TradeCategory,
 } from '../types/agent';
 
-export function PinpointAgent() {
+interface Props {
+  bridgeConfig: LobsterBridgeConfig;
+}
+
+export function PinpointAgent({ bridgeConfig }: Props) {
   const [initialWorkspace] = useState(() => loadActivePinpointWorkspace());
   const [projectName, setProjectName] = useState<string>(
     initialWorkspace.projectName
@@ -47,12 +54,19 @@ export function PinpointAgent() {
   const [historyRecords, setHistoryRecords] = useState<DispatchHistoryRecord[]>(
     () => loadDispatchHistoryList()
   );
+  const [issueTagsMap, setIssueTagsMap] = useState<
+    Record<TradeCategory, string[]>
+  >(() => loadIssueTagsMapFromSQLite());
 
   const [selectedTrade, setSelectedTrade] = useState<TradeCategory>('泥作');
   const [selectedIssue, setSelectedIssue] = useState<string>(
-    QUICK_ISSUE_TAGS['泥作'][0]
+    () => issueTagsMap['泥作']?.[0] || '洩水坡度不足'
   );
+  const [newTagInput, setNewTagInput] = useState<string>('');
   const [customNote, setCustomNote] = useState<string>('');
+  const [aiPolishedReport, setAiPolishedReport] = useState<string>('');
+  const [isPolishing, setIsPolishing] = useState<boolean>(false);
+
   const [canvasSize, setCanvasSize] = useState<{
     width: number;
     height: number;
@@ -71,11 +85,23 @@ export function PinpointAgent() {
       photoUri: nextPhoto,
       pins: nextPins,
     });
+    setAiPolishedReport('');
   };
 
   const handleTradeSelect = (trade: TradeCategory) => {
     setSelectedTrade(trade);
-    setSelectedIssue(QUICK_ISSUE_TAGS[trade][0]);
+    setSelectedIssue(issueTagsMap[trade]?.[0] || '');
+  };
+
+  const handleAddCustomIssueTag = () => {
+    const trimmed = newTagInput.trim();
+    if (!trimmed) {
+      return;
+    }
+    const nextMap = addIssueTagToSQLite(selectedTrade, trimmed);
+    setIssueTagsMap(nextMap);
+    setSelectedIssue(trimmed);
+    setNewTagInput('');
   };
 
   const handleTakePhoto = async () => {
@@ -178,7 +204,19 @@ export function PinpointAgent() {
     syncWorkspaceToSQLite(projectName, photoUri, []);
   };
 
-  const reportText = buildPinpointDispatchReport(projectName, pins);
+  const baseReportText = buildPinpointDispatchReport(projectName, pins);
+  const activeReportText = aiPolishedReport || baseReportText;
+
+  const handleAiPolishReport = async () => {
+    setIsPolishing(true);
+    const enhanced = await generateAiEnhancedPinpointReport(
+      projectName,
+      pins,
+      bridgeConfig
+    );
+    setAiPolishedReport(enhanced);
+    setIsPolishing(false);
+  };
 
   const handleSaveToHistory = () => {
     if (pins.length === 0) {
@@ -189,7 +227,7 @@ export function PinpointAgent() {
       projectName,
       photoUri,
       pins,
-      reportText
+      activeReportText
     );
     setHistoryRecords(updatedList);
     Alert.alert('已存入本機資料庫', '派工單已寫入 SQLite，重開 App 亦可隨時查閱。');
@@ -224,11 +262,11 @@ export function PinpointAgent() {
     >
       <View style={styles.heroCard}>
         <Text style={styles.heroTag}>
-          AGENT 03 ・ 真實照片紅點標記 ＆ SQLite 本地保存
+          AGENT 03 ・ 真實照片紅點 ＆ SQLite 自訂標籤 ＆ Strata AI 派工潤飾
         </Text>
         <Text style={styles.heroTitle}>📸 看圖指派紅點 Agent</Text>
         <Text style={styles.heroDesc}>
-          現場拍照或從相簿選取案場照片（照片僅留本機不上傳），直接在照片問題處點一下即釘上紅點（📍1、📍2），且自動寫入 SQLite 重開不遺失！
+          現場拍照或選圖（僅存本機），可自行新增各工種常用缺失標籤，點擊照片釘上紅點並由 Strata AI 補充驗收規範。
         </Text>
       </View>
 
@@ -261,7 +299,7 @@ export function PinpointAgent() {
         </Pressable>
       </View>
 
-      <Text style={styles.sectionTitle}>1. 選擇要標記的工種與缺失項目</Text>
+      <Text style={styles.sectionTitle}>1. 選擇工種與缺失標籤（可自行新增）</Text>
       <View style={styles.tradeRow}>
         {TRADE_CATEGORIES.map((trade) => {
           const active = selectedTrade === trade;
@@ -285,7 +323,7 @@ export function PinpointAgent() {
       </View>
 
       <View style={styles.issueRow}>
-        {QUICK_ISSUE_TAGS[selectedTrade].map((tag) => {
+        {(issueTagsMap[selectedTrade] ?? []).map((tag) => {
           const active = selectedIssue === tag;
           return (
             <Pressable
@@ -304,6 +342,22 @@ export function PinpointAgent() {
             </Pressable>
           );
         })}
+      </View>
+
+      <View style={styles.addTagRow}>
+        <TextInput
+          style={styles.addTagInput}
+          value={newTagInput}
+          onChangeText={setNewTagInput}
+          placeholder={`新增【${selectedTrade}】常用缺失標籤（自動存 SQLite）...`}
+          placeholderTextColor={IOS_THEME.colors.textMuted}
+        />
+        <Pressable
+          style={styles.addTagBtn}
+          onPress={handleAddCustomIssueTag}
+        >
+          <Text style={styles.addTagBtnText}>➕ 新增標籤</Text>
+        </Pressable>
       </View>
 
       <TextInput
@@ -394,8 +448,19 @@ export function PinpointAgent() {
         </View>
       ))}
 
+      <Pressable
+        style={styles.aiPolishBtn}
+        onPress={() => void handleAiPolishReport()}
+      >
+        <Text style={styles.aiPolishBtnText}>
+          {isPolishing
+            ? '⏳ Strata AI 正在潤飾派工單並補充驗收規範...'
+            : '🤖 請 Strata AI 潤飾下方派工單並補充各工種驗收提醒'}
+        </Text>
+      </Pressable>
+
       <PinpointHistorySection
-        reportText={reportText}
+        reportText={activeReportText}
         historyRecords={historyRecords}
         onSaveToHistory={handleSaveToHistory}
         onRestoreHistory={handleRestoreHistory}
@@ -469,11 +534,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cameraBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-  },
+  cameraBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   albumBtn: {
     flex: 1,
     backgroundColor: IOS_THEME.colors.accent,
@@ -482,11 +543,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  albumBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-  },
+  albumBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
@@ -517,14 +574,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: IOS_THEME.colors.textMain,
   },
-  tradePillTextActive: {
-    color: '#FFFFFF',
-  },
+  tradePillTextActive: { color: '#FFFFFF' },
   issueRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   issueChip: {
     backgroundColor: IOS_THEME.colors.cardAlt,
@@ -532,17 +587,36 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: IOS_THEME.radius.sm,
   },
-  issueChipActive: {
-    backgroundColor: IOS_THEME.colors.accent,
-  },
+  issueChipActive: { backgroundColor: IOS_THEME.colors.accent },
   issueChipText: {
     fontSize: 12,
     color: IOS_THEME.colors.textMain,
     fontWeight: '600',
   },
-  issueChipTextActive: {
-    color: '#FFFFFF',
+  issueChipTextActive: { color: '#FFFFFF' },
+  addTagRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
   },
+  addTagInput: {
+    flex: 1,
+    backgroundColor: IOS_THEME.colors.card,
+    borderRadius: IOS_THEME.radius.sm,
+    borderWidth: 1,
+    borderColor: IOS_THEME.colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 12,
+    color: IOS_THEME.colors.textMain,
+  },
+  addTagBtn: {
+    backgroundColor: IOS_THEME.colors.primary,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderRadius: IOS_THEME.radius.sm,
+  },
+  addTagBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   noteInput: {
     backgroundColor: IOS_THEME.colors.card,
     borderRadius: IOS_THEME.radius.sm,
@@ -574,20 +648,14 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: IOS_THEME.colors.accent,
   },
-  photoImage: {
-    width: '100%',
-    height: '100%',
-  },
+  photoImage: { width: '100%', height: '100%' },
   emptyPhotoFallback: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
   },
-  emptyPhotoIcon: {
-    fontSize: 34,
-    marginBottom: 8,
-  },
+  emptyPhotoIcon: { fontSize: 34, marginBottom: 8 },
   emptyPhotoTitle: {
     color: '#FFFFFF',
     fontSize: 14,
@@ -611,11 +679,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     transform: [{ translateX: -18 }, { translateY: -14 }],
   },
-  floatingPinText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '900',
-  },
+  floatingPinText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
   privacyHint: {
     fontSize: 11,
     color: IOS_THEME.colors.textSecondary,
@@ -633,11 +697,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: IOS_THEME.colors.border,
   },
-  pinItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
+  pinItemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   pinNumberCircle: {
     width: 28,
     height: 28,
@@ -647,24 +707,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 10,
   },
-  pinNumberText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  pinDetailWrap: {
-    flex: 1,
-  },
+  pinNumberText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  pinDetailWrap: { flex: 1 },
   pinItemTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: IOS_THEME.colors.textMain,
     marginBottom: 2,
   },
-  pinItemNote: {
-    fontSize: 12,
-    color: IOS_THEME.colors.textSecondary,
-  },
+  pinItemNote: { fontSize: 12, color: IOS_THEME.colors.textSecondary },
   deleteBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -677,4 +728,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  aiPolishBtn: {
+    backgroundColor: IOS_THEME.colors.primary,
+    borderRadius: IOS_THEME.radius.sm,
+    paddingVertical: 11,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  aiPolishBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 });

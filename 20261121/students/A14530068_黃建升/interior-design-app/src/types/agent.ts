@@ -163,3 +163,16 @@ export interface ChatSearchResultItem {
   content: string;
   createdAt: string;
 }
+
+/**
+ * 客戶沙盒初談診斷 SQLite 存檔紀錄
+ */
+export interface ClientSandboxRecord {
+  id: string;
+  clientName: string;
+  moodName: string;
+  selectedTags: string[];
+  hardDecorRatio: number;
+  diagnosisText: string;
+  createdAt: string;
+}
